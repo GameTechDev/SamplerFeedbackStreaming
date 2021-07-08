@@ -7,7 +7,7 @@ Textures derived from [Hubble Images](https://www.nasa.gov/mission_pages/hubble/
 
 The demo requires at least Windows version 19041 and a GPU with Sampler Feedback Support.
 
-Intel Iris Xe Graphics, as can be found in Gen11 processors, will run this application as of BETA driver [30.0.100.9667](https://downloadcenter.intel.com/download/30522/Intel-Graphics-BETA-Windows-10-DCH-Drivers)
+Intel Iris Xe Graphics, as can be found in 11th Generation Intel&reg; Core&trade; processors, will run this application as of BETA driver [30.0.100.9667](https://downloadcenter.intel.com/download/30522/Intel-Graphics-BETA-Windows-10-DCH-Drivers)
 
 Note this repository does not contain the textures shown above, which total over 13GB. A link to these textures will hopefully be provided soon. Test textures are provided, as is a mechanism to convert BCx format DDS files.
 
@@ -93,3 +93,5 @@ In this case, the hardware sampler is reaching across tile boundaries to perform
 There are also a few known bugs:
 * entering full screen in a multi-gpu system moves the window to a monitor attached to the GPU by design. However, if the window starts on a different monitor, it "disappears" on the first maximization. Hit *escape* then maximize again, and it should work fine.
 * full-screen while remote desktop is broken *again*. Will likely fix soon.
+
+![Sample screenshot](./readme-images/demo-bat.jpg "Sample screenshot")
