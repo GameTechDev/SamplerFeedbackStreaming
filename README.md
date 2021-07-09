@@ -1,6 +1,6 @@
 # Sampler Feedback Streaming
 
-This repository contains a demo of `DirectX12 Sampler Feedback Streaming`, a technique using DirectX12 Sampler Feedback to guide loading of tiles of a reserved resource on-demand per-frame. This allows scenes containing 100s of GBs of resources to be drawn using much less physical memory. The scene below uses just ~200MB of a 1GB heap, despite over 350GB of total texture resources.
+This repository contains a demo of `DirectX12 Sampler Feedback Streaming`, a technique using [DirectX12 Sampler Feedback](https://microsoft.github.io/DirectX-Specs/d3d/SamplerFeedback.html) to guide loading of tiles of a reserved resource on-demand per-frame. This allows scenes containing 100s of GBs of resources to be drawn using much less physical memory. The scene below uses just ~200MB of a 1GB heap, despite over 350GB of total texture resources.
 
 Sampler Feedback is supported in hardware on Intel Iris Xe Graphics, as can be found in 11th Generation Intel&reg; Core&trade; processors.
 
@@ -31,7 +31,7 @@ SOFTWARE.
 
 ## Requirements
 
-The demo requires at least Windows version 19041 and a GPU with Sampler Feedback Support.
+The demo requires at least Windows 10 version 19041 and a GPU with Sampler Feedback Support.
 
 Intel Iris Xe Graphics, as can be found in 11th Generation Intel&reg; Core&trade; processors, require ***at least*** BETA driver [30.0.100.9667](https://downloadcenter.intel.com/product/80939/Graphics) or later.
 
@@ -43,11 +43,9 @@ This repository will be updated When DirectStorage for Windows&reg; becomes avai
 
 Download the source. Build the solution file with Visual Studio 2019.
 
-Under x64/Release or x64/Debug find the executable and run.
-
-Note the batch files depend on textures that will be posted at a later date.
-
 ## Running
+
+All executables and .bat files will be found in the x64/Release or x64/Debug directories.
 
 By default, the application starts looking at a single object, "terrain", which allows for exploring sampler feedback streaming.
 
@@ -60,6 +58,10 @@ There is a batch file, demo.bat, which starts up in a more interesting state:
     c:\SamplerFeedbackStreaming\x64\Release> demo.bat
 
 ![demo batch file](./readme-images/demo-bat.jpg "demo.bat")
+
+The textures in the first "release" package, hubble-16k.zip, work with "demo-hubble.bat". Make sure the mediadir in the batch file is set properly, or override it on the command line as follows:
+
+    c:\SamplerFeedbackStreaming\x64\Release> demo-hubble.bat -mediadir c:\hubble-16k
 
 There is also a batch file "nvidia.bat". For some hardware, it was observed that the performance of [UpdateTileMappings](https://docs.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-id3d12commandqueue-updatetilemappings) impacted overall throughput *unless* the heap size was 32MB. One workaround is to create many 32MB heaps and distribute the resources across them.
 
@@ -96,7 +98,17 @@ command line:
 
     -mediadir c:\myMedia
 
-## Misc Notes
+## Creating Your Own Textures
+
+The executable `DdsToXet.exe` converts BCn DDS textures to the custom XET format. Only BC1 and BC7 textures have been tested. Usage:
+
+    c:> ddstoxet.xet -in myfile.dds -out myfile.xet
+
+The batch file `convert.bat` will read all the DDS files in one directory and write XET files to a second directory. The output directory must exist.
+
+    c:> convert c:\myDdsFiles c:\myXetFiles
+
+## TileUpdateManager: a library for streaming textures
 
 Within the source, there is a *TileUpdateManager* library that aspires to be stand-alone. The central object, *TileUpdateManager*, allows for the creation of streaming textures and heaps to contain them. These objects handle all the feedback resource creation, readback, processing, and file/IO.
 
