@@ -1,6 +1,8 @@
 # Sampler Feedback Streaming
 
-This repository contains a demo of Sampler Feedback Streaming, a technique using sampler feedback to guide loading of tiles of a reserved resource on-demand per-frame. This allows scenes containing 100s of GBs of resources to be drawn using much less physical memory. The scene below uses just ~200MB of a 1GB heap, despite over 350GB of total texture resources.
+This repository contains a demo of `DirectX12 Sampler Feedback Streaming`, a technique using DirectX12 Sampler Feedback to guide loading of tiles of a reserved resource on-demand per-frame. This allows scenes containing 100s of GBs of resources to be drawn using much less physical memory. The scene below uses just ~200MB of a 1GB heap, despite over 350GB of total texture resources.
+
+Sampler Feedback is supported in hardware on Intel Iris Xe Graphics, as can be found in 11th Generation Intel&reg; Core&trade; processors.
 
 ![Sample screenshot](sampler-feedback-streaming.jpg "Sample screenshot")
 Textures derived from [Hubble Images](https://www.nasa.gov/mission_pages/hubble/multimedia/index.html), see the [Hubble Copyright](https://hubblesite.org/copyright)
@@ -31,9 +33,9 @@ SOFTWARE.
 
 The demo requires at least Windows version 19041 and a GPU with Sampler Feedback Support.
 
-Intel Iris Xe Graphics, as can be found in 11th Generation Intel&reg; Core&trade; processors, will run this application as of BETA driver [30.0.100.9667](https://downloadcenter.intel.com/download/30522/Intel-Graphics-BETA-Windows-10-DCH-Drivers)
+Intel Iris Xe Graphics, as can be found in 11th Generation Intel&reg; Core&trade; processors, require ***at least*** BETA driver [30.0.100.9667](https://downloadcenter.intel.com/product/80939/Graphics) or later.
 
-Note this repository does not contain the textures shown above, which total over 13GB. A link to these textures will hopefully be provided soon. Test textures are provided, as is a mechanism to convert BCx format DDS files.
+Note this repository does not contain the textures shown above, which total over 13GB. A link to these textures will hopefully be provided soon. Test textures are provided, as is a mechanism to convert from BCx format DDS files into the custom .XET format. UPDATE: The first "release" package (labeled "1") contains a .zip with a few hi-res textures.
 
 This repository will be updated When DirectStorage for Windows&reg; becomes available.
 
@@ -58,6 +60,8 @@ There is a batch file, demo.bat, which starts up in a more interesting state:
     c:\SamplerFeedbackStreaming\x64\Release> demo.bat
 
 ![demo batch file](./readme-images/demo-bat.jpg "demo.bat")
+
+There is also a batch file "nvidia.bat". For some hardware, it was observed that the performance of [UpdateTileMappings](https://docs.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-id3d12commandqueue-updatetilemappings) impacted overall throughput *unless* the heap size was 32MB. One workaround is to create many 32MB heaps and distribute the resources across them.
 
 ## Keyboard controls
 
@@ -98,13 +102,13 @@ Within the source, there is a *TileUpdateManager* library that aspires to be sta
 
 ## Known issues
 
-The demo exhibits texture cracks due to the way feedback is used. Feedback is always read *after* drawing, resulting in loads and evictions corresponding to that frame. That means we never have exactly the texture data we need when we draw (unless no new data is needed). Most of the time this isn't perceptible, but sometimes a fast-moving object enters the view and the system just can't get data there in time resulting in visible artifacts.
+The demo exhibits texture cracks due to the way feedback is used. Feedback is always read *after* drawing, resulting in loads and evictions corresponding to that frame only becoming available for a future frame. That means we never have exactly the texture data we need when we draw (unless no new data is needed). Most of the time this isn't perceptible, but sometimes a fast-moving object enters the view resulting in visible artifacts.
 
 The following image shows an exaggerated version of the problem, created by disabling streaming completely then moving the camera:
 
 ![Streaming Cracks](streaming-cracks.jpg "Streaming Cracks")
 
-In this case, the hardware sampler is reaching across tile boundaries to perform anisotropic sampling, but encounters tiles that are not physically mapped. D3D12 Reserved Resource tiles that are not physically mapped return black to the sampler. I believe this could be mitigated by "eroding" the min mip map such that there is no more than 1 mip level difference between neighbors. That visual optimization is TBD.
+In this case, the hardware sampler is reaching across tile boundaries to perform anisotropic sampling, but encounters tiles that are not physically mapped. D3D12 Reserved Resource tiles that are not physically mapped return black to the sampler. I believe this could be mitigated by "eroding" the min mip map such that there is no more than 1 mip level difference between neighboring tiles. That visual optimization is TBD.
 
 There are also a few known bugs:
 * entering full screen in a multi-gpu system moves the window to a monitor attached to the GPU by design. However, if the window starts on a different monitor, it "disappears" on the first maximization. Hit *escape* then maximize again, and it should work fine.
