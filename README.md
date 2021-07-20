@@ -1,6 +1,8 @@
 # Sampler Feedback Streaming
 
-This repository contains a demo of `DirectX12 Sampler Feedback Streaming`, a technique using [DirectX12 Sampler Feedback](https://microsoft.github.io/DirectX-Specs/d3d/SamplerFeedback.html) to guide continuous loading and eviction of reserved resource tiles. This allows scenes containing 100s of gigabytes of resources to be drawn on GPUs containing much less physical memory. The scene below uses just ~200MB of a 1GB heap, despite over 350GB of total texture resources.
+This repository contains a demo of `DirectX12 Sampler Feedback Streaming`, a technique using [DirectX12 Sampler Feedback](https://microsoft.github.io/DirectX-Specs/d3d/SamplerFeedback.html) to guide continuous loading and eviction of reserved resource tiles. Sampler Feedback Streaming allows scenes containing 100s of gigabytes of resources to be drawn on GPUs containing much less physical memory. The scene below uses just ~200MB of a 1GB heap, despite over 350GB of total texture resources.
+
+See the [GDC 2021 video](https://www.youtube.com/watch?v=VDDbrfZucpQ) which provides an overview of Sampler Feedback and discusses this sample starting at about 15:30.
 
 Sampler Feedback is supported in hardware on Intel Iris Xe Graphics, as can be found in 11th Generation Intel&reg; Core&trade; processors and discrete GPUs. This sample requires BETA driver [30.0.100.9667](https://downloadcenter.intel.com/product/80939/Graphics) ***or later***.
 
