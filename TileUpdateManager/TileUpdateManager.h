@@ -227,6 +227,9 @@ protected:
     bool m_numStreamingResourcesChanged{ false };
 
     std::atomic<bool> m_packedMipTransition{ false }; // flag that we need to transition a resource due to packed mips
+
+    HANDLE m_residencyChangeEvent{ nullptr };
+    HANDLE m_processFeedbackEvent{ nullptr };
 private:
     TileUpdateManager(const TileUpdateManager&) = delete;
     TileUpdateManager(TileUpdateManager&&) = delete;
@@ -236,7 +239,7 @@ private:
     // the min mip map is shared. it must be created (at least) every time a StreamingResource is created/destroyed
     void CreateMinMipMapView(D3D12_CPU_DESCRIPTOR_HANDLE in_descriptor);
 
-    UINT m_sharedFrameIndex;
+    UINT m_renderFrameIndex;
 
     D3D12GpuTimer m_gpuTimerResolve; // time for feedback resolve
 
@@ -268,10 +271,11 @@ private:
     std::vector<UINT> m_residencyMapOffsets; // one for each StreamingResource sized for numswapbuffers min mip maps each
     void AllocateResidencyMap(D3D12_CPU_DESCRIPTOR_HANDLE in_descriptorHandle);
 
+    std::atomic<bool> m_threadsRunning{ false };
+    void StartThreads();
+
     // a thread to process feedback (when available) and queue tile loads / evictions to datauploader
     std::thread m_processFeedbackThread;
-    std::atomic<bool> m_processFeedbackThreadRunning{ false };
-    void StartProcessFeedbackThread();
     RawCpuTimer m_cpuTimer;
     std::atomic<INT64> m_processFeedbackTime{ 0 }; // sum of cpu timer times since start
     INT64 m_previousFeedbackTime{ 0 }; // m_processFeedbackTime at time of last query

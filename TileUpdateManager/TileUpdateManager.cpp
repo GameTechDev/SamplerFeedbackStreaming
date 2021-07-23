@@ -30,8 +30,6 @@
 #include "Interfaces.h"
 #include "XeTexture.h"
 
-#define USE_DEDICATED_UPDATERESIDENCY_THREAD 1
-
 #define COPY_RESIDENCY_MAPS 0
 
 //=============================================================================
@@ -47,7 +45,7 @@ TileUpdateManager::TileUpdateManager(
     const TileUpdateManagerDesc& in_desc) :
 m_numSwapBuffers(in_desc.m_swapChainBufferCount)
 , m_gpuTimerResolve(in_pDevice, in_desc.m_swapChainBufferCount, D3D12GpuTimer::TimerType::Direct)
-, m_sharedFrameIndex(0)
+, m_renderFrameIndex(0)
 , m_directCommandQueue(in_pDirectCommandQueue)
 , m_withinFrame(false)
 , m_device(in_pDevice)
@@ -82,7 +80,7 @@ m_numSwapBuffers(in_desc.m_swapChainBufferCount)
             name << "Shared::m_commandLists.m_allocators[" << c << "][" << i << "]";
             cl.m_allocators[i]->SetName(name.str().c_str());
         }
-        ThrowIfFailed(in_pDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, cl.m_allocators[m_sharedFrameIndex].Get(), nullptr, IID_PPV_ARGS(&cl.m_commandList)));
+        ThrowIfFailed(in_pDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, cl.m_allocators[m_renderFrameIndex].Get(), nullptr, IID_PPV_ARGS(&cl.m_commandList)));
 
         std::wstringstream name;
         name << "Shared::m_commandLists.m_commandList[" << c << "]";
@@ -90,9 +88,22 @@ m_numSwapBuffers(in_desc.m_swapChainBufferCount)
         cl.m_commandList->Close();
     }
 
+    // create event to control residency update thread
+    m_residencyChangeEvent = ::CreateEvent(nullptr, FALSE, FALSE, nullptr);
+    if (m_residencyChangeEvent == nullptr)
+    {
+        ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
+    }
+
+    // create event to control process feedback thread
+    m_processFeedbackEvent = ::CreateEvent(nullptr, FALSE, FALSE, nullptr);
+    if (m_processFeedbackEvent == nullptr)
+    {
+        ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
+    }
+
     // advance frame number to the first frame...
     m_frameFenceValue++;
-
 
     UseDirectStorage(in_desc.m_useDirectStorage);
 }
@@ -101,6 +112,8 @@ TileUpdateManager::~TileUpdateManager()
 {
     // DataUploader destructor flushes outstanding commands, but we want to make sure that's the first thing that happens in the desctructor for TileUpdateManager
     Finish();
+    ::CloseHandle(m_residencyChangeEvent);
+    ::CloseHandle(m_processFeedbackEvent);
 }
 
 //-----------------------------------------------------------------------------
@@ -110,7 +123,7 @@ const TileUpdateManager::BatchTimes& TileUpdateManager::GetBatchTimes() const { 
 float TileUpdateManager::GetGpuStreamingTime() const { return m_pDataUploader->GetGpuStreamingTime(); }
 
 // feedback resolve + readback
-float TileUpdateManager::GetGpuTime() const { return m_gpuTimerResolve.GetTimes()[m_sharedFrameIndex].first; }
+float TileUpdateManager::GetGpuTime() const { return m_gpuTimerResolve.GetTimes()[m_renderFrameIndex].first; }
 UINT TileUpdateManager::GetTotalNumUploads() const { return m_pDataUploader->GetTotalNumUploads(); }
 UINT TileUpdateManager::GetTotalNumEvictions() const { return m_pDataUploader->GetTotalNumEvictions(); }
 void TileUpdateManager::SetVisualizationMode(UINT in_mode) { m_pDataUploader->SetVisualizationMode(in_mode); }
@@ -156,14 +169,14 @@ void TileUpdateManager::UseDirectStorage(bool in_useDS)
 // kick off thread that continuously streams tiles
 // gives StreamingResources opportunities to update feedback
 //-----------------------------------------------------------------------------
-void TileUpdateManager::StartProcessFeedbackThread()
+void TileUpdateManager::StartThreads()
 {
-    if (m_processFeedbackThreadRunning)
+    if (m_threadsRunning)
     {
         return;
     }
 
-    m_processFeedbackThreadRunning = true;
+    m_threadsRunning = true;
 
     m_processFeedbackThread = std::thread([&]
         {
@@ -179,7 +192,7 @@ void TileUpdateManager::StartProcessFeedbackThread()
             std::vector<BYTE> pending(m_streamingResources.size(), 0);
 
             UINT64 previousFrameFenceValue = m_frameFenceValue;
-            while (m_processFeedbackThreadRunning)
+            while (m_threadsRunning)
             {
                 // DEBUG: verify that no streaming resources have been added/removed during thread lifetime
                 ASSERT(m_streamingResources.size() == pending.size());
@@ -196,7 +209,10 @@ void TileUpdateManager::StartProcessFeedbackThread()
                     for (auto p : m_streamingResources)
                     {
                         // early exit, important for application exit or TUM::Finish() when adding/deleting objects
-                        if (!m_processFeedbackThreadRunning) return;
+                        if (!m_threadsRunning)
+                        {
+                            break;
+                        }
 
                         p->NextFrame();
                         p->ProcessFeedback(frameFenceValue);
@@ -213,7 +229,10 @@ void TileUpdateManager::StartProcessFeedbackThread()
                 // continuously push uploads and evictions
                 for (UINT i = 0; i < staleResources.size(); i++)
                 {
-                    if (!m_processFeedbackThreadRunning) return;
+                    if (!m_threadsRunning)
+                    {
+                        break;
+                    }
 
                     UINT resourceIndex = staleResources[i];
                     auto p = m_streamingResources[resourceIndex];
@@ -229,37 +248,33 @@ void TileUpdateManager::StartProcessFeedbackThread()
                     }
                 }
 
-#if (0 == USE_DEDICATED_UPDATERESIDENCY_THREAD)
-                // continuously modify residency maps as a result of gpu completion events
-                // FIXME? there seems to be enough time in this thread to also updateminmipmaps (scene dependent)
-                // Note that UpdateMinMipMap() exits quickly if nothing to do
-                for (auto p : m_streamingResources)
+                // nothing to do? wait for next frame
+                if ((0 == staleResources.size()) && m_threadsRunning)
                 {
-                    p->UpdateMinMipMap();
+                    ThrowIfFailed(m_frameFence->SetEventOnCompletion(frameFenceValue + 1, m_processFeedbackEvent));
+                    WaitForSingleObject(m_processFeedbackEvent, 1000);
                 }
-#endif
             }
             DebugPrint(L"Destroyed ProcessFeedback Thread\n");
         });
 
-#if USE_DEDICATED_UPDATERESIDENCY_THREAD
     m_updateResidencyThread = std::thread([&]
         {
             DebugPrint(L"Created UpdateResidency Thread\n");
             // continuously modify residency maps as a result of gpu completion events
             // FIXME? probably not enough work to deserve it's own thread
             // Note that UpdateMinMipMap() exits quickly if nothing to do
-            while (m_processFeedbackThreadRunning)
+            while (m_threadsRunning)
             {
                 for (auto p : m_streamingResources)
                 {
                     p->UpdateMinMipMap();
                 }
-                _mm_pause();
+
+                WaitForSingleObject(m_residencyChangeEvent, INFINITE);
             }
             DebugPrint(L"Destroyed UpdateResidency Thread\n");
         });
-#endif
 }
 
 //-----------------------------------------------------------------------------
@@ -276,7 +291,8 @@ void TileUpdateManager::Finish()
     // stop TileUpdateManager threads
     // do not want ProcessFeedback generating more work
     // don't want UpdateResidency to write to min maps when that might be replaced
-    m_processFeedbackThreadRunning = false;
+    m_threadsRunning = false;
+    ::SetEvent(m_residencyChangeEvent);
 
     if (m_processFeedbackThread.joinable())
     {
@@ -397,7 +413,7 @@ void TileUpdateManager::BeginFrame(ID3D12DescriptorHeap* in_pDescriptorHeap,
     ASSERT(!GetWithinFrame());
     m_withinFrame = true;
 
-    StartProcessFeedbackThread();
+    StartThreads();
 
     // if new StreamingResources have been created...
     if (m_numStreamingResourcesChanged)
@@ -412,10 +428,10 @@ void TileUpdateManager::BeginFrame(ID3D12DescriptorHeap* in_pDescriptorHeap,
     m_directCommandQueue->Signal(m_frameFence.Get(), m_frameFenceValue);
     m_frameFenceValue++;
 
-    m_sharedFrameIndex = (m_sharedFrameIndex + 1) % m_numSwapBuffers;
+    m_renderFrameIndex = (m_renderFrameIndex + 1) % m_numSwapBuffers;
     for (auto& cl : m_commandLists)
     {
-        auto& allocator = cl.m_allocators[m_sharedFrameIndex];
+        auto& allocator = cl.m_allocators[m_renderFrameIndex];
         allocator->Reset();
         ThrowIfFailed(cl.m_commandList->Reset(allocator.Get(), nullptr));
     }
@@ -515,7 +531,7 @@ TileUpdateManager::CommandLists TileUpdateManager::EndFrame()
 
         if (m_feedbackReadbacks.size())
         {
-            m_gpuTimerResolve.BeginTimer(pCommandList, m_sharedFrameIndex);
+            m_gpuTimerResolve.BeginTimer(pCommandList, m_renderFrameIndex);
 
             // transition all feeback resources UAV->RESOLVE_SOURCE
             // also transition the (non-opaque) resolved resources COPY_SOURCE->RESOLVE_DEST
@@ -533,7 +549,7 @@ TileUpdateManager::CommandLists TileUpdateManager::EndFrame()
             pCommandList->ResourceBarrier((UINT)m_barrierResolveSrcToUav.size(), m_barrierResolveSrcToUav.data());
             m_barrierResolveSrcToUav.clear();
 
-            m_gpuTimerResolve.EndTimer(pCommandList, m_sharedFrameIndex);
+            m_gpuTimerResolve.EndTimer(pCommandList, m_renderFrameIndex);
 #if RESOLVE_TO_TEXTURE
             // copy readable feedback buffers to cpu
             for (auto& t : m_feedbackReadbacks)
@@ -543,7 +559,7 @@ TileUpdateManager::CommandLists TileUpdateManager::EndFrame()
 #endif
             m_feedbackReadbacks.clear();
 
-            m_gpuTimerResolve.ResolveTimer(pCommandList, m_sharedFrameIndex);
+            m_gpuTimerResolve.ResolveTimer(pCommandList, m_renderFrameIndex);
         }
 
         pCommandList->Close();

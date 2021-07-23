@@ -100,6 +100,7 @@ protected:
 
     // non-packed mip copy complete notification
     std::atomic<bool> m_tileResidencyChanged{ false };
+    void SetResidencyChanged();
 
     // packed mip status
     enum class PackedMipStatus : UINT32
@@ -276,7 +277,6 @@ private:
     std::vector<TileReference> m_tileReferences;
     UINT m_tileReferencesWidth;  // function of resource tiling
     UINT m_tileReferencesHeight; // function of resource tiling
-    //std::vector<std::vector<TileReference>> m_tileReferences;
 
     UINT8 m_maxMip;
     std::vector<BYTE, Streaming::AlignedAllocator<BYTE>> m_minMipMap; // local version of min mip map, rectified in UpdateMinMipMap()

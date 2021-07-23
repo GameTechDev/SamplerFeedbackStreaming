@@ -60,7 +60,7 @@ namespace Streaming
         {
         public:
             FileHandleReference(HANDLE in_handle) : m_handle(in_handle) {}
-            virtual ~FileHandleReference() { CloseHandle(m_handle); }
+            virtual ~FileHandleReference() { ::CloseHandle(m_handle); }
 
             HANDLE GetHandle() const { return m_handle; }
         private:
@@ -105,8 +105,8 @@ namespace Streaming
         private:
             struct Request : public OVERLAPPED
             {
-                Request() { hEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr); }
-                ~Request() { CloseHandle(hEvent); }
+                Request() { hEvent = ::CreateEvent(nullptr, FALSE, FALSE, nullptr); }
+                ~Request() { ::CloseHandle(hEvent); }
             };
             std::vector<Request> m_requests;
             UINT m_numEvents{ 0 };

@@ -53,7 +53,7 @@
 
   // the maximum number of tile copies in a single command list
   // a larger value allows the system to absorb a big change with a single UpdateList
-  "streamingBatchSize": 32,
+  "streamingBatchSize": 64,
 
   // affects size of gpu upload buffer, that is, staging between file read and gpu copy
   // uploads should move fast, so it should be hard to hit even a small value.

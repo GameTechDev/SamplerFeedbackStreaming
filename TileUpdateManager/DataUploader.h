@@ -66,6 +66,9 @@ namespace Streaming
 
         // may return null. called by StreamingResource.
         UpdateList* AllocateUpdateList(StreamingResource* in_pStreamingResource);
+
+        void SubmitUpdateList(Streaming::UpdateList& in_updateList);
+
         // Streaming resource may find it can't use an updatelist
         void FreeEmptyUpdateList(Streaming::UpdateList& in_updateList);
 
@@ -136,6 +139,8 @@ namespace Streaming
         Streaming::MappingUpdater m_mappingUpdater;
 
         std::unique_ptr<Streaming::FileStreamer> m_pFileStreamer;
+
+        HANDLE m_mapRequestedEvent{ nullptr };
 
         //-------------------------------------------
         // statistics

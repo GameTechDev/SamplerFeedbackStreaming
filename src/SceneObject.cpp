@@ -411,7 +411,7 @@ public:
         ID3D12CommandList* ppCommandLists[] = { m_commandList.Get() };
         m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
 
-        HANDLE renderFenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+        HANDLE renderFenceEvent = ::CreateEvent(nullptr, FALSE, FALSE, nullptr);
         if (renderFenceEvent == nullptr)
         {
             ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
@@ -420,7 +420,7 @@ public:
         ThrowIfFailed(m_commandQueue->Signal(m_renderFence.Get(), 1));
         ThrowIfFailed(m_renderFence->SetEventOnCompletion(1, renderFenceEvent));
         WaitForSingleObject(renderFenceEvent, INFINITE);
-        CloseHandle(renderFenceEvent);
+        ::CloseHandle(renderFenceEvent);
     }
 private:
     template<typename T> using ComPtr = Microsoft::WRL::ComPtr<T>;

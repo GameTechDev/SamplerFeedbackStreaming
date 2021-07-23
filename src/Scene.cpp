@@ -207,7 +207,7 @@ Scene::~Scene()
         m_swapChain->SetFullscreenState(FALSE, nullptr);
     }
 
-    CloseHandle(m_renderFenceEvent);
+    ::CloseHandle(m_renderFenceEvent);
     m_frameConstantBuffer->Unmap(0, nullptr);
 
     delete m_pGpuTimer;
@@ -512,7 +512,7 @@ void Scene::CreateFence()
         IID_PPV_ARGS(&m_renderFence)));
 
     // Create an event handle to use for frame synchronization.
-    m_renderFenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+    m_renderFenceEvent = ::CreateEvent(nullptr, FALSE, FALSE, nullptr);
     if (m_renderFenceEvent == nullptr)
     {
         ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
@@ -1472,7 +1472,7 @@ void Scene::CreateTerrainViewers()
         UINT feedbackWidth = m_pTerrainSceneObject->GetStreamingResource()->GetMinMipMapWidth();
         UINT feedbackHeight = m_pTerrainSceneObject->GetStreamingResource()->GetMinMipMapHeight();
 
-        // FIXME: bufferview can't be created until after beginframe!
+        // note: bufferview can't be created until after TUM::BeginFrame because the residency map will be NULL
         m_pMinMipMapViewer = new BufferViewer(
             m_pTerrainSceneObject->GetMinMipMap(),
             feedbackWidth, feedbackHeight, feedbackWidth,

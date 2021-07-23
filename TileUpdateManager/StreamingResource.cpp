@@ -222,7 +222,7 @@ bool StreamingResource::InitPackedMips()
     {
         pUpdateList->AddPackedMipRequest(GetPackedMipInfo().NumPackedMips);
         pUpdateList->m_heapIndices = m_packedMipHeapIndices;
-        pUpdateList->Submit();
+        m_pTileUpdateManager->SubmitUpdateList(*pUpdateList);
 
         m_packedMipStatus = PackedMipStatus::REQUESTED;
     }
@@ -316,7 +316,7 @@ void StreamingResource::ClearAllocations()
     // want to upload a residency of all maxMip
     // NOTE: UpdateMinMipMap() will see there are no tiles resident,
     //       clear all tile mappings, and upload a cleared min mip map
-    m_tileResidencyChanged = true;
+    SetResidencyChanged();
 }
 
 //-----------------------------------------------------------------------------
@@ -416,6 +416,15 @@ UINT8 StreamingResource::TileMappingState::GetMinResidentMip()
 }
 
 //-----------------------------------------------------------------------------
+// if the residency changes, must also notify TUM
+//-----------------------------------------------------------------------------
+void StreamingResource::SetResidencyChanged()
+{
+    m_tileResidencyChanged = true;
+    m_pTileUpdateManager->SetResidencyChanged();
+}
+
+//-----------------------------------------------------------------------------
 // adds virtual memory updates to command queue
 // queues memory content updates to copy thread
 // Algorithm: evict then load tiles
@@ -479,7 +488,7 @@ void StreamingResource::ProcessFeedback(UINT64 in_frameFenceCompletedValue)
                 // clamp to the maximum we are tracking (not tracking packed mips)
                 UINT8 desired = std::min(pResolvedData[x], m_maxMip);
                 UINT8 initialValue = pTileRow[x];
-                if (desired != initialValue) changed = true;
+                changed = (desired != initialValue);
                 SetMinMip(initialValue, x, y, desired);
                 pTileRow[x] = desired;
             } // end loop over x
@@ -498,7 +507,10 @@ void StreamingResource::ProcessFeedback(UINT64 in_frameFenceCompletedValue)
 
     // update min mip map to adjust to new references
     // required so the eviction timeout is relative to the current expected mapping
-    if (changed) m_tileResidencyChanged = true;
+    if (changed)
+    {
+        SetResidencyChanged();
+    }
 
     // abandon pending loads that are no longer relevant
     AbandonPending();
@@ -572,7 +584,7 @@ void StreamingResource::QueueTiles()
 
             if (pUpdateList->m_coords.size() || pUpdateList->m_evictCoords.size())
             {
-                pUpdateList->Submit();
+                m_pTileUpdateManager->SubmitUpdateList(*pUpdateList);
             }
             // rarely will have an empty updatelist, due to pending evictions or loads. let a different resource update.
             else
@@ -974,7 +986,7 @@ void Streaming::StreamingResourceDU::NotifyCopyComplete(const std::vector<D3D12_
         m_tileMappingState.SetResident(t);
     }
 
-    m_tileResidencyChanged = true;
+    SetResidencyChanged();
 }
 
 //-----------------------------------------------------------------------------
@@ -989,7 +1001,7 @@ void Streaming::StreamingResourceDU::NotifyEvicted(const std::vector<D3D12_TILED
         m_tileMappingState.SetNotResident(t);
     }
 
-    m_tileResidencyChanged = true;
+    SetResidencyChanged();
 }
 
 //-----------------------------------------------------------------------------
@@ -1001,7 +1013,7 @@ void Streaming::StreamingResourceDU::NotifyPackedMips()
     m_pTileUpdateManager->NotifyNotifyPackedMips();
 
     // MinMipMap already set to packed mip values, don't need to go through UpdateMinMipMap
-    //m_tileResidencyChanged = true;
+    //SetResidencyChanged();
 
     // don't need to hold on to packed mips any longer.
     std::vector<BYTE> empty;

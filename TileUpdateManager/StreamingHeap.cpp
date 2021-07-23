@@ -59,7 +59,7 @@ Streaming::Atlas::Atlas(ID3D12Heap* in_pHeap, ID3D12CommandQueue* in_pQueue,
         ComPtr<ID3D12Device> device;
         in_pHeap->GetDevice(IID_PPV_ARGS(&device));
 
-        HANDLE fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+        HANDLE fenceEvent = ::CreateEvent(nullptr, FALSE, FALSE, nullptr);
         if (fenceEvent == nullptr)
         {
             ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
@@ -69,7 +69,7 @@ Streaming::Atlas::Atlas(ID3D12Heap* in_pHeap, ID3D12CommandQueue* in_pQueue,
         ThrowIfFailed(in_pQueue->Signal(tempFence.Get(), 1));
         ThrowIfFailed(tempFence->SetEventOnCompletion(1, fenceEvent));
         WaitForSingleObject(fenceEvent, INFINITE);
-        CloseHandle(fenceEvent);
+        ::CloseHandle(fenceEvent);
     }
 }
 

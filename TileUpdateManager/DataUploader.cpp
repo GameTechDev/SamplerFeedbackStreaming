@@ -69,6 +69,13 @@ Streaming::DataUploader::DataUploader(
         m_mappingFenceValue++;
     }
 
+    // mapping thread sleeps unless there is mapping work to be done
+    m_mapRequestedEvent = ::CreateEvent(nullptr, FALSE, FALSE, nullptr);
+    if (m_mapRequestedEvent == nullptr)
+    {
+        ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
+    }
+
     // launch mapping thread
     ASSERT(false == m_mappingThreadRunning);
     m_mappingThreadRunning = true;
@@ -77,6 +84,7 @@ Streaming::DataUploader::DataUploader(
             DebugPrint(L"Created Mapping Thread\n");
             while (m_mappingThreadRunning)
             {
+                WaitForSingleObject(m_mapRequestedEvent, INFINITE);
                 UpdateMapping();
             }
             DebugPrint(L"Destroyed Mapping Thread\n");
@@ -94,17 +102,21 @@ Streaming::DataUploader::~DataUploader()
 
     FlushCommands();
 
-    m_notifyThreadRunning = false;
-    if (m_notifyThread.joinable())
-    {
-        m_notifyThread.join();
-    }
+    ::SetEvent(m_mapRequestedEvent);
 
     m_mappingThreadRunning = false;
     if (m_mappingThread.joinable())
     {
         m_mappingThread.join();
     }
+
+    m_notifyThreadRunning = false;
+    if (m_notifyThread.joinable())
+    {
+        m_notifyThread.join();
+    }
+
+    ::CloseHandle(m_mapRequestedEvent);
 }
 
 //-----------------------------------------------------------------------------
@@ -202,11 +214,13 @@ Streaming::UpdateList* Streaming::DataUploader::AllocateUpdateList(StreamingReso
         {
             m_updateListAllocIndex = (m_updateListAllocIndex + 1) % numLists;
             auto& p = m_updateLists[m_updateListAllocIndex];
-            if (UpdateList::State::STATE_FREE == p.m_executionState)
+
+            UpdateList::State expected = UpdateList::State::STATE_FREE;
+            if (p.m_executionState.compare_exchange_weak(expected, UpdateList::State::STATE_ALLOCATED))
             {
                 pUpdateList = &p;
                 // it is only safe to clear the state within the allocating thread
-                p.Allocate((Streaming::StreamingResourceDU*)in_pStreamingResource);
+                p.Reset((Streaming::StreamingResourceDU*)in_pStreamingResource);
                 m_updateListFreeCount--;
                 break;
             }
@@ -228,6 +242,17 @@ void Streaming::DataUploader::FreeUpdateList(Streaming::UpdateList& in_updateLis
     // otherwise there can be a race with the mapping thread
     in_updateList.m_executionState = UpdateList::State::STATE_FREE;
     m_updateListFreeCount++;
+}
+
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+void Streaming::DataUploader::SubmitUpdateList(Streaming::UpdateList& in_updateList)
+{
+    ASSERT(State::STATE_ALLOCATED == in_updateList.m_executionState);
+
+    in_updateList.m_executionState = UpdateList::State::STATE_SUBMITTED;
+
+    ::SetEvent(m_mapRequestedEvent);
 }
 
 //-----------------------------------------------------------------------------

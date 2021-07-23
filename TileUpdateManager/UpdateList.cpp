@@ -41,9 +41,8 @@ void Streaming::UpdateList::Init(UINT in_maxNumUpdates)
 //-----------------------------------------------------------------------------
 // called when the state changes FREE->ALLOCATED
 //-----------------------------------------------------------------------------
-void Streaming::UpdateList::Allocate(Streaming::StreamingResourceDU* in_pStreamingResource)
+void Streaming::UpdateList::Reset(Streaming::StreamingResourceDU* in_pStreamingResource)
 {
-    m_executionState = UpdateList::State::STATE_ALLOCATED;
     m_pStreamingResource = in_pStreamingResource;
 
     m_mappingStarted = false; // indicates if virt->phys mapping has started
@@ -73,13 +72,4 @@ void Streaming::UpdateList::AddUpdate(
 
     m_coords.push_back(in_coord);
     m_heapIndices.push_back(in_heapIndex);
-}
-
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-void Streaming::UpdateList::Submit()
-{
-    ASSERT(State::STATE_ALLOCATED == m_executionState);
-
-    m_executionState = State::STATE_SUBMITTED;
 }

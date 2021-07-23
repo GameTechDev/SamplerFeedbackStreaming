@@ -92,7 +92,6 @@ namespace Streaming
         void AddPackedMipRequest(UINT in_numMips);
         void AddUpdate(const D3D12_TILED_RESOURCE_COORDINATE& in_coord, UINT in_heapIndex);
 
-        void Allocate(Streaming::StreamingResourceDU* in_pStreamingResource);
-        void Submit();
+        void Reset(Streaming::StreamingResourceDU* in_pStreamingResource);
     };
 }

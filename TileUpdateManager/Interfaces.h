@@ -52,6 +52,7 @@ namespace Streaming
         }
         UploadBuffer& GetResidencyMap() { return m_residencyMap; }
         Streaming::UpdateList* AllocateUpdateList(StreamingResource* in_pStreamingResource) { return m_pDataUploader->AllocateUpdateList(in_pStreamingResource); }
+        void SubmitUpdateList(Streaming::UpdateList& in_updateList) { m_pDataUploader->SubmitUpdateList(in_updateList); }
         void FreeEmptyUpdateList(Streaming::UpdateList& in_updateList) { m_pDataUploader->FreeEmptyUpdateList(in_updateList); }
 
         // a fence on the render (direct) queue used to determine when feedback has been written & resolved
@@ -64,6 +65,8 @@ namespace Streaming
         void NotifyNotifyPackedMips() { m_packedMipTransition = true; } // called when a StreamingResource has recieved its packed mips
 
         ID3D12CommandQueue* GetMappingQueue() const { return m_pDataUploader->GetMappingQueue(); }
+
+        void SetResidencyChanged() { SetEvent(m_residencyChangeEvent); }
     };
 
     //-----------------------------------------------------------------

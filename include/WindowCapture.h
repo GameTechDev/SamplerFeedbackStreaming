@@ -122,7 +122,7 @@ namespace WindowCapture
         ID3D12CommandList* ppCommandLists[] = { commandList.Get() };
         in_pQ->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
 
-        HANDLE renderFenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+        HANDLE renderFenceEvent = ::CreateEvent(nullptr, FALSE, FALSE, nullptr);
         if (renderFenceEvent == nullptr)
         {
             ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
@@ -131,7 +131,7 @@ namespace WindowCapture
         ThrowIfFailed(in_pQ->Signal(renderFence.Get(), 1));
         ThrowIfFailed(renderFence->SetEventOnCompletion(1, renderFenceEvent));
         WaitForSingleObject(renderFenceEvent, INFINITE);
-        CloseHandle(renderFenceEvent);
+        ::CloseHandle(renderFenceEvent);
 
         BYTE* pData = nullptr;
         stagingResource->Map(0, nullptr, (void**)&pData);
