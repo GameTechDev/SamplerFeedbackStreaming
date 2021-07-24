@@ -248,7 +248,7 @@ void Streaming::DataUploader::FreeUpdateList(Streaming::UpdateList& in_updateLis
 //-----------------------------------------------------------------------------
 void Streaming::DataUploader::SubmitUpdateList(Streaming::UpdateList& in_updateList)
 {
-    ASSERT(State::STATE_ALLOCATED == in_updateList.m_executionState);
+    ASSERT(UpdateList::State::STATE_ALLOCATED == in_updateList.m_executionState);
 
     in_updateList.m_executionState = UpdateList::State::STATE_SUBMITTED;
 

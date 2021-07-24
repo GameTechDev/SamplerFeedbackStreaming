@@ -488,7 +488,7 @@ void StreamingResource::ProcessFeedback(UINT64 in_frameFenceCompletedValue)
                 // clamp to the maximum we are tracking (not tracking packed mips)
                 UINT8 desired = std::min(pResolvedData[x], m_maxMip);
                 UINT8 initialValue = pTileRow[x];
-                changed = (desired != initialValue);
+                if (desired != initialValue) { changed = true; }
                 SetMinMip(initialValue, x, y, desired);
                 pTileRow[x] = desired;
             } // end loop over x

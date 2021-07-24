@@ -320,7 +320,8 @@ Streaming::Heap* TileUpdateManager::CreateStreamingHeap(UINT in_maxNumTilesHeap)
 //-----------------------------------------------------------------------------
 StreamingResource* TileUpdateManager::CreateStreamingResource(const std::wstring& in_filename, Streaming::Heap* in_pHeap)
 {
-    ASSERT(!m_processFeedbackThreadRunning);
+    ASSERT(!m_threadsRunning
+);
 
     Streaming::FileStreamer::FileHandle* pFileHandle = m_pDataUploader->OpenFile(in_filename);
     Streaming::StreamingResourceTUM* pRsrc = new Streaming::StreamingResourceTUM(in_filename, pFileHandle, (Streaming::TileUpdateManagerSR*)this, in_pHeap);
@@ -411,7 +412,7 @@ void TileUpdateManager::BeginFrame(ID3D12DescriptorHeap* in_pDescriptorHeap,
     D3D12_CPU_DESCRIPTOR_HANDLE in_minmipmapDescriptorHandle)
 {
     ASSERT(!GetWithinFrame());
-    m_withinFrame = true;
+    m_withinFrame = true; 
 
     StartThreads();
 
