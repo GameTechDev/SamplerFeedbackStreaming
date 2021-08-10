@@ -69,27 +69,6 @@ Streaming::DataUploader::DataUploader(
         m_mappingFenceValue++;
     }
 
-    // mapping thread sleeps unless there is mapping work to be done
-    m_mapRequestedEvent = ::CreateEvent(nullptr, FALSE, FALSE, nullptr);
-    if (m_mapRequestedEvent == nullptr)
-    {
-        ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
-    }
-
-    // launch mapping thread
-    ASSERT(false == m_mappingThreadRunning);
-    m_mappingThreadRunning = true;
-    m_mappingThread = std::thread([&]
-        {
-            DebugPrint(L"Created Mapping Thread\n");
-            while (m_mappingThreadRunning)
-            {
-                WaitForSingleObject(m_mapRequestedEvent, INFINITE);
-                UpdateMapping();
-            }
-            DebugPrint(L"Destroyed Mapping Thread\n");
-        });
-
     //NOTE: TileUpdateManager must call SetStreamer() to start streaming
     //SetStreamer(StreamerType::Reference);
 }
@@ -98,25 +77,9 @@ Streaming::DataUploader::~DataUploader()
 {
     // stop updating. all StreamingResources must have been destroyed already, presumably.
     // don't risk trying to notify anyone.
-    ASSERT(m_updateLists.size() == m_updateListFreeCount);
 
     FlushCommands();
-
-    ::SetEvent(m_mapRequestedEvent);
-
-    m_mappingThreadRunning = false;
-    if (m_mappingThread.joinable())
-    {
-        m_mappingThread.join();
-    }
-
-    m_notifyThreadRunning = false;
-    if (m_notifyThread.joinable())
-    {
-        m_notifyThread.join();
-    }
-
-    ::CloseHandle(m_mapRequestedEvent);
+    StopThreads();
 }
 
 //-----------------------------------------------------------------------------
@@ -126,12 +89,7 @@ Streaming::DataUploader::~DataUploader()
 Streaming::FileStreamer* Streaming::DataUploader::SetStreamer(StreamerType in_streamerType)
 {
     FlushCommands();
-
-    m_notifyThreadRunning = false;
-    if (m_notifyThread.joinable())
-    {
-        m_notifyThread.join();
-    }
+    StopThreads();
 
     ComPtr<ID3D12Device> device;
     m_mappingCommandQueue->GetDevice(IID_PPV_ARGS(&device));
@@ -152,27 +110,70 @@ Streaming::FileStreamer* Streaming::DataUploader::SetStreamer(StreamerType in_st
         //m_pFileStreamer = std::make_unique<Streaming::FileStreamerDS>(device.Get());
     }
 
-    CreateNotifyThread();
+    StartThreads();
 
     return pOldStreamer;
 }
 
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
-void Streaming::DataUploader::CreateNotifyThread()
+void Streaming::DataUploader::StartThreads()
 {
     // launch notify thread
-    ASSERT(false == m_notifyThreadRunning);
-    m_notifyThreadRunning = true;
-    m_notifyThread = std::thread([&]
+    ASSERT(false == m_threadsRunning);
+    m_threadsRunning = true;
+
+    m_submitThread = std::thread([&]
         {
-            DebugPrint(L"Created Notify Thread\n");
-            while (m_notifyThreadRunning)
+            DebugPrint(L"Created Submit Thread\n");
+            while (m_threadsRunning)
             {
-                Notify();
+                m_submitFlag.Wait();
+                SubmitThread();
             }
-            DebugPrint(L"Destroyed Notify Thread\n");
+            DebugPrint(L"Destroyed Submit Thread\n");
         });
+
+    // launch thread to monitor fences
+    m_fenceMonitorThread = std::thread([&]
+        {
+            DebugPrint(L"Created Fence Monitor Thread\n");
+            while (m_threadsRunning)
+            {
+                FenceMonitorThread();
+
+                // check constructed this way so we can wake the thread to allow for exit
+                if (m_updateLists.size() == m_updateListFreeCount)
+                {
+                    m_monitorFenceFlag.Wait();
+                }
+            }
+            DebugPrint(L"Destroyed Fence Monitor Thread\n");
+        });
+}
+
+void Streaming::DataUploader::StopThreads()
+{
+    if (m_threadsRunning)
+    {
+        m_threadsRunning = false;
+
+        // wake up threads so they can exit
+        m_submitFlag.Set();
+        m_monitorFenceFlag.Set();
+
+        if (m_fenceMonitorThread.joinable())
+        {
+            m_fenceMonitorThread.join();
+            DebugPrint(L"JOINED Fence Monitor Thread\n");
+        }
+
+        if (m_submitThread.joinable())
+        {
+            m_submitThread.join();
+            DebugPrint(L"JOINED Submit Thread\n");
+        }
+    }
 }
 
 //-----------------------------------------------------------------------------
@@ -180,6 +181,7 @@ void Streaming::DataUploader::CreateNotifyThread()
 //-----------------------------------------------------------------------------
 void Streaming::DataUploader::FlushCommands()
 {
+    DebugPrint(m_updateListFreeCount.load(), " DU flush\n");
     while (m_updateListFreeCount < m_updateLists.size())
     {
         _mm_pause();
@@ -221,7 +223,11 @@ Streaming::UpdateList* Streaming::DataUploader::AllocateUpdateList(StreamingReso
                 pUpdateList = &p;
                 // it is only safe to clear the state within the allocating thread
                 p.Reset((Streaming::StreamingResourceDU*)in_pStreamingResource);
+                ASSERT(m_updateListFreeCount);
                 m_updateListFreeCount--;
+
+                // start fence polling thread now
+                m_monitorFenceFlag.Set();
                 break;
             }
         }
@@ -235,9 +241,6 @@ Streaming::UpdateList* Streaming::DataUploader::AllocateUpdateList(StreamingReso
 //-----------------------------------------------------------------------------
 void Streaming::DataUploader::FreeUpdateList(Streaming::UpdateList& in_updateList)
 {
-    m_numTotalUploads += (UINT)in_updateList.GetNumStandardUpdates();
-    m_numTotalEvictions += (UINT)in_updateList.GetNumEvictions();
-
     // NOTE: updatelist is deliberately not cleared until after allocation
     // otherwise there can be a race with the mapping thread
     in_updateList.m_executionState = UpdateList::State::STATE_FREE;
@@ -250,9 +253,14 @@ void Streaming::DataUploader::SubmitUpdateList(Streaming::UpdateList& in_updateL
 {
     ASSERT(UpdateList::State::STATE_ALLOCATED == in_updateList.m_executionState);
 
+    if (in_updateList.GetNumStandardUpdates())
+    {
+        m_pFileStreamer->StreamTexture(in_updateList);
+    }
+
     in_updateList.m_executionState = UpdateList::State::STATE_SUBMITTED;
 
-    ::SetEvent(m_mapRequestedEvent);
+    m_submitFlag.Set();
 }
 
 //-----------------------------------------------------------------------------
@@ -266,116 +274,121 @@ void Streaming::DataUploader::FreeEmptyUpdateList(Streaming::UpdateList& in_upda
 
     in_updateList.m_executionState = UpdateList::State::STATE_FREE;
     m_updateListFreeCount++;
+    ASSERT(m_updateListFreeCount.load() <= m_updateLists.size());
 }
 
 //-----------------------------------------------------------------------------
-// NotifyThread also serves as a statistics thread
-// QueryPerformanceCounter() needs to be called from the same CPU for values to be compared (deltas)
-// overall start time, copy completion time, 
+// check necessary fences to determine completion status
+// possibilities:
+// 1. packed tiles, submitted state, mapping done, move to uploading state
+// 2. packed tiles, copy pending state, copy complete
+// 3. standard tiles, copy pending state, mapping started and complete, copy complete
+// 4. no tiles, mapping started and complete
+// all cases: state > allocated
 //-----------------------------------------------------------------------------
-void Streaming::DataUploader::Notify()
+void Streaming::DataUploader::FenceMonitorThread()
 {
     bool signalUpload = false;
     for (auto& updateList : m_updateLists)
     {
         switch (updateList.m_executionState)
         {
-        default:
-            break;
 
-        //----------------------------------------
-        // STATE_SUBMITTED
-        // statistics: get start time
-        //----------------------------------------
-        case UpdateList::State::STATE_SUBMITTED:
-        {
-            // record initial discovery time
-            updateList.m_totalTime = m_cpuTimer.GetTime();
-
-            if (updateList.GetNumStandardUpdates())
-            {
-                updateList.m_executionState = UpdateList::State::STATE_UPLOADING;
-                m_pFileStreamer->StreamTexture(updateList);
-                signalUpload = true;
-            }
-            // UpdateList contains only evictions
-            else if (0 == updateList.GetNumPackedUpdates())
-            {
-                updateList.m_executionState = UpdateList::State::STATE_NOTIFY_MAP;
-            }
-            // UpdateList contains only packed mips
-            // Unlike other uploads, the copies cannot start until after synchronizing around a mapping fence
-            else if (updateList.m_mappingStarted && (updateList.m_mappingFenceValue <= m_mappingFence->GetCompletedValue()))
+        case UpdateList::State::STATE_PACKED_MAPPING:
+            ASSERT(updateList.GetNumPackedUpdates());
+            // wait for mapping complete before streaming packed tiles
+            if (updateList.m_mappingFenceValue <= m_mappingFence->GetCompletedValue())
             {
                 updateList.m_executionState = UpdateList::State::STATE_UPLOADING;
                 m_pFileStreamer->StreamPackedMips(updateList);
+            }
+            break;
+
+        case UpdateList::State::STATE_UPLOADING:
+            if (updateList.m_copyFenceValid)
+            {
                 signalUpload = true;
+                updateList.m_executionState = UpdateList::State::STATE_COPY_PENDING;
             }
-        }
-        break; // end STATE_SUBMITTED
+            break;
 
-        //----------------------------------------
-        // poll transfer completion fence
-        //----------------------------------------
-        case UpdateList::State::STATE_NOTIFY:
-            if (!m_pFileStreamer->GetCompleted(updateList))
-            {
-                break;
-            }
-            // else
-            updateList.m_executionState = UpdateList::State::STATE_NOTIFY_MAP;
-            [[fallthrough]]; // fallthrough is explicit
-
-        //----------------------------------------
-        // STATE_NOTIFY_MAP
-        //
-        // gather statistics for this UpdateList, including total time and mapping time
-        //----------------------------------------
-        case UpdateList::State::STATE_NOTIFY_MAP:
+        case UpdateList::State::STATE_COPY_PENDING:
         {
-            if (updateList.m_mappingStarted && (updateList.m_mappingFenceValue <= m_mappingFence->GetCompletedValue()))
+            // standard updates? check if copy complete
+            if (updateList.GetNumStandardUpdates())
             {
-                auto& timings = m_streamingTimes[m_streamingTimeIndex];
-                m_streamingTimeIndex = (m_streamingTimeIndex + 1) % m_streamingTimes.size();
-
-                // record total time time since sumbission
-                timings.m_totalTime = m_cpuTimer.GetSecondsSince(updateList.m_totalTime);
-                timings.m_mappingTime = updateList.m_mappingTime;
-                timings.m_numTilesUnMapped = updateList.GetNumEvictions();
-                timings.m_copyTime = 0;
-                timings.m_numTilesCopied = (UINT)updateList.GetNumStandardUpdates();
-
-                // notify evictions
-                if (updateList.GetNumEvictions())
+                if (!m_pFileStreamer->GetCompleted(updateList))
                 {
-                    updateList.m_pStreamingResource->NotifyEvicted(updateList.m_evictCoords);
+                    // copy hasn't completed
+                    break;
                 }
+            }
 
-                // notify regular tiles
-                if (updateList.GetNumStandardUpdates())
+            // standard updates or mapping only? check if mapping complete
+            if (0 == updateList.GetNumPackedUpdates())
+            {
+                // when there are copies, if copies are complete mapping is almost certainly complete
+                if (updateList.m_mappingFenceValue > m_mappingFence->GetCompletedValue())
                 {
-                    timings.m_copyTime = updateList.m_copyTime;
-                    // a gpu copy has completed, so we can update the corresponding timer
-                    //timings.m_gpuTime = m_gpuTimer.MapReadBack(in_updateList.m_streamingTimeIndex);
-
-                    updateList.m_pStreamingResource->NotifyCopyComplete(updateList.m_coords);
+                    break;
                 }
-
-                // notify packed mips
-                if (updateList.GetNumPackedUpdates())
+            }
+            else // packed updates? check if copy complete
+            {
+                if (!m_pFileStreamer->GetCompleted(updateList))
                 {
-                    ASSERT(0 == updateList.GetNumStandardUpdates());
-                    ASSERT(0 == updateList.GetNumEvictions());
-
-                    updateList.m_pStreamingResource->NotifyPackedMips();
+                    break;
                 }
+            }
 
-                FreeUpdateList(updateList);
-            } // end if mapping complete
+            // The UpdateList is complete
+            // notify all tiles, evictions, and packed mips
+
+            auto& timings = m_streamingTimes[m_streamingTimeIndex];
+            m_streamingTimeIndex = (m_streamingTimeIndex + 1) % m_streamingTimes.size();
+
+            // record total time time since sumbission
+            timings.m_totalTime = m_cpuTimer.GetSecondsSince(updateList.m_startTime);
+            timings.m_mappingTime = updateList.m_mappingTime;
+            timings.m_numTilesUnMapped = updateList.GetNumEvictions();
+            timings.m_copyTime = 0;
+            timings.m_numTilesCopied = (UINT)updateList.GetNumStandardUpdates();
+
+            // notify evictions
+            if (updateList.GetNumEvictions())
+            {
+                m_numTotalEvictions += updateList.GetNumEvictions();
+
+                updateList.m_pStreamingResource->NotifyEvicted(updateList.m_evictCoords);
+            }
+
+            // notify regular tiles
+            if (updateList.GetNumStandardUpdates())
+            {
+                timings.m_copyTime = updateList.m_copyTime;
+                // a gpu copy has completed, so we can update the corresponding timer
+                //timings.m_gpuTime = m_gpuTimer.MapReadBack(in_updateList.m_streamingTimeIndex);
+                m_numTotalUploads += updateList.GetNumStandardUpdates();
+
+                updateList.m_pStreamingResource->NotifyCopyComplete(updateList.m_coords);
+            }
+
+            // notify packed mips
+            if (updateList.GetNumPackedUpdates())
+            {
+                ASSERT(0 == updateList.GetNumStandardUpdates());
+                ASSERT(0 == updateList.GetNumEvictions());
+
+                updateList.m_pStreamingResource->NotifyPackedMips();
+            }
+            FreeUpdateList(updateList);
         }
-        break; // end STATE_NOTIFY
+        break;
+
+        default:
+            break;
         }
-    }
+    } // end loop over updatelists
 
     // signal filestreamer that it should submit work (if it hasn't already)
     if (signalUpload)
@@ -385,18 +398,35 @@ void Streaming::DataUploader::Notify()
 }
 
 //-----------------------------------------------------------------------------
-// STATE_MAP_TILES
-//
-// Just maps tiles. Runs concurrently with other states except {FREE, ALLOCATED, NOTIFY}
+// Submit Thread
+// On submission, all updatelists need mapping
+// then set state as appropriate depending on the task
+// FIXME: QueryPerformanceCounter() needs to be called from the same CPU for values to be compared (deltas)
+// capture start time here
 //-----------------------------------------------------------------------------
-void Streaming::DataUploader::UpdateMapping()
+void Streaming::DataUploader::SubmitThread()
 {
+    bool signalMap = false;
+
     for (auto& updateList : m_updateLists)
     {
-        // concurrent with all states except free and allocated
-        if ((updateList.m_executionState > UpdateList::State::STATE_ALLOCATED) && (!updateList.m_mappingStarted))
+        switch (updateList.m_executionState)
         {
-            auto mappingStartTime = m_cpuTimer.GetTime();
+            //----------------------------------------
+            // STATE_SUBMITTED
+            // statistics: get start time
+            //----------------------------------------
+        case UpdateList::State::STATE_SUBMITTED:
+        {
+            // all UpdateLists require mapping
+            signalMap = true;
+            updateList.m_mappingFenceValue = m_mappingFenceValue;
+
+            // WARNING: UpdateTileMappings performance is an issue on some hardware
+            // throughput will degrade if UpdateTileMappings isn't ~free
+
+            // record initial discovery time
+            updateList.m_startTime = m_cpuTimer.GetTime();
 
             // unmap tiles that are being evicted
             if (updateList.GetNumEvictions())
@@ -407,21 +437,40 @@ void Streaming::DataUploader::UpdateMapping()
             // map standard tiles
             if (updateList.GetNumStandardUpdates())
             {
+                updateList.m_executionState = UpdateList::State::STATE_UPLOADING;
+
                 m_mappingUpdater.Map(GetMappingQueue(),
                     updateList.m_pStreamingResource->GetTiledResource(),
                     updateList.m_pStreamingResource->GetHeap()->GetHeap(),
                     updateList.m_coords, updateList.m_heapIndices);
             }
+            else if (0 == updateList.GetNumPackedUpdates())
+            {
+                // if no uploads, skip the uploading state
+                updateList.m_executionState = UpdateList::State::STATE_COPY_PENDING;
+            }
+            else
+            {
+                updateList.m_pStreamingResource->MapPackedMips(GetMappingQueue());
+                // special state for packed mips: mapping must happen before copying
+                updateList.m_executionState = UpdateList::State::STATE_PACKED_MAPPING;
+            }
 
-            updateList.m_mappingTime = m_cpuTimer.GetSecondsSince(mappingStartTime);
+            // note: packed tile mapping has previously been submitted, but mapping may not be complete
 
-            updateList.m_mappingFenceValue = m_mappingFenceValue;
-            updateList.m_mappingStarted = true;
+            updateList.m_mappingTime = m_cpuTimer.GetSecondsSince(updateList.m_startTime);
+        }
+        break; // end STATE_SUBMITTED
 
-            m_mappingCommandQueue->Signal(m_mappingFence.Get(), m_mappingFenceValue);
-            m_mappingFenceValue++;
+        default:
+            break;
+
         }
     }
-    // note: coalescing fences was very bad on some vendor's hardware
-    // likely because mapping is so slow
+
+    if (signalMap)
+    {
+        m_mappingCommandQueue->Signal(m_mappingFence.Get(), m_mappingFenceValue);
+        m_mappingFenceValue++;
+    }
 }

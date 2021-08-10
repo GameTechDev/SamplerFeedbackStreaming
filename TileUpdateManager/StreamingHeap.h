@@ -50,7 +50,7 @@ namespace Streaming
     private:
         const DXGI_FORMAT m_format;
 
-        std::vector<D3D12_SUBRESOURCE_TILING> m_atlasTiling;
+        D3D12_SUBRESOURCE_TILING m_atlasTiling;
         std::vector<Streaming::ComPtr<ID3D12Resource>> m_atlases;
         UINT m_numTilesPerAtlas{ 0 };
         const UINT m_atlasNumTiles;
@@ -70,7 +70,7 @@ namespace Streaming
         ~Heap();
 
         // allocate atlases for a format. does nothing if format already has an atlas
-        void AllocateAtlas(const DXGI_FORMAT in_format);
+        void AllocateAtlas(ID3D12CommandQueue* in_pQueue, const DXGI_FORMAT in_format);
 
         ID3D12Resource* ComputeCoordFromTileIndex(D3D12_TILED_RESOURCE_COORDINATE& out_coord, UINT in_index, const DXGI_FORMAT in_format);
         ID3D12Heap* GetHeap() const { return m_tileHeap.Get(); }
@@ -79,6 +79,5 @@ namespace Streaming
         HeapAllocator m_heapAllocator;
         std::vector<Streaming::Atlas*> m_atlases;
         ComPtr<ID3D12Heap> m_tileHeap; // heap to hold tiles resident in GPU memory
-        ComPtr<ID3D12CommandQueue> m_queue; // queue for atlases to use to initialize mappings
     };
 }

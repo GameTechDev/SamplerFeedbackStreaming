@@ -88,6 +88,7 @@ Streaming::FileStreamerReference::~FileStreamerReference()
     if (m_copyThread.joinable())
     {
         m_copyThread.join();
+        DebugPrint(L"JOINED reference file streamer Thread\n");
     }
 }
 
@@ -368,7 +369,7 @@ void Streaming::FileStreamerReference::CopyThread()
                 InitPackedMips(m_copyCommandList.Get(), c);
 
                 c.m_pUpdateList->m_copyFenceValue = c.m_copyFenceValue;
-                c.m_pUpdateList->m_executionState = UpdateList::State::STATE_NOTIFY;
+                c.m_pUpdateList->m_copyFenceValid = true;
                 c.m_state = CopyBatch::State::WAIT_COMPLETE;
             }
             break;
@@ -397,7 +398,7 @@ void Streaming::FileStreamerReference::CopyThread()
                 CopyTiles(m_copyCommandList.Get(), m_uploadAllocator.GetBuffer().m_resource.Get(), c.m_pUpdateList, c.m_uploadIndices);
 
                 c.m_pUpdateList->m_copyFenceValue = c.m_copyFenceValue;
-                c.m_pUpdateList->m_executionState = UpdateList::State::STATE_NOTIFY;
+                c.m_pUpdateList->m_copyFenceValid = true;
                 c.m_state = CopyBatch::State::WAIT_COMPLETE;
             }
             break;

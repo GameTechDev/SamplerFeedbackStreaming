@@ -133,9 +133,6 @@
     <CopyFileToFolders Include="..\scripts\demo.bat">
       <Filter>Scripts</Filter>
     </CopyFileToFolders>
-    <CopyFileToFolders Include="..\scripts\nvidia.bat">
-      <Filter>Scripts</Filter>
-    </CopyFileToFolders>
     <CopyFileToFolders Include="..\scripts\profile.bat">
       <Filter>Scripts</Filter>
     </CopyFileToFolders>
@@ -162,6 +159,9 @@
     </CopyFileToFolders>
     <CopyFileToFolders Include="BufferViewer.hlsl">
       <Filter>Shaders</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="..\config\nvidia.json">
+      <Filter>config</Filter>
     </CopyFileToFolders>
   </ItemGroup>
   <ItemGroup>

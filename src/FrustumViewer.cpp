@@ -125,13 +125,9 @@ FrustumViewer::FrustumViewer(ID3D12Device* in_pDevice,
         // This is the highest version the sample supports. If CheckFeatureSupport succeeds, the HighestVersion returned will not be greater than this.
         featureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_1;
 
-        CD3DX12_DESCRIPTOR_RANGE1 ranges[1] = {};
-        ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE, 0);
-
         CD3DX12_ROOT_PARAMETER1 rootParameters[1] = {};
         UINT num32BitValues = sizeof(m_frustumConstants) / 4;
-        rootParameters[0].InitAsConstants(num32BitValues, 0,
-            D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_VERTEX);
+        rootParameters[0].InitAsConstants(num32BitValues, 0, 0, D3D12_SHADER_VISIBILITY_VERTEX);
 
         CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
         rootSignatureDesc.Init_1_1(_countof(rootParameters), rootParameters, 0, nullptr,

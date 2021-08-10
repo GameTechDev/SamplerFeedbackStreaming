@@ -29,6 +29,8 @@
 #include <d3d12.h>
 #include <wrl.h>
 #include <vector>
+#include <synchapi.h>
+#pragma comment(lib, "Synchronization.lib")
 
 namespace Streaming
 {
@@ -95,6 +97,29 @@ namespace Streaming
             in_w << t;
             Expander(in_w, ts...);
         }
+    };
+
+    //==================================================
+    // a single thread may wait on this flag, which may be set by any number of threads
+    //==================================================
+    class SynchronizationFlag
+    {
+    public:
+        void Set()
+        { 
+            m_flag = true;
+            WakeByAddressSingle(&m_flag);
+        }
+
+        void Wait()
+        {
+            // note: msdn recommends verifying that the value really changed, but we're not.
+            bool undesiredValue = false;
+            WaitOnAddress(&m_flag, &undesiredValue, sizeof(bool), INFINITE);
+            m_flag = false;
+        };
+    private:
+        bool m_flag{ false };
     };
 
     //==================================================

@@ -2,6 +2,8 @@
 
 This repository contains a demo of `DirectX12 Sampler Feedback Streaming`, a technique using [DirectX12 Sampler Feedback](https://microsoft.github.io/DirectX-Specs/d3d/SamplerFeedback.html) to guide continuous loading and eviction of reserved resource tiles. Sampler Feedback Streaming allows scenes containing 100s of gigabytes of resources to be drawn on GPUs containing much less physical memory. The scene below uses just ~200MB of a 1GB heap, despite over 350GB of total texture resources.
 
+The demo requires **`Windows 10 20H1 (aka May 2020 Update, build 19041)`** or later and a GPU with Sampler Feedback Support.
+
 See also:
 
 * [GDC 2021 video](https://software.intel.com/content/www/us/en/develop/events/gdc.html?videoid=6264595860001) [(alternate link)](https://www.youtube.com/watch?v=VDDbrfZucpQ) which provides an overview of Sampler Feedback and discusses this sample starting at about 15:30.
@@ -37,7 +39,7 @@ SOFTWARE.
 
 ## Requirements
 
-The demo requires at least Windows 10 version 19041 and a GPU with Sampler Feedback Support.
+The demo requires **`Windows 10 20H1 (aka May 2020 Update, build 19041)`** or later and a GPU with Sampler Feedback Support.
 
 Intel Iris Xe Graphics, as can be found in 11th Generation Intel&reg; Core&trade; processors and future discrete GPUs, requires BETA driver [30.0.100.9667](https://downloadcenter.intel.com/product/80939/Graphics) or later.
 
@@ -73,7 +75,16 @@ The textures in the first "release" package, hubble-16k.zip, work with "demo-hub
 
     c:\SamplerFeedbackStreaming\x64\Release> demo-hubble.bat -mediadir c:\hubble-16k
 
-There is also a batch file "nvidia.bat". For some hardware, it was observed that the performance of [UpdateTileMappings](https://docs.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-id3d12commandqueue-updatetilemappings) impacted overall throughput *unless* the heap size was 32MB. One workaround is to create many 32MB heaps and distribute the resources across them.
+## Configurations
+
+By default, the application loads `config.json`.
+
+However, it has been observed that performance decays over time on earlier nvidia devices/drivers (as the tiles in the heap become fragmented relative to resources). Specifically, the CPU time for [UpdateTileMappings](https://docs.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-id3d12commandqueue-updatetilemappings) limits the system throughput.
+
+If you observe this issue (most obvious with stress.bat using large textures), run the included batch files with the addition of `-config nvidia.json`, which distributes resources across many small heaps. E.g.:
+
+    c:\SamplerFeedbackStreaming\x64\Release> demo.bat -config nvidia.json
+    c:\SamplerFeedbackStreaming\x64\Release> stress.bat -mediadir c:\hubble-16k -config nvidia.json
 
 ## Keyboard controls
 

@@ -229,9 +229,6 @@
     <CopyFileToFolders Include="..\scripts\demo.bat">
       <FileType>Document</FileType>
     </CopyFileToFolders>
-    <CopyFileToFolders Include="..\scripts\nvidia.bat">
-      <FileType>Document</FileType>
-    </CopyFileToFolders>
     <CopyFileToFolders Include="..\scripts\profile.bat">
       <FileType>Document</FileType>
     </CopyFileToFolders>
@@ -256,7 +253,9 @@
     <CopyFileToFolders Include="..\scripts\demo-hubble.bat">
       <FileType>Document</FileType>
     </CopyFileToFolders>
-    <None Include="packages.config" />
+    <CopyFileToFolders Include="..\config\nvidia.json">
+      <FileType>Document</FileType>
+    </CopyFileToFolders>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

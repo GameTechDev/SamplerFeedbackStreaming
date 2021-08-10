@@ -122,25 +122,27 @@ namespace Streaming
         UINT m_streamingTimeIndex{ 0 }; // index into cpu or gpu streaming history arrays
         TileUpdateManager::BatchTimes m_streamingTimes;
 
-        // put notifications on their own thread
-        // observation: UpdateTileMappings() can take a long time to process on some hardware
-        // if on the copy thread, this can slow the rate of file I/O requests,
-        // adversely affecting bandwidth
-        void Notify();
-        std::thread m_notifyThread;
-        std::atomic<bool> m_notifyThreadRunning{ false };
-        void CreateNotifyThread();
-
-        void UpdateMapping();
-        std::thread m_mappingThread;
-        std::atomic<bool> m_mappingThreadRunning{ false };
-
-        // shared with the associated StreamingResources
+        // object that performs UpdateTileMappings() requests
         Streaming::MappingUpdater m_mappingUpdater;
 
+        // object that knows how to take data from disk and upload to gpu
         std::unique_ptr<Streaming::FileStreamer> m_pFileStreamer;
 
-        HANDLE m_mapRequestedEvent{ nullptr };
+        // thread to handle UpdateList submissions
+        void SubmitThread();
+        std::thread m_submitThread;
+        Streaming::SynchronizationFlag m_submitFlag;
+
+        // thread to poll copy and mapping fences
+        // this thread could have been designed using WaitForMultipleObjects, but it was found that SetEventOnCompletion() was expensive in a tight thread loop
+        // compromise solution is to keep this thread awake so long as there are live UpdateLists.
+        void FenceMonitorThread();
+        std::thread m_fenceMonitorThread;
+        Streaming::SynchronizationFlag m_monitorFenceFlag;
+
+        void StartThreads();
+        void StopThreads();
+        std::atomic<bool> m_threadsRunning{ false };
 
         //-------------------------------------------
         // statistics

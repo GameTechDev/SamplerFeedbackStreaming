@@ -228,8 +228,8 @@ protected:
 
     std::atomic<bool> m_packedMipTransition{ false }; // flag that we need to transition a resource due to packed mips
 
-    HANDLE m_residencyChangeEvent{ nullptr };
-    HANDLE m_processFeedbackEvent{ nullptr };
+    Streaming::SynchronizationFlag m_residencyChangedFlag;
+    Streaming::SynchronizationFlag m_processFeedbackFlag;
 private:
     TileUpdateManager(const TileUpdateManager&) = delete;
     TileUpdateManager(TileUpdateManager&&) = delete;
@@ -282,6 +282,8 @@ private:
 
     // UpdateResidency thread's lifetime is bound to m_processFeedbackThread
     std::thread m_updateResidencyThread;
+
+    std::atomic<bool> m_havePackedMipsToLoad{ false };
 };
 
 /*

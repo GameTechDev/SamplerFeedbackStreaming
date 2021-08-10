@@ -54,7 +54,7 @@ public:
     static const UINT SPHERE_SCALE = 100;
     static const UINT UNIVERSE_SIZE = 35 * SPHERE_SCALE;
     static const UINT CAMERA_ANIMATION_RADIUS = UNIVERSE_SIZE / 4;
-    static const UINT SPHERE_SPACING = 10; // percent, min gap size between planets
+    static const UINT SPHERE_SPACING = 1; // percent, min gap size between planets
     static const UINT MAX_SPHERE_SCALE = 10; // spheres can be up to this * sphere_scale in size
 
     static const UINT NUM_SPHERE_LEVELS_OF_DETAIL = 5;

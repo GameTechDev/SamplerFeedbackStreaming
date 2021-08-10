@@ -106,7 +106,7 @@ protected:
     enum class PackedMipStatus : UINT32
     {
         UNINITIALIZED = 0, // have we requested packed mips yet?
-        MAPPED,            // map before uploading
+        HEAP_RESERVED,     // heap spaced reserved
         REQUESTED,         // copy requested
         NEEDS_TRANSITION,  // copy complete, transition to readable
         RESIDENT           // mapped, loaded, and transitioned to pixel shader resource
@@ -260,6 +260,7 @@ protected:
         bool m_feedbackQueued{ false };
     };
     std::vector<QueuedFeedback> m_queuedFeedback;
+
     //------------------------------------------------------
 
     std::vector<BYTE> m_paddedPackedMips;
@@ -280,10 +281,6 @@ private:
 
     UINT8 m_maxMip;
     std::vector<BYTE, Streaming::AlignedAllocator<BYTE>> m_minMipMap; // local version of min mip map, rectified in UpdateMinMipMap()
-
-    // packed mips are treated differently from regular tiles: they aren't tracked by the data structure, and share heap indices
-    bool InitPackedMips();
-    void MapPackedMips();
 
     // update internal mapping and refcounts for each tile
     void SetMinMip(UINT8 in_current, UINT in_x, UINT in_y, UINT in_s);

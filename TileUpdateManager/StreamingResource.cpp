@@ -87,7 +87,7 @@ StreamingResource::StreamingResource(
     m_minMipMap.resize(m_tileReferences.size(), m_maxMip);
 
     // make sure my heap has an atlas corresponding to my format
-    m_pHeap->AllocateAtlas(m_pTextureStreamer->GetFormat());
+    m_pHeap->AllocateAtlas(in_pTileUpdateManager->GetMappingQueue(), m_pTextureStreamer->GetFormat());
 
     // For easy upload, pad the packed mips
     PadPackedMips(in_pTileUpdateManager->GetDevice());
@@ -137,7 +137,7 @@ void StreamingResource::SetResidencyMapOffsetBase(UINT in_residencyMapOffsetBase
 //-----------------------------------------------------------------------------
 // can map the packed mips as soon as we have heap indices
 //-----------------------------------------------------------------------------
-void StreamingResource::MapPackedMips()
+void Streaming::StreamingResourceDU::MapPackedMips(ID3D12CommandQueue* in_pCommandQueue)
 {
     UINT firstSubresource = GetPackedMipInfo().NumStandardMips;
 
@@ -151,8 +151,7 @@ void StreamingResource::MapPackedMips()
     D3D12_TILE_REGION_SIZE resourceRegionSizes{ numTiles, FALSE, 0, 0, 0 };
 
     // perform packed mip tile mapping on the copy queue
-    auto mappingQueue = m_pTileUpdateManager->GetMappingQueue();
-    mappingQueue->UpdateTileMappings(
+    in_pCommandQueue->UpdateTileMappings(
         GetTiledResource(),
         1, // numRegions
         &resourceRegionStartCoordinates,
@@ -171,21 +170,17 @@ void StreamingResource::MapPackedMips()
 //-----------------------------------------------------------------------------
 // set mapping and initialize bits for the packed tile(s)
 //-----------------------------------------------------------------------------
-bool StreamingResource::InitPackedMips()
+bool Streaming::StreamingResourceTUM::InitPackedMips()
 {
     // nothing to do if the copy has been requested
     // return true if ready to sample
     if ((UINT)m_packedMipStatus >= (UINT)PackedMipStatus::REQUESTED)
     {
-        ASSERT(m_packedMipHeapIndices.size() == m_resources->GetPackedMipInfo().NumTilesForPackedMips);
-
-        // requested but waiting returns false
-        // otherwise, return true (they will be transitioned in time)
-        return (PackedMipStatus::REQUESTED != m_packedMipStatus);
+        return true;
     }
 
     // allocate heap space
-    if (PackedMipStatus::MAPPED != m_packedMipStatus)
+    if (PackedMipStatus::HEAP_RESERVED > m_packedMipStatus)
     {
         UINT numTiles = m_resources->GetPackedMipInfo().NumTilesForPackedMips;
 
@@ -203,20 +198,13 @@ bool StreamingResource::InitPackedMips()
             }
         }
 
-        MapPackedMips();
-        m_packedMipStatus = PackedMipStatus::MAPPED;
+        m_packedMipStatus = PackedMipStatus::HEAP_RESERVED;
     }
+
+    ASSERT(m_packedMipHeapIndices.size() == m_resources->GetPackedMipInfo().NumTilesForPackedMips);
 
     // attempt to upload by acquiring an update list. may take many tries.
-    Streaming::UpdateList* pUpdateList = nullptr;
-    UINT numTries = 50;
-
-    while ((!pUpdateList) && (numTries))
-    {
-        numTries--;
-        pUpdateList = m_pTileUpdateManager->AllocateUpdateList(this);
-        _mm_pause();
-    }
+    Streaming::UpdateList* pUpdateList = m_pTileUpdateManager->AllocateUpdateList(this);
 
     if (pUpdateList)
     {
@@ -225,6 +213,7 @@ bool StreamingResource::InitPackedMips()
         m_pTileUpdateManager->SubmitUpdateList(*pUpdateList);
 
         m_packedMipStatus = PackedMipStatus::REQUESTED;
+        return true;
     }
 
     return false;
@@ -433,12 +422,6 @@ void StreamingResource::SetResidencyChanged()
 //-----------------------------------------------------------------------------
 void StreamingResource::ProcessFeedback(UINT64 in_frameFenceCompletedValue)
 {
-    // make sure packed mips are loaded
-    if (!InitPackedMips())
-    {
-        return;
-    }
-
     // deterimine if there is feedback to process
     UINT feedbackIndex = 0;
     bool feedbackToProcess = false;
@@ -694,22 +677,13 @@ void StreamingResource::QueuePendingTileEvictions(Streaming::UpdateList* out_pUp
 void StreamingResource::QueuePendingTileLoads(Streaming::UpdateList* out_pUpdateList)
 {
     ASSERT(out_pUpdateList);
-    ASSERT(m_pendingTileLoads.size());
+    ASSERT(m_pHeap->GetAllocator().GetNumFree());
 
-    const UINT numPending = (UINT)m_pendingTileLoads.size();
+    // clamp to maximum allowed in a batch
+    UINT maxCopies = std::min((UINT)m_pendingTileLoads.size(), m_pTileUpdateManager->GetMaxTileCopiesPerBatch());
 
-    UINT maxCopies = m_pHeap->GetAllocator().GetNumFree();
-
-    // exit if heap full
-    if (maxCopies)
-    {
-        // clamp to maximum allowed in a batch
-        maxCopies = std::min(maxCopies, std::min(numPending, m_pTileUpdateManager->GetMaxTileCopiesPerBatch()));
-    }
-    else
-    {
-        return;
-    }
+    // clamp to heap availability
+    maxCopies = std::min(maxCopies, m_pHeap->GetAllocator().GetNumFree());
 
     UINT skippedIndex = 0;
     UINT numConsumed = 0;
@@ -1010,7 +984,7 @@ void Streaming::StreamingResourceDU::NotifyEvicted(const std::vector<D3D12_TILED
 void Streaming::StreamingResourceDU::NotifyPackedMips()
 {
     m_packedMipStatus = PackedMipStatus::NEEDS_TRANSITION;
-    m_pTileUpdateManager->NotifyNotifyPackedMips();
+    m_pTileUpdateManager->NotifyPackedMips();
 
     // MinMipMap already set to packed mip values, don't need to go through UpdateMinMipMap
     //SetResidencyChanged();

@@ -51,16 +51,16 @@ namespace Streaming
 
             // statistics are gathered on a common thread
             STATE_SUBMITTED,             // start file i/o (DS) if necessary. if mapping only, go directly to notify
-            STATE_UPLOADING,             // Start loading files
-            STATE_NOTIFY,                // check for gpu complete
-            STATE_NOTIFY_MAP,            // after mapping completes, notify data structures that tiles are ready (also statistics) then FREE
+            STATE_PACKED_MAPPING,
+            STATE_UPLOADING,             // Start loading from file (ownership transitioned to FileStreamer)
+            STATE_COPY_PENDING,          // check for gpu complete (copy fence value is valid)
+
+            STATE_NOTIFY_COMPLETE        // the update is complete, notify.
         };
 
         // initialize to ready
         std::atomic<State> m_executionState{ State::STATE_FREE };
-
-        // this atomic member enables mapping concurrent with other states
-        std::atomic<bool> m_mappingStarted{ false };
+        std::atomic<bool> m_copyFenceValid{ false };
 
         // for the tiled resource, streaming info, and to notify complete
         Streaming::StreamingResourceDU* m_pStreamingResource{ nullptr };
@@ -79,7 +79,7 @@ namespace Streaming
         UINT m_numPackedMips = 0;
 
         // statistics
-        INT64 m_totalTime{ 0 };
+        INT64 m_startTime{ 0 };
         float m_copyTime{ 0 };
         float m_mappingTime{ 0 };
 

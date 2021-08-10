@@ -118,7 +118,7 @@ SceneObjects::BaseObject::BaseObject(
         rootParameters[(UINT)RootSigParams::ParamSamplers] = rootParam;
 
         UINT num32BitValues = sizeof(ModelConstantData) / 4;
-        rootParam.InitAsConstants(num32BitValues, 1, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
+        rootParam.InitAsConstants(num32BitValues, 1, 0, D3D12_SHADER_VISIBILITY_ALL);
         rootParameters[(UINT)RootSigParams::Param32BitConstants] = rootParam;
 
         // root sig without feedback map bound

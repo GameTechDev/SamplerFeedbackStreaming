@@ -45,7 +45,7 @@ void Streaming::UpdateList::Reset(Streaming::StreamingResourceDU* in_pStreamingR
 {
     m_pStreamingResource = in_pStreamingResource;
 
-    m_mappingStarted = false; // indicates if virt->phys mapping has started
+    m_copyFenceValid = false;
     m_coords.clear();         // indicates standard tile map & upload
     m_heapIndices.clear();    // because AddUpdate() does a push_back()
     m_evictCoords.clear();    // indicates tiles to un-map

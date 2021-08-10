@@ -76,7 +76,7 @@ VS_OUT vs(VS_IN input)
 	result.eyeToPoint = normalize(input.pos.xyz - g_eyePos.xyz);
 
 	// rotate eye direction into light coordinate frame
-	result.eyeToPoint = mul(float4(result.eyeToPoint, 0.0f), g_worldTransform).xyz;
+	result.eyeToPoint = mul(result.eyeToPoint, (float3x3)g_worldTransform);
 
 	result.tex = input.tex;
 	return result;

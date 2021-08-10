@@ -50,7 +50,9 @@ namespace Streaming
             m_streamingResources.erase(std::remove(m_streamingResources.begin(), m_streamingResources.end(), in_pResource), m_streamingResources.end());
             m_numStreamingResourcesChanged = true;
         }
+
         UploadBuffer& GetResidencyMap() { return m_residencyMap; }
+
         Streaming::UpdateList* AllocateUpdateList(StreamingResource* in_pStreamingResource) { return m_pDataUploader->AllocateUpdateList(in_pStreamingResource); }
         void SubmitUpdateList(Streaming::UpdateList& in_updateList) { m_pDataUploader->SubmitUpdateList(in_updateList); }
         void FreeEmptyUpdateList(Streaming::UpdateList& in_updateList) { m_pDataUploader->FreeEmptyUpdateList(in_updateList); }
@@ -62,11 +64,11 @@ namespace Streaming
 
         bool GetWithinFrame() const { return TileUpdateManager::GetWithinFrame(); }
 
-        void NotifyNotifyPackedMips() { m_packedMipTransition = true; } // called when a StreamingResource has recieved its packed mips
+        void NotifyPackedMips() { m_packedMipTransition = true; } // called when a StreamingResource has recieved its packed mips
 
         ID3D12CommandQueue* GetMappingQueue() const { return m_pDataUploader->GetMappingQueue(); }
 
-        void SetResidencyChanged() { SetEvent(m_residencyChangeEvent); }
+        void SetResidencyChanged() { m_residencyChangedFlag.Set(); }
     };
 
     //-----------------------------------------------------------------
@@ -90,6 +92,9 @@ namespace Streaming
         const Streaming::FileStreamer::FileHandle* GetFileHandle() const { return m_pFileHandle.get(); }
 
         const BYTE* GetPaddedPackedMips(UINT& out_numBytes) const { out_numBytes = (UINT)m_paddedPackedMips.size(); return m_paddedPackedMips.data(); }
+
+        // packed mips are treated differently from regular tiles: they aren't tracked by the data structure, and share heap indices
+        void MapPackedMips(ID3D12CommandQueue* in_pCommandQueue);
     };
 
     //-----------------------------------------------------------------
@@ -163,6 +168,7 @@ namespace Streaming
             return (m_pendingTileLoads.size() || m_pendingEvictions.GetReadyToEvict().size());
         }
 
+        bool InitPackedMips();
         //-------------------------------------
         // end called by TUM::ProcessFeedbackThread
         //-------------------------------------

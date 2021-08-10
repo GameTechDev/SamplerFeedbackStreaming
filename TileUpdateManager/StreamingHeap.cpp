@@ -84,8 +84,12 @@ UINT Streaming::Atlas::CreateAtlas(
     ComPtr<ID3D12Device> device;
     in_pHeap->GetDevice(IID_PPV_ARGS(&device));
 
+    // only use mip 1 of the resource. Subsequent mips provide little additional coverage while complicating lookup arithmetic
+    UINT subresourceCount = 1;
+
     // create a maximum size reserved resource
     D3D12_RESOURCE_DESC rd = CD3DX12_RESOURCE_DESC::Tex2D(in_format, D3D12_REQ_TEXTURE2D_U_OR_V_DIMENSION, D3D12_REQ_TEXTURE2D_U_OR_V_DIMENSION);
+    rd.MipLevels = (UINT16)subresourceCount;
 
     // Layout must be D3D12_TEXTURE_LAYOUT_64KB_UNDEFINED_SWIZZLE when creating reserved resources
     rd.Layout = D3D12_TEXTURE_LAYOUT_64KB_UNDEFINED_SWIZZLE;
@@ -94,15 +98,11 @@ UINT Streaming::Atlas::CreateAtlas(
     ThrowIfFailed(device->CreateReservedResource(&rd, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&out_pDst)));
     out_pDst->SetName(L"DataUploader::m_atlas");
 
-    UINT subresourceCount = out_pDst->GetDesc().MipLevels;
-    m_atlasTiling.resize(subresourceCount);
     D3D12_PACKED_MIP_INFO packedMipInfo; // unused, for now
     D3D12_TILE_SHAPE tileShape; // unused, for now
     UINT numAtlasTiles = 0;
-    device->GetResourceTiling(out_pDst.Get(), &numAtlasTiles, &packedMipInfo, &tileShape, &subresourceCount, 0, m_atlasTiling.data());
+    device->GetResourceTiling(out_pDst.Get(), &numAtlasTiles, &packedMipInfo, &tileShape, &subresourceCount, 0, &m_atlasTiling);
 
-    // Only using non-packed mips of atlas resource
-    numAtlasTiles = packedMipInfo.StartTileIndexInOverallResource;
     numAtlasTiles = std::min(in_maxTiles, numAtlasTiles);
 
     // The following depends on the linear assignment order defined by D3D12_REGION_SIZE UseBox = FALSE
@@ -145,31 +145,20 @@ ID3D12Resource* Streaming::Atlas::ComputeCoordFromTileIndex(D3D12_TILED_RESOURCE
 
     // which atlas does this land in:
     UINT atlasIndex = in_index / m_numTilesPerAtlas;
-    in_index -= m_numTilesPerAtlas * atlasIndex;
+    in_index -= (m_numTilesPerAtlas * atlasIndex);
 
-    // which mip of the atlas is this in:
-    UINT s = 0;
-    while (in_index >= m_atlasTiling[s + 1].StartTileIndexInOverallResource)
-    {
-        s++;
-    }
-    ASSERT(s < m_atlasTiling.size());
-
-    // compute coordinate within this mip:
-    in_index -= m_atlasTiling[s].StartTileIndexInOverallResource;
-
-    const UINT w = m_atlasTiling[s].WidthInTiles;
+    const UINT w = m_atlasTiling.WidthInTiles;
     UINT y = in_index / w;
-    ASSERT(y < m_atlasTiling[s].HeightInTiles);
+    ASSERT(y < m_atlasTiling.HeightInTiles);
     UINT x = in_index - (w * y);
 
-    out_coord = D3D12_TILED_RESOURCE_COORDINATE{ x, y, 0, s };
+    out_coord = D3D12_TILED_RESOURCE_COORDINATE{ x, y, 0, 0 };
     return m_atlases[atlasIndex].Get();
 }
 
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
-Streaming::Heap::Heap(ID3D12CommandQueue* in_pQueue, UINT in_maxNumTilesHeap) : m_queue(in_pQueue), m_heapAllocator(in_maxNumTilesHeap)
+Streaming::Heap::Heap(ID3D12CommandQueue* in_pQueue, UINT in_maxNumTilesHeap) : m_heapAllocator(in_maxNumTilesHeap)
 {
     ComPtr<ID3D12Device> device;
     in_pQueue->GetDevice(IID_PPV_ARGS(&device));
@@ -192,7 +181,7 @@ Streaming::Heap::~Heap()
 //-----------------------------------------------------------------------------
 // creation of new StreamingResource must verify there is an atlas for that format
 //-----------------------------------------------------------------------------
-void Streaming::Heap::AllocateAtlas(const DXGI_FORMAT in_format)
+void Streaming::Heap::AllocateAtlas(ID3D12CommandQueue* in_pQueue, const DXGI_FORMAT in_format)
 {
     Streaming::Atlas* pAtlas = nullptr;
     for (auto p : m_atlases)
@@ -205,7 +194,7 @@ void Streaming::Heap::AllocateAtlas(const DXGI_FORMAT in_format)
     }
     if (nullptr == pAtlas)
     {
-        pAtlas = new Streaming::Atlas(m_tileHeap.Get(), m_queue.Get(), m_heapAllocator.GetCapacity(), in_format);
+        pAtlas = new Streaming::Atlas(m_tileHeap.Get(), in_pQueue, m_heapAllocator.GetCapacity(), in_format);
         m_atlases.push_back(pAtlas);
     }
 }

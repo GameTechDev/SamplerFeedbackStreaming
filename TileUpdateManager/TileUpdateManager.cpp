@@ -88,20 +88,6 @@ m_numSwapBuffers(in_desc.m_swapChainBufferCount)
         cl.m_commandList->Close();
     }
 
-    // create event to control residency update thread
-    m_residencyChangeEvent = ::CreateEvent(nullptr, FALSE, FALSE, nullptr);
-    if (m_residencyChangeEvent == nullptr)
-    {
-        ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
-    }
-
-    // create event to control process feedback thread
-    m_processFeedbackEvent = ::CreateEvent(nullptr, FALSE, FALSE, nullptr);
-    if (m_processFeedbackEvent == nullptr)
-    {
-        ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
-    }
-
     // advance frame number to the first frame...
     m_frameFenceValue++;
 
@@ -112,8 +98,6 @@ TileUpdateManager::~TileUpdateManager()
 {
     // DataUploader destructor flushes outstanding commands, but we want to make sure that's the first thing that happens in the desctructor for TileUpdateManager
     Finish();
-    ::CloseHandle(m_residencyChangeEvent);
-    ::CloseHandle(m_processFeedbackEvent);
 }
 
 //-----------------------------------------------------------------------------
@@ -194,6 +178,23 @@ void TileUpdateManager::StartThreads()
             UINT64 previousFrameFenceValue = m_frameFenceValue;
             while (m_threadsRunning)
             {
+                // if there are packed mips waiting to load, prioritize that over everything
+                bool expected = true;
+                if (m_havePackedMipsToLoad.compare_exchange_weak(expected, false))
+                {
+                    for (auto p : m_streamingResources)
+                    {
+                        if (!p->InitPackedMips())
+                        {
+                            m_havePackedMipsToLoad = true;
+                        }
+                    }
+                    if (m_havePackedMipsToLoad)
+                    {
+                        continue;
+                    }
+                }
+
                 // DEBUG: verify that no streaming resources have been added/removed during thread lifetime
                 ASSERT(m_streamingResources.size() == pending.size());
 
@@ -251,8 +252,7 @@ void TileUpdateManager::StartThreads()
                 // nothing to do? wait for next frame
                 if ((0 == staleResources.size()) && m_threadsRunning)
                 {
-                    ThrowIfFailed(m_frameFence->SetEventOnCompletion(frameFenceValue + 1, m_processFeedbackEvent));
-                    WaitForSingleObject(m_processFeedbackEvent, 1000);
+                    m_processFeedbackFlag.Wait();
                 }
             }
             DebugPrint(L"Destroyed ProcessFeedback Thread\n");
@@ -266,12 +266,12 @@ void TileUpdateManager::StartThreads()
             // Note that UpdateMinMipMap() exits quickly if nothing to do
             while (m_threadsRunning)
             {
+                m_residencyChangedFlag.Wait();
+
                 for (auto p : m_streamingResources)
                 {
                     p->UpdateMinMipMap();
                 }
-
-                WaitForSingleObject(m_residencyChangeEvent, INFINITE);
             }
             DebugPrint(L"Destroyed UpdateResidency Thread\n");
         });
@@ -285,25 +285,32 @@ void TileUpdateManager::StartThreads()
 void TileUpdateManager::Finish()
 {
     ASSERT(!GetWithinFrame());
-
-    m_pDataUploader->FlushCommands();
-    
-    // stop TileUpdateManager threads
-    // do not want ProcessFeedback generating more work
-    // don't want UpdateResidency to write to min maps when that might be replaced
-    m_threadsRunning = false;
-    ::SetEvent(m_residencyChangeEvent);
-
-    if (m_processFeedbackThread.joinable())
+ 
+    if (m_threadsRunning)
     {
-        m_processFeedbackThread.join();
-        DebugPrint(L"JOINED ProcessFeedback Thread\n");
-    }
+        // stop TileUpdateManager threads
+        // do not want ProcessFeedback generating more work
+        // don't want UpdateResidency to write to min maps when that might be replaced
+        m_threadsRunning = false;
 
-    if (m_updateResidencyThread.joinable())
-    {
-        m_updateResidencyThread.join();
-        DebugPrint(L"JOINED UpdateResidency Thread\n");
+        // wake up threads so they can exit
+        m_processFeedbackFlag.Set();
+        m_residencyChangedFlag.Set();
+
+        if (m_processFeedbackThread.joinable())
+        {
+            m_processFeedbackThread.join();
+            DebugPrint(L"JOINED ProcessFeedback Thread\n");
+        }
+
+        if (m_updateResidencyThread.joinable())
+        {
+            m_updateResidencyThread.join();
+            DebugPrint(L"JOINED UpdateResidency Thread\n");
+        }
+
+        // now we are no longer producing work for the DataUploader, so its commands can be drained
+        m_pDataUploader->FlushCommands();
     }
 }
 
@@ -320,13 +327,15 @@ Streaming::Heap* TileUpdateManager::CreateStreamingHeap(UINT in_maxNumTilesHeap)
 //-----------------------------------------------------------------------------
 StreamingResource* TileUpdateManager::CreateStreamingResource(const std::wstring& in_filename, Streaming::Heap* in_pHeap)
 {
-    ASSERT(!m_threadsRunning
-);
+    ASSERT(!m_threadsRunning);
 
     Streaming::FileStreamer::FileHandle* pFileHandle = m_pDataUploader->OpenFile(in_filename);
     Streaming::StreamingResourceTUM* pRsrc = new Streaming::StreamingResourceTUM(in_filename, pFileHandle, (Streaming::TileUpdateManagerSR*)this, in_pHeap);
     m_streamingResources.push_back(pRsrc);
     m_numStreamingResourcesChanged = true;
+
+    m_havePackedMipsToLoad = true;
+
     return pRsrc;
 }
 
@@ -415,6 +424,8 @@ void TileUpdateManager::BeginFrame(ID3D12DescriptorHeap* in_pDescriptorHeap,
     m_withinFrame = true; 
 
     StartThreads();
+
+    m_processFeedbackFlag.Set();
 
     // if new StreamingResources have been created...
     if (m_numStreamingResourcesChanged)
