@@ -41,8 +41,7 @@ namespace Streaming
     //==================================================
     struct UploadBuffer
     {
-        UploadBuffer() : m_pData(nullptr) {}
-        ~UploadBuffer() { m_resource->Unmap(0, nullptr); }
+        ~UploadBuffer() { if (m_resource.Get()) m_resource->Unmap(0, nullptr); }
         ComPtr<ID3D12Resource> m_resource;
         void* m_pData{ nullptr };
 

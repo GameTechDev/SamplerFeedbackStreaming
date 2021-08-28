@@ -31,8 +31,8 @@
 
 struct CommandLineArgs
 {
-    LONG  m_windowWidth{ 1280 };
-    LONG  m_windowHeight{ 800 };
+    UINT  m_windowWidth{ 1280 };
+    UINT  m_windowHeight{ 800 };
     UINT  m_sampleCount{ 4 };
     float m_lodBias{ 0 };
 
@@ -86,7 +86,7 @@ struct CommandLineArgs
     //-------------------------------------------------------
     // state that is not settable from command line:
     //-------------------------------------------------------
-    int m_maxTileUpdatesPerFrame{ 1 }; // just a toggle, yes or no
+    bool m_enableTileUpdates{ true }; // toggle enabling tile uploads/evictions
     int  m_visualizationBaseMip{ 0 };
     bool m_showFeedbackMapVertical{ false };
     bool m_drainTiles{ false }; // while enabled, no updates and tiles will drain out from heap

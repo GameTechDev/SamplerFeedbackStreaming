@@ -71,6 +71,7 @@ namespace SceneObjects
         virtual void Draw(ID3D12GraphicsCommandList1* in_pCommandList, const DrawParams& in_drawParams);
 
         DirectX::XMMATRIX& GetModelMatrix() { return m_matrix; }
+        DirectX::XMMATRIX& GetCombinedMatrix() { return m_combinedMatrix; }
 
         // for visualization
         ID3D12Resource* GetTiledResource() const { return m_pStreamingResource->GetTiledResource(); }
@@ -104,6 +105,7 @@ namespace SceneObjects
         TileUpdateManager* m_pTileUpdateManager{ nullptr };
 
         DirectX::XMMATRIX m_matrix;
+        DirectX::XMMATRIX m_combinedMatrix;
 
         struct ModelConstantData
         {

@@ -36,7 +36,7 @@ public:
     Gui(HWND in_hWnd, ID3D12Device* in_pDevice,
         ID3D12DescriptorHeap* in_pSrvHeap, const UINT in_rootSigSlot,
         const UINT in_swapChainBufferCount, const DXGI_FORMAT in_swapChainFormat,
-        CommandLineArgs& in_args);
+        const std::wstring& in_adapterDescription, CommandLineArgs& in_args);
     ~Gui();
 
     struct DrawParams
@@ -69,6 +69,8 @@ private:
     // copy of arguments at creation for reset button
     const CommandLineArgs m_initialArgs;
 
+    std::string m_adapterDescription;
+
     TotalSince m_cpuTimes;
     TotalSince m_numUploads;
     RawCpuTimer m_cpuTimer;
@@ -77,6 +79,8 @@ private:
     std::vector<float> m_bandwidthHistory;
     UINT m_bandwidthHistoryIndex{ 0 };
     void UpdateBandwidthHistory(UINT in_numTilesUploaded);
+
+    float ComputeBandwidth(UINT in_numTiles, float in_numSeconds);
 
     void DrawLineGraph(const std::vector<float>& in_ringBuffer, UINT in_head, const ImVec2 in_windowDim);
 

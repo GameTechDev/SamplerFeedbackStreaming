@@ -244,11 +244,9 @@ std::wstring SceneObjects::BaseObject::GetAssetFullPath(const std::wstring& in_f
 //-------------------------------------------------------------------------
 //-------------------------------------------------------------------------
 void SceneObjects::BaseObject::SetModelConstants(ModelConstantData& out_modelConstantData,
-    const DirectX::XMMATRIX& in_projection, const DirectX::XMMATRIX& in_view, const DirectX::XMMATRIX& in_viewInverse)
+    const DirectX::XMMATRIX&, const DirectX::XMMATRIX&, const DirectX::XMMATRIX& in_viewInverse)
 {
-    DirectX::XMMATRIX view = in_view;
-
-    out_modelConstantData.g_combinedTransform = m_matrix * view * in_projection;
+    out_modelConstantData.g_combinedTransform = m_combinedMatrix;
 
     DirectX::XMVECTOR pDet;
     DirectX::XMMATRIX worldInverse = XMMatrixInverse(&pDet, m_matrix);

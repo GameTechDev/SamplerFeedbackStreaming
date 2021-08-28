@@ -132,16 +132,6 @@ void AdjustArguments(CommandLineArgs& out_args)
             MessageBox(0, caption.str().c_str(), L"ERROR", MB_OK);
         }
     }
-
-    // make textures relative to media path, unless a path is provided
-    if (out_args.m_skyTexture.size())
-    {
-        out_args.m_skyTexture = out_args.m_mediaDir + out_args.m_skyTexture;
-    }
-    if (out_args.m_earthTexture.size())
-    {
-        out_args.m_earthTexture = out_args.m_mediaDir + out_args.m_earthTexture;
-    }
 }
 
 //-----------------------------------------------------------------------------
@@ -219,7 +209,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     case WM_SIZE:
     {
         bool isFullScreen = (SIZE_MAXIMIZED == wParam);
-        g_pScene->Resize(isFullScreen);
+        g_pScene->SetFullScreen(isFullScreen);
     }
     break;
 
@@ -390,8 +380,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         case VK_ESCAPE:
             if (g_pScene->GetFullScreen())
             {
-                //ShowWindow(hWnd, SW_RESTORE);
-                g_pScene->Resize(false);
+                ShowWindow(hWnd, SW_RESTORE);
             }
             else
             {
@@ -553,7 +542,7 @@ int WINAPI WinMain(
 
     RegisterClassEx(&wcex);
 
-    RECT windowRect = { 0, 0, args.m_windowWidth, args.m_windowHeight };
+    RECT windowRect = { 0, 0, (LONG)args.m_windowWidth, (LONG)args.m_windowHeight };
     AdjustWindowRect(&windowRect, WS_VISIBLE | WS_OVERLAPPEDWINDOW, FALSE);
 
     HWND hWnd = CreateWindow(

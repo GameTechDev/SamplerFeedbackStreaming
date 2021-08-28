@@ -107,8 +107,7 @@ Streaming::BufferAllocator::BufferAllocator(ID3D12Device* in_pDevice, UINT in_ma
     UINT bufferSize = in_maxNumTiles * in_blockSize;
 
     const auto heapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-    auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(bufferSize);
-    resourceDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+    auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(bufferSize, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
 
     in_pDevice->CreateCommittedResource(
         &heapProperties,

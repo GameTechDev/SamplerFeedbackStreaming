@@ -41,7 +41,15 @@ public:
 
     // draw returns false on device removed/reset
     bool Draw();
-    void Resize(bool in_fullScreen);
+    void SetFullScreen(bool in_fullScreen)
+    {
+        // if the full screen state desired != current, then the window is tranisitioning
+        // ignore requests unless not transitioning
+        if (m_desiredFullScreen == m_fullScreen)
+        {
+            m_desiredFullScreen = in_fullScreen;
+        }
+    }
     bool GetFullScreen() const { return m_fullScreen; }
 
     void MoveView(int in_x, int in_y, int in_z);
@@ -81,15 +89,19 @@ private:
 
     void Animate(); // camera and objects
 
-    bool m_resetSwapChain{ false };
-    void DoResize();
+    std::atomic<bool> m_fullScreen{ false };
+    bool m_desiredFullScreen{ false };
+    UINT m_windowWidth{ 0 };
+    UINT m_windowHeight{ 0 };
+    // remember placement for restore from full screen
+    WINDOWPLACEMENT m_windowPlacement{};
+    void Resize();
 
     void RotateView(float in_x, float in_y, float in_z);
 
     CommandLineArgs m_args;
 
     const HWND m_hwnd;
-    bool m_fullScreen;
     WINDOWINFO m_windowInfo;
     bool m_windowedSupportsTearing;
     bool m_deviceRemoved; // when true, resize and draw immediately exit, returning false if appicable
@@ -221,6 +233,7 @@ private:
     FrameEventTracing::UpdateEventList m_updateFeedbackTimes;
     class D3D12GpuTimer* m_pGpuTimer;
     std::unique_ptr<FrameEventTracing> m_csvFile{ nullptr };
+    float m_gpuProcessFeedbackTime{ 0 };
 
     // render thread can request other threads to stop processing e.g. on time budget exceeded
     std::atomic<bool> m_interrupt{ false };
@@ -236,4 +249,6 @@ private:
     std::vector<Streaming::Heap*> m_sharedHeaps;
 
     void GatherStatistics(float in_cpuProcessFeedbackTime, float in_gpuProcessFeedbackTime);
+    UINT m_startUploadCount{ 0 };
+    Timer m_cpuTimer;
 };

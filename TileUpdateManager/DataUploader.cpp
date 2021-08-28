@@ -357,7 +357,7 @@ void Streaming::DataUploader::FenceMonitorThread()
             // notify evictions
             if (updateList.GetNumEvictions())
             {
-                m_numTotalEvictions += updateList.GetNumEvictions();
+                m_numTotalEvictions.fetch_add(updateList.GetNumEvictions(), std::memory_order_relaxed);
 
                 updateList.m_pStreamingResource->NotifyEvicted(updateList.m_evictCoords);
             }
@@ -368,7 +368,7 @@ void Streaming::DataUploader::FenceMonitorThread()
                 timings.m_copyTime = updateList.m_copyTime;
                 // a gpu copy has completed, so we can update the corresponding timer
                 //timings.m_gpuTime = m_gpuTimer.MapReadBack(in_updateList.m_streamingTimeIndex);
-                m_numTotalUploads += updateList.GetNumStandardUpdates();
+                m_numTotalUploads.fetch_add(updateList.GetNumStandardUpdates(), std::memory_order_relaxed);
 
                 updateList.m_pStreamingResource->NotifyCopyComplete(updateList.m_coords);
             }

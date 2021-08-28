@@ -63,7 +63,6 @@ enum class DescriptorHeapOffsets
 Scene::Scene(const CommandLineArgs& in_args, HWND in_hwnd) :
     m_args(in_args)
     , m_hwnd(in_hwnd)
-    , m_fullScreen(false)
     , m_windowInfo{}
     , m_windowedSupportsTearing(false)
     , m_deviceRemoved(false)
@@ -111,24 +110,30 @@ Scene::Scene(const CommandLineArgs& in_args, HWND in_hwnd) :
     }
 
     ComPtr<IDXGIAdapter1> adapter;
+    DXGI_ADAPTER_DESC1 desc;
     if (m_args.m_adapterDescription.size())
     {
-        std::wstring wideAdapterDesc = m_args.m_adapterDescription;
-        for (auto& c : wideAdapterDesc) { c = ::towlower(c); }
+        std::wstring lowerCaseAdapterDesc = m_args.m_adapterDescription;
+        for (auto& c : lowerCaseAdapterDesc) { c = ::towlower(c); }
 
         for (UINT i = 0; m_factory->EnumAdapters1(i, &adapter) != DXGI_ERROR_NOT_FOUND; ++i)
         {
-            DXGI_ADAPTER_DESC1 desc;
             ThrowIfFailed(adapter->GetDesc1(&desc));
             std::wstring description(desc.Description);
             for (auto& c : description) { c = ::towlower(c); }
-            std::size_t found = description.find(wideAdapterDesc);
+            std::size_t found = description.find(lowerCaseAdapterDesc);
             if (found != std::string::npos)
             {
                 break;
             }
         }
     }
+    else
+    {
+        ThrowIfFailed(m_factory->EnumAdapters1(0, &adapter));
+        ThrowIfFailed(adapter->GetDesc1(&desc));
+    }
+    std::wstring adapterDescription = desc.Description;
     ThrowIfFailed(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(&m_device)));
 
     // does this device support sampler feedback?
@@ -179,7 +184,7 @@ Scene::Scene(const CommandLineArgs& in_args, HWND in_hwnd) :
     XMVECTOR pDet;
     m_viewMatrixInverse = XMMatrixInverse(&pDet, m_viewMatrix);
 
-    m_pGui = new Gui(m_hwnd, m_device.Get(), m_srvHeap.Get(), (UINT)DescriptorHeapOffsets::GUI, m_swapBufferCount, SharedConstants::SWAP_CHAIN_FORMAT, m_args);
+    m_pGui = new Gui(m_hwnd, m_device.Get(), m_srvHeap.Get(), (UINT)DescriptorHeapOffsets::GUI, m_swapBufferCount, SharedConstants::SWAP_CHAIN_FORMAT, adapterDescription, m_args);
 
     m_pFrustumViewer = new FrustumViewer(m_device.Get(),
         SharedConstants::SWAP_CHAIN_FORMAT,
@@ -343,28 +348,19 @@ bool Scene::IsDeviceOk(HRESULT in_hr)
 // FIXME: 1st transition to full-screen on multi-gpu, app disappears (?) - hit ESC and try again
 // FIXME: full-screen does not choose the nearest display for the associated adapter, it chooses the 1st
 //-----------------------------------------------------------------------------
-void Scene::Resize(bool in_fullScreen)
+void Scene::Resize()
 {
-    // do not re-enter resize while handling a resize
-    if (m_resetSwapChain) return;
-
-    // prevent re-entry here until after we've gotten all the way through
-    m_resetSwapChain = true;
-
-    // remember placement for restore from full screen
-    static WINDOWPLACEMENT windowPlacement;
-
-    if (m_fullScreen != in_fullScreen)
+    if (m_fullScreen != m_desiredFullScreen)
     {
         WaitForGpu();
 
         // can't full screen with remote desktop
         bool canFullScreen = (GetSystemMetrics(SM_REMOTESESSION) == 0);
 
-        if (in_fullScreen)
+        if (m_desiredFullScreen)
         {
             // remember the current placement so we can restore via vk_esc
-            GetWindowPlacement(m_hwnd, &windowPlacement);
+            GetWindowPlacement(m_hwnd, &m_windowPlacement);
 
             // take the first attached monitor
             // FIXME? could search for the nearest monitor.
@@ -376,7 +372,11 @@ void Scene::Resize(bool in_fullScreen)
             HRESULT result = m_adapter->EnumOutputs(0, &dxgiOutput);
             if (SUCCEEDED(result))
             {
-                ThrowIfFailed(m_swapChain->SetFullscreenState(true, dxgiOutput.Get()));
+                if (canFullScreen)
+                {
+                    ThrowIfFailed(m_swapChain->SetFullscreenState(true, dxgiOutput.Get()));
+                }
+                // FIXME? borderless window would be nice when using remote desktop
             }
             else // enumerate may fail when multi-gpu and cloning displays
             {
@@ -388,30 +388,20 @@ void Scene::Resize(bool in_fullScreen)
         }
         else
         {
+            if (canFullScreen)
+            {
+                ThrowIfFailed(m_swapChain->SetFullscreenState(false, nullptr));
+            }
             // when leaving full screen, the previous window state isn't restored by the OS
             // however, we saved it earlier...
-            ThrowIfFailed(m_swapChain->SetFullscreenState(false, nullptr));
-            int left = windowPlacement.rcNormalPosition.left;
-            int top = windowPlacement.rcNormalPosition.top;
-            int width = windowPlacement.rcNormalPosition.right - left;
-            int height = windowPlacement.rcNormalPosition.bottom - top;
+            int left = m_windowPlacement.rcNormalPosition.left;
+            int top = m_windowPlacement.rcNormalPosition.top;
+            int width = m_windowPlacement.rcNormalPosition.right - left;
+            int height = m_windowPlacement.rcNormalPosition.bottom - top;
             SetWindowPos(m_hwnd, NULL, left, top, width, height, SWP_SHOWWINDOW);
         }
+        m_fullScreen = m_desiredFullScreen;
     }
-    DoResize();
-    // at this point, full screen state has (theoretically) been changed if required
-    m_fullScreen = in_fullScreen;
-
-    m_resetSwapChain = false;
-}
-
-//-----------------------------------------------------------------------------
-// handle resize of render targets
-//-----------------------------------------------------------------------------
-void Scene::DoResize()
-{
-    // make sure we are paused at this point
-    WaitForGpu();
 
     RECT rect{};
     GetClientRect(m_hwnd, &rect);
@@ -419,57 +409,57 @@ void Scene::DoResize()
     UINT height = rect.bottom - rect.top;
 
     // ignore resize events for 0-sized window
+    // not a fatal error. just ignore it.
     if ((0 == height) || (0 == width))
     {
-        // not a fatal error. just ignore it.
         return;
     }
 
-    m_viewport = CD3DX12_VIEWPORT(0.0f, 0.0f, static_cast<FLOAT>(width), static_cast<FLOAT>(height));
-    m_scissorRect = CD3DX12_RECT(0, 0, width, height);
-    m_aspectRatio = m_viewport.Width / m_viewport.Height;
-
-    float nearZ = 1.0f;
-    float farZ = 100000.0f;
-    m_projection = DirectX::XMMatrixPerspectiveFovLH(m_fieldOfView, m_aspectRatio, nearZ, farZ);
-
-    // release references
-    for (UINT i = 0; i < m_swapBufferCount; i++)
+    if ((width != m_windowWidth) || (height != m_windowHeight))
     {
-        m_renderTargets[i].Reset();
-    }
+        m_windowWidth = width;
+        m_windowHeight = height;
 
-    UINT flags = 0;
-    if (m_windowedSupportsTearing)
-    {
-        flags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
-    }
-    HRESULT hr = m_swapChain->ResizeBuffers(0, width, height, DXGI_FORMAT_UNKNOWN, flags);
-    bool success = IsDeviceOk(hr);
+        WaitForGpu();
 
-    if (success)
-    {
-        // Create a RTV for each frame.
-        CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart());
+        m_viewport = CD3DX12_VIEWPORT(0.0f, 0.0f, static_cast<FLOAT>(width), static_cast<FLOAT>(height));
+        m_scissorRect = CD3DX12_RECT(0, 0, width, height);
+        m_aspectRatio = m_viewport.Width / m_viewport.Height;
+        float nearZ = 1.0f;
+        float farZ = 100000.0f;
+        m_projection = DirectX::XMMatrixPerspectiveFovLH(m_fieldOfView, m_aspectRatio, nearZ, farZ);
+
         for (UINT i = 0; i < m_swapBufferCount; i++)
         {
-            ThrowIfFailed(m_swapChain->GetBuffer(i, IID_PPV_ARGS(&m_renderTargets[i])));
-
-            std::wstringstream w;
-            w << "m_renderTargets[" << i << "]";
-            m_renderTargets[i]->SetName(w.str().c_str());
-
-            m_device->CreateRenderTargetView(m_renderTargets[i].Get(), nullptr, rtvHandle);
-            rtvHandle.Offset(1, m_rtvDescriptorSize);
+            m_renderTargets[i] = nullptr;
         }
 
-        CreateRenderTargets();
+        UINT flags = 0;
+        if (m_windowedSupportsTearing)
+        {
+            flags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
+        }
+        HRESULT hr = m_swapChain->ResizeBuffers(0, width, height, DXGI_FORMAT_UNKNOWN, flags);
 
-        m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
+        if (IsDeviceOk(hr))
+        {
+            // Create a RTV for each frame.
+            CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart());
+            for (UINT i = 0; i < m_swapBufferCount; i++)
+            {
+                ThrowIfFailed(m_swapChain->GetBuffer(i, IID_PPV_ARGS(&m_renderTargets[i])));
+                m_device->CreateRenderTargetView(m_renderTargets[i].Get(), nullptr, rtvHandle);
+                rtvHandle.Offset(1, m_rtvDescriptorSize);
+            }
 
-        // UI uses window dimensions
-        m_args.m_windowWidth = width;
-        m_args.m_windowHeight = height;
+            CreateRenderTargets();
+
+            m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
+
+            // UI uses window dimensions
+            m_args.m_windowWidth = width;
+            m_args.m_windowHeight = height;
+        }
     }
 }
 
@@ -552,17 +542,9 @@ void Scene::CreateCommandQueue()
 //-----------------------------------------------------------------------------
 void Scene::CreateSwapChain()
 {
-    // tearing supported for full-screen borderless windows?
-    if (m_fullScreen)
-    {
-        m_windowedSupportsTearing = false;
-    }
-    else
-    {
-        BOOL allowTearing = FALSE;
-        const HRESULT result = m_factory->CheckFeatureSupport(DXGI_FEATURE_PRESENT_ALLOW_TEARING, &allowTearing, sizeof(allowTearing));
-        m_windowedSupportsTearing = SUCCEEDED(result) && allowTearing;
-    }
+    BOOL allowTearing = FALSE;
+    const HRESULT result = m_factory->CheckFeatureSupport(DXGI_FEATURE_PRESENT_ALLOW_TEARING, &allowTearing, sizeof(allowTearing));
+    m_windowedSupportsTearing = SUCCEEDED(result) && allowTearing;
 
     GetWindowInfo(m_hwnd, &m_windowInfo);
 
@@ -588,36 +570,6 @@ void Scene::CreateSwapChain()
     DXGI_SWAP_CHAIN_FULLSCREEN_DESC fullScreenDesc = {};
     IDXGIOutput* pOutput = nullptr;
 
-    // on switch to full screen, try to move to a monitor attached to the adapter
-    // if no monitor attached, just use the "current" display
-    if (m_fullScreen)
-    {
-        // get the dimensions of the primary monitor, same as GetDeviceCaps( hdcPrimaryMonitor, HORZRES)
-        swapChainDesc.Width = GetSystemMetrics(SM_CXSCREEN);
-        swapChainDesc.Height = GetSystemMetrics(SM_CYSCREEN);
-        // primary monitor has 0,0 as top-left
-        UINT left = 0;
-        UINT top = 0;
-
-        // take the first attached monitor
-        m_adapter->EnumOutputs(0, &pOutput);
-        if (pOutput)
-        {
-            DXGI_OUTPUT_DESC outputDesc;
-            pOutput->GetDesc(&outputDesc);
-            swapChainDesc.Width = outputDesc.DesktopCoordinates.right - outputDesc.DesktopCoordinates.left;
-            swapChainDesc.Height = outputDesc.DesktopCoordinates.bottom - outputDesc.DesktopCoordinates.top;
-            left = outputDesc.DesktopCoordinates.left;
-            top = outputDesc.DesktopCoordinates.top;
-        }
-        SetWindowLongPtr(m_hwnd, GWL_STYLE, WS_VISIBLE | WS_POPUP);
-        SetWindowPos(m_hwnd, HWND_TOP, left, top, swapChainDesc.Width, swapChainDesc.Height,
-            SWP_FRAMECHANGED);
-
-        fullScreenDesc.Windowed = FALSE;
-        pFullScreenDesc = &fullScreenDesc;
-    }
-
     ComPtr<IDXGISwapChain1> swapChain;
     ThrowIfFailed(m_factory->CreateSwapChainForHwnd(m_commandQueue.Get(), m_hwnd,
         &swapChainDesc, pFullScreenDesc, pOutput, &swapChain));
@@ -630,15 +582,9 @@ void Scene::CreateSwapChain()
     - To use this flag in full screen Win32 apps, the application should present to a fullscreen borderless window
     and disable automatic ALT+ENTER fullscreen switching using IDXGIFactory::MakeWindowAssociation.
      */
-    ThrowIfFailed(m_factory->MakeWindowAssociation(m_hwnd,
-        DXGI_MWA_NO_WINDOW_CHANGES | DXGI_MWA_NO_ALT_ENTER | DXGI_MWA_NO_PRINT_SCREEN));
+    ThrowIfFailed(m_factory->MakeWindowAssociation(m_hwnd, DXGI_MWA_NO_WINDOW_CHANGES | DXGI_MWA_NO_ALT_ENTER | DXGI_MWA_NO_PRINT_SCREEN));
 
     ThrowIfFailed(swapChain.As(&m_swapChain));
-
-    if ((GetSystemMetrics(SM_REMOTESESSION) == 0) && (m_fullScreen))
-    {
-        m_swapChain->SetFullscreenState(TRUE, nullptr);
-    }
 
     m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
 }
@@ -852,12 +798,11 @@ void Scene::LoadSpheres()
 
             // 3 options: sphere, earth, sky
 
-            // sky
-            if ((m_args.m_skyTexture.size()) && (nullptr == m_pSky)) // only 1 sky
+            // sky has to be first because it disables depth when drawn
+            if ((nullptr == m_pSky) && (m_args.m_skyTexture.size())) // only 1 sky
             {
-                m_pSky = new SceneObjects::Sky(
-                    m_args.m_skyTexture, m_pTileUpdateManager.get(),
-                    m_sharedHeaps[0], m_device.Get(), m_args.m_sampleCount, descCPU);
+                auto tf = m_args.m_mediaDir + L"\\\\" + m_args.m_skyTexture;
+                m_pSky = new SceneObjects::Sky(tf, m_pTileUpdateManager.get(), pHeap, m_device.Get(), m_args.m_sampleCount, descCPU);
                 o = m_pSky;
             }
 
@@ -869,8 +814,7 @@ void Scene::LoadSpheres()
             }
 
             // earth
-            else if (m_args.m_earthTexture.size() && (m_args.m_earthTexture.size() < textureFilename.size()) &&
-                (0 == textureFilename.compare(textureFilename.length() - m_args.m_earthTexture.length(), m_args.m_earthTexture.length(), m_args.m_earthTexture)))
+            else if (m_args.m_earthTexture.size() && (std::wstring::npos != textureFilename.find(m_args.m_earthTexture)))
             {
                 if (nullptr == m_pEarth)
                 {
@@ -1139,12 +1083,12 @@ UINT Scene::DetermineMaxNumFeedbackResolves()
     {
         maxNumFeedbackResolves = (UINT)m_objects.size();
     }
-    else if (m_args.m_maxTileUpdatesPerFrame)
+    else if (m_args.m_enableTileUpdates)
     {
         maxNumFeedbackResolves = 10;
 
         // how long did it take
-        const float feedbackTime = 1000.f * m_pTileUpdateManager->GetGpuTime();
+        const float feedbackTime = 1000.f * m_gpuProcessFeedbackTime;
 
         if (feedbackTime > 0)
         {
@@ -1206,18 +1150,34 @@ void Scene::DrawObjects()
         {
             auto o = m_objects[i % (UINT)m_objects.size()];
 
+            // FIXME: want proper frustum culling here
+            float w = XMVectorGetW(o->GetCombinedMatrix().r[3]);
+            bool visible = (w > 0) || (o == m_pSky);
+
             // get sampler feedback for this object?
             bool queueFeedback = false;
-            if (numFeedbackObjects < maxNumFeedbackResolves)
+
+            if (visible)
             {
-                queueFeedback = true;
-                numFeedbackObjects++;
+                if (numFeedbackObjects < maxNumFeedbackResolves)
+                {
+                    queueFeedback = true;
+                    numFeedbackObjects++;
+                }
             }
+            else // evict tiles of objects that are not visible
+            {
+                o->GetStreamingResource()->QueueEviction();
+            }
+
+            // always tell the scene object whether or not to use feedback
             o->SetFeedbackEnabled(queueFeedback);
         }
-        // start feedback where we left off this time.
+
+        // next time, start feedback where we left off this time.
         // note m_queueFeedbackIndex will be adjusted to # of objects next time, above
         m_queueFeedbackIndex += numFeedbackObjects;
+
         // remember how many resolves were queued for the running average
         m_prevNumFeedbackObjects[m_frameIndex] = numFeedbackObjects;
     }
@@ -1304,8 +1264,8 @@ void Scene::GatherStatistics(float in_cpuProcessFeedbackTime, float in_gpuProces
 {
     // NOTE: streaming isn't aware of frame time.
     // these numbers are approximately a measure of the number of operations during the last frame
-    UINT numEvictions = m_pTileUpdateManager->GetTotalNumEvictions();
-    UINT numUploads = m_pTileUpdateManager->GetTotalNumUploads();
+    const UINT numEvictions = m_pTileUpdateManager->GetTotalNumEvictions();
+    const UINT numUploads = m_pTileUpdateManager->GetTotalNumUploads();
 
     m_numEvictionsPreviousFrame = numEvictions - m_numTotalEvictions;
     m_numUploadsPreviousFrame = numUploads - m_numTotalUploads;
@@ -1326,9 +1286,16 @@ void Scene::GatherStatistics(float in_cpuProcessFeedbackTime, float in_gpuProces
 
         if (m_frameNumber == m_args.m_timingStopFrame)
         {
-            DebugPrint(L"Gathering final statistics before exitting\n");
+            float measuredTime = (float)m_cpuTimer.Stop();
+            UINT measuredNumUploads = numUploads - m_startUploadCount;
+            float tilesPerSecond = float(measuredNumUploads) / measuredTime;
+            float bytesPerTileDivMega = float(64 * 1024) / (1000.f * 1000.f);
+            float mbps = tilesPerSecond * bytesPerTileDivMega;
+
+            DebugPrint(L"Gathering final statistics before exiting\n");
 
             m_csvFile->WriteEvents(m_hwnd);
+            *m_csvFile << measuredNumUploads << " " << measuredTime << " " << mbps << " uploads|seconds|bandwidth\n";
             m_csvFile->close();
             m_csvFile = nullptr;
         }
@@ -1338,6 +1305,15 @@ void Scene::GatherStatistics(float in_cpuProcessFeedbackTime, float in_gpuProces
     if ((m_args.m_timingStopFrame > 0) && (m_frameNumber >= m_args.m_timingStopFrame))
     {
         PostQuitMessage(0);
+    }
+
+    m_frameNumber++;
+
+    // start timing and gathering uploads from the very beginning of the timed region
+    if (m_args.m_timingFrameFileName.size() && (m_frameNumber == m_args.m_timingStartFrame))
+    {
+        m_startUploadCount = m_pTileUpdateManager->GetTotalNumUploads();
+        m_cpuTimer.Start();
     }
 }
 
@@ -1356,9 +1332,6 @@ void Scene::Animate()
         }
     }
 
-    // for statistics gathering
-    m_frameNumber++;
-
     // animate camera
     if (m_args.m_cameraAnimationRate)
     {
@@ -1366,7 +1339,7 @@ void Scene::Animate()
 
         if (m_args.m_cameraPaintMixer)
         {
-            m_args.m_cameraRollerCoaster = (0x08 & m_frameNumber);
+            m_args.m_cameraRollerCoaster = (0x04 & m_frameNumber);
         }
 
         static float theta = -XM_PIDIV2;
@@ -1408,27 +1381,24 @@ void Scene::Animate()
     }
 
     // spin objects
-    if (m_args.m_animationRate)
+    
+    // normally rotation would be a function of frame time
+    // however, we wanted reproduceable frames for timing purposes
+    //float rotation = m_args.m_animationRate * GetFrameTime() / 200.0f;
+    float rotation = m_args.m_animationRate * 0.01f;
+
+    for (auto o : m_objects)
     {
-        // WARNING: if rotation amount is based on frametime, we get a feedback situation:
-        // longer frametime leads to larger rotation per frame
-        // a large change to frame contents causes many evictions/loads, affecting frametime...
-        // an increasing frametime increases rotation/frame which increases frame time!
-
-        //float rotation = m_args.m_animationRate * GetFrameTime() / 200.0f;
-        float rotation = m_args.m_animationRate * 0.01f;
-
-        for (auto o : m_objects)
+        if (m_pTerrainSceneObject == o)
         {
-            if (m_pTerrainSceneObject == o)
-            {
-                o->GetModelMatrix() = DirectX::XMMatrixRotationY(rotation) * o->GetModelMatrix();
-            }
-            else if (m_pSky != o)
-            {
-                o->GetModelMatrix() = DirectX::XMMatrixRotationZ(rotation) * o->GetModelMatrix();
-            }
+            o->GetModelMatrix() = DirectX::XMMatrixRotationY(rotation) * o->GetModelMatrix();
         }
+        else if (m_pSky != o)
+        {
+            o->GetModelMatrix() = DirectX::XMMatrixRotationZ(rotation) * o->GetModelMatrix();
+        }
+
+        o->GetCombinedMatrix() = o->GetModelMatrix() * m_viewMatrix * m_projection;
     }
 }
 
@@ -1519,6 +1489,9 @@ bool Scene::Draw()
         m_pTileUpdateManager->UseDirectStorage(m_useDirectStorage);
     }
 
+    // handle any changes to window dimensions or enter/exit full screen
+    Resize();
+
     DrainTiles();
 
     // load more spheres?
@@ -1526,6 +1499,9 @@ bool Scene::Draw()
     LoadSpheres();
 
     m_renderThreadTimes.Set(RenderEvents::FrameBegin);
+
+    // get the total time the GPU spent processing feedback during the previous frame
+    m_gpuProcessFeedbackTime = m_pTileUpdateManager->GetGpuTime();
 
     // prepare to update Feedback & stream textures
     D3D12_CPU_DESCRIPTOR_HANDLE minmipmapDescriptor = CD3DX12_CPU_DESCRIPTOR_HANDLE(m_srvHeap->GetCPUDescriptorHandleForHeapStart(), (UINT)DescriptorHeapOffsets::SHARED_MIN_MIP_MAP, m_srvUavCbvDescriptorSize);
@@ -1539,7 +1515,7 @@ bool Scene::Draw()
     if (m_showFrustum != m_args.m_visualizeFrustum)
     {
         m_showFrustum = m_args.m_visualizeFrustum;
-        static UINT maxUpdates = m_args.m_maxTileUpdatesPerFrame;
+        static bool enableTileUpdates = m_args.m_enableTileUpdates;
         static float samplerLodBias = m_args.m_lodBias;
 
         // stop updating while the frustum is shown
@@ -1556,13 +1532,13 @@ bool Scene::Draw()
 
             m_pFrustumViewer->SetView(m_viewMatrixInverse, scale);
 
-            maxUpdates = m_args.m_maxTileUpdatesPerFrame;
-            m_args.m_maxTileUpdatesPerFrame = 0;
+            enableTileUpdates = m_args.m_enableTileUpdates;
+            m_args.m_enableTileUpdates = false;
             m_args.m_lodBias = -5.0f;
         }
         else
         {
-            m_args.m_maxTileUpdatesPerFrame = maxUpdates;
+            m_args.m_enableTileUpdates = enableTileUpdates;
             m_args.m_lodBias = samplerLodBias;
         }
     }
@@ -1628,36 +1604,10 @@ bool Scene::Draw()
     {
         CreateTerrainViewers();
 
-        float windowHeight = m_viewport.Height / 4.0f;
-        UINT numWindows = UINT(m_viewport.Width) / (UINT)windowHeight;
-        UINT numMips = std::max(UINT(1), numWindows);
-
-        float dim = m_viewport.Width / float(numMips);
-        DirectX::XMFLOAT2 windowSize(dim, dim);
-
-        if (m_args.m_showFeedbackMapVertical)
-        {
-            float guiHeight = 0;
-            if (m_args.m_showUI)
-            {
-                guiHeight = m_pGui->GetHeight();
-                UINT guiWidth = (UINT)m_pGui->GetWidth();
-                numWindows = UINT(m_viewport.Height - guiHeight) / guiWidth;
-                numMips = std::max((UINT)3, numWindows);
-            }
-            dim = float(m_viewport.Height - guiHeight) / numMips;
-            windowSize = DirectX::XMFLOAT2(dim, dim);
-        }
-        DirectX::XMFLOAT2 windowPos(0, windowSize.y);
-
-        m_pTextureViewer->Draw(m_commandList.Get(), windowPos, windowSize,
-            m_viewport,
-            m_args.m_visualizationBaseMip, numMips,
-            m_args.m_showFeedbackMapVertical);
-
-        // residency map
-        windowPos = DirectX::XMFLOAT2(m_viewport.Width - windowSize.x, m_viewport.Height);
-
+        // terrain object's residency map
+        float minDim = std::min(m_viewport.Height, m_viewport.Width) / 5;
+        DirectX::XMFLOAT2 windowPos = DirectX::XMFLOAT2(m_viewport.Width - minDim, m_viewport.Height);
+        DirectX::XMFLOAT2 windowSize = DirectX::XMFLOAT2(minDim, minDim);
         if (m_args.m_showFeedbackViewer)
         {
             m_pMinMipMapViewer->Draw(m_commandList.Get(), windowPos, windowSize, m_viewport);
@@ -1668,13 +1618,36 @@ bool Scene::Draw()
             m_pFeedbackViewer->Draw(m_commandList.Get(), windowPos, windowSize, m_viewport);
 #endif
         }
+
+        // terrain object's texture
+        if (m_args.m_showFeedbackMapVertical)
+        {
+            UINT areaHeight = UINT(m_viewport.Height - minDim);
+            UINT numMips = areaHeight / (UINT)minDim;
+            if (numMips > 1)
+            {
+                windowPos = DirectX::XMFLOAT2(m_viewport.Width - minDim, minDim);
+                m_pTextureViewer->Draw(m_commandList.Get(), windowPos, windowSize,
+                    m_viewport,
+                    m_args.m_visualizationBaseMip, numMips - 1,
+                    m_args.m_showFeedbackMapVertical);
+            }
+        }
+        else
+        {
+            UINT numMips = UINT(m_viewport.Width) / (UINT)minDim;
+            windowPos = DirectX::XMFLOAT2(0, minDim);
+            m_pTextureViewer->Draw(m_commandList.Get(), windowPos, windowSize,
+                m_viewport,
+                m_args.m_visualizationBaseMip, numMips,
+                m_args.m_showFeedbackMapVertical);
+        }
     }
 
     //-------------------------------------------
     // Display UI
     //-------------------------------------------
     float cpuProcessFeedbackTime = m_pTileUpdateManager->GetProcessFeedbackTime();
-    float gpuProcessFeedbackTime = m_pTileUpdateManager->GetGpuTime();
     float gpuDrawTime = m_pGpuTimer->GetTimes()[0].first; // frame draw time
     if (m_args.m_showUI)
     {
@@ -1696,7 +1669,7 @@ bool Scene::Draw()
 
         Gui::DrawParams guiDrawParams;
         guiDrawParams.m_gpuDrawTime = gpuDrawTime;
-        guiDrawParams.m_gpuFeedbackTime = gpuProcessFeedbackTime;
+        guiDrawParams.m_gpuFeedbackTime = m_gpuProcessFeedbackTime;
         {
             // pass in raw cpu frame time and raw # uploads. GUI will keep a running average of bandwidth
             auto a = m_renderThreadTimes.GetLatest();
@@ -1755,7 +1728,7 @@ bool Scene::Draw()
         success = IsDeviceOk(m_swapChain->Present(syncInterval, presentFlags));
 
         // gather statistics before moving to next frame
-        GatherStatistics(cpuProcessFeedbackTime, gpuProcessFeedbackTime);
+        GatherStatistics(cpuProcessFeedbackTime, m_gpuProcessFeedbackTime);
 
         m_renderThreadTimes.Set(RenderEvents::WaitOnFencesBegin);
 

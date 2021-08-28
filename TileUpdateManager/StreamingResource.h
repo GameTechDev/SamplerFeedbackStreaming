@@ -77,6 +77,10 @@ public:
     // must be called between BeginFrame() and EndFrame()
     void ClearAllocations();
 
+    // if an object isn't visible, set all refcounts to 0
+    // this will schedule all tiles to be evicted
+    void QueueEviction() { m_setZeroRefCounts = true; }
+
     //--------------------------------------------
     // for visualization
     //--------------------------------------------
@@ -180,6 +184,9 @@ protected:
 
         // remove all mappings from a heap. useful when removing an object from a scene
         void FreeHeapAllocations(Streaming::Heap* in_pHeap);
+
+        UINT GetWidth(UINT in_s) { return (UINT)m_resident[in_s][0].size(); }
+        UINT GetHeight(UINT in_s) { return (UINT)m_resident[in_s].size(); }
     private:
         template<typename T> using TileRow = std::vector<T>;
         template<typename T> using TileY = std::vector<TileRow<T>>;
@@ -257,7 +264,7 @@ protected:
     struct QueuedFeedback
     {
         UINT64 m_renderFenceForFeedback{ UINT_MAX };
-        bool m_feedbackQueued{ false };
+        std::atomic<bool> m_feedbackQueued{ false }; // written by render thread, read by UpdateFeedback() thread
     };
     std::vector<QueuedFeedback> m_queuedFeedback;
 
@@ -302,4 +309,8 @@ private:
     void QueuePendingTileLoads(Streaming::UpdateList* out_pUpdateList); // returns # tiles queued
 
     void PadPackedMips(ID3D12Device* in_pDevice);
+
+    // used by QueueEviction()
+    std::atomic<bool> m_setZeroRefCounts{ false };
+    bool m_refCountsZero{ true };
 };

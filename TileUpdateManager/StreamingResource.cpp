@@ -34,9 +34,6 @@
 using Streaming::HeapAllocator;
 using Streaming::DataUploader;
 
-// focus uploads on lower-res mips first
-#define SORT_PENDING_LOADS_BY_MIP 0
-
 /*-----------------------------------------------------------------------------
 * Rules regarding order of operations:
 *
@@ -422,70 +419,135 @@ void StreamingResource::SetResidencyChanged()
 //-----------------------------------------------------------------------------
 void StreamingResource::ProcessFeedback(UINT64 in_frameFenceCompletedValue)
 {
-    // deterimine if there is feedback to process
-    UINT feedbackIndex = 0;
-    bool feedbackToProcess = false;
-    UINT64 bestFeedback = m_queuedFeedback[0].m_renderFenceForFeedback;
-    for (UINT i = 0; i < (UINT)m_queuedFeedback.size(); i++)
-    {
-        if (m_queuedFeedback[i].m_feedbackQueued)
-        {
-            UINT64 feedbackFenceValue = m_queuedFeedback[i].m_renderFenceForFeedback;
-            if ((in_frameFenceCompletedValue >= feedbackFenceValue) &&
-                (bestFeedback <= feedbackFenceValue))
-            {
-                feedbackIndex = i;
-                feedbackToProcess = true;
-                bestFeedback = feedbackFenceValue;
+    bool changed = false;
+    const UINT width = GetNumTilesWidth();
+    const UINT height = GetNumTilesHeight();
 
-                // this feedback will either be used or skipped. either way it is "consumed"
-                m_queuedFeedback[feedbackIndex].m_feedbackQueued = false;
+    if (m_setZeroRefCounts)
+    {
+        m_setZeroRefCounts = false;
+
+        // has this resource already been zeroed? don't clear again, early exit
+        // this is set to false if "changed" due to feedback below
+        if (m_refCountsZero)
+        {
+            return;
+        }
+        m_refCountsZero = true;
+
+        // all prior feedback is irrelevant
+        for (auto& f : m_queuedFeedback)
+        {
+            f.m_feedbackQueued = false;
+        }
+
+        // since we're evicting everything, don't need to loop over the reference count structure
+        // just set it all to max mip, then schedule eviction any tiles that have refcounts
+
+        // set everything to max mip
+        memset(m_tileReferences.data(), m_maxMip, m_tileReferences.size());
+
+        // queue all resident tiles for eviction
+        for (UINT s = 0; s < m_maxMip; s++)
+        {
+            for (UINT y = 0; y < m_tileMappingState.GetHeight(s); y++)
+            {
+                for (UINT x = 0; x < m_tileMappingState.GetWidth(s); x++)
+                {
+                    auto& refCount = m_tileMappingState.GetRefCount(x, y, s);
+                    if (refCount)
+                    {
+                        changed = true;
+                        refCount = 0;
+                        m_pendingEvictions.Append(D3D12_TILED_RESOURCE_COORDINATE{ x, y, 0, s });
+                    }
+                }
+            }
+        }    
+
+        // abandon all pending loads - all refcounts are 0
+        m_pendingTileLoads.clear();
+    }
+    else
+    {
+        // will set to (index + 1) when valid
+        UINT feedbackIndex = 0;
+
+        //------------------------------------------------------------------
+        // deterimine if there is feedback to process
+        // if there is more than one feedback ready to process (unlikely), only use the most recent one
+        //------------------------------------------------------------------
+        {
+            UINT64 latestFeedbackFenceValue = 0;
+            for (UINT i = 0; i < (UINT)m_queuedFeedback.size(); i++)
+            {
+                if (m_queuedFeedback[i].m_feedbackQueued)
+                {
+                    UINT64 feedbackFenceValue = m_queuedFeedback[i].m_renderFenceForFeedback;
+                    if ((in_frameFenceCompletedValue >= feedbackFenceValue) &&
+                        ((!feedbackIndex) || (latestFeedbackFenceValue <= feedbackFenceValue)))
+                    {
+                        feedbackIndex = i + 1;
+                        latestFeedbackFenceValue = feedbackFenceValue;
+
+                        // this feedback will either be used or skipped. either way it is "consumed"
+                        m_queuedFeedback[i].m_feedbackQueued = false;
+                    }
+                }
+            }
+
+            // no new feedback?
+            if (!feedbackIndex)
+            {
+                return;
             }
         }
-    }
 
-    // no new feedback?
-    if (!feedbackToProcess)
-    {
-        return;
-    }
-
-    //------------------------------------------------------------------
-    // update the refcount of each tile based on feedback
-    //------------------------------------------------------------------
-    bool changed = false;
-    {
-        // mapped host feedback buffer
-        UINT8* pResolvedData = nullptr;
-        ID3D12Resource* pResolvedResource = m_resources->GetResolvedReadback(feedbackIndex);
-        pResolvedResource->Map(0, nullptr, (void**)&pResolvedData);
-
-        const UINT width = GetNumTilesWidth();
-        const UINT height = GetNumTilesHeight();
-
-        TileReference* pTileRow = m_tileReferences.data();
-        for (UINT y = 0; y < height; y++)
+        //------------------------------------------------------------------
+        // update the refcount of each tile based on feedback
+        //------------------------------------------------------------------
         {
-            for (UINT x = 0; x < width; x++)
+            // mapped host feedback buffer
+            UINT8* pResolvedData = nullptr;
+            ID3D12Resource* pResolvedResource = m_resources->GetResolvedReadback(feedbackIndex - 1);
+            pResolvedResource->Map(0, nullptr, (void**)&pResolvedData);
+
+            TileReference* pTileRow = m_tileReferences.data();
+            for (UINT y = 0; y < height; y++)
             {
-                // clamp to the maximum we are tracking (not tracking packed mips)
-                UINT8 desired = std::min(pResolvedData[x], m_maxMip);
-                UINT8 initialValue = pTileRow[x];
-                if (desired != initialValue) { changed = true; }
-                SetMinMip(initialValue, x, y, desired);
-                pTileRow[x] = desired;
-            } // end loop over x
-            pTileRow += width;
+                for (UINT x = 0; x < width; x++)
+                {
+                    // clamp to the maximum we are tracking (not tracking packed mips)
+                    UINT8 desired = std::min(pResolvedData[x], m_maxMip);
+                    UINT8 initialValue = pTileRow[x];
+                    if (desired != initialValue) { changed = true; }
+                    SetMinMip(initialValue, x, y, desired);
+                    pTileRow[x] = desired;
+                } // end loop over x
+                pTileRow += width;
 #if RESOLVE_TO_TEXTURE
-            pResolvedData += std::max((UINT)256, width);
+                pResolvedData += std::max((UINT)256, width);
 #else
-            pResolvedData += width;
+                pResolvedData += width;
 #endif
 
-        } // end loop over y
+            } // end loop over y
 
-        D3D12_RANGE emptyRange{ 0,0 };
-        pResolvedResource->Unmap(0, &emptyRange);
+            D3D12_RANGE emptyRange{ 0,0 };
+            pResolvedResource->Unmap(0, &emptyRange);
+        }
+
+        // if there was a change, then it's no longer "zeroed"
+        if (changed)
+        {
+            m_refCountsZero = false;
+        }
+
+        // abandon pending loads that are no longer relevant
+        AbandonPending();
+
+        // clear pending evictions that are no longer relevant
+        m_pendingEvictions.Rescue(m_tileMappingState);
     }
 
     // update min mip map to adjust to new references
@@ -494,21 +556,6 @@ void StreamingResource::ProcessFeedback(UINT64 in_frameFenceCompletedValue)
     {
         SetResidencyChanged();
     }
-
-    // abandon pending loads that are no longer relevant
-    AbandonPending();
-
-    // clear pending evictions that are no longer relevant
-    m_pendingEvictions.Rescue(m_tileMappingState);
-
-#if SORT_PENDING_LOADS_BY_MIP
-    // prefer to load lower-resolution mips first
-    std::sort(m_pendingTileLoads.begin(), m_pendingTileLoads.end(),
-        [](const D3D12_TILED_RESOURCE_COORDINATE& a, const D3D12_TILED_RESOURCE_COORDINATE& b) -> bool
-        {
-            return a.Subresource > b.Subresource;
-        });
-#endif
 }
 
 //-----------------------------------------------------------------------------
@@ -760,8 +807,8 @@ void StreamingResource::UpdateMinMipMap()
         const UINT width = GetNumTilesWidth();
         const UINT height = GetNumTilesHeight();
 
-        // FIXME: disabled optimization that seems like it must introduce artifacts on corner cases.
-#if 1
+#if 0
+        // FIXME? disabled optimization that seems like it must introduce artifacts on corner cases.
         const UINT8 minResidentMip = (UINT8)m_tileMappingState.GetNumSubresources();
 #else
         // a simple optimization that's especially effective for large textures
@@ -932,8 +979,8 @@ void Streaming::StreamingResourceTUM::ResolveFeedback(ID3D12GraphicsCommandList1
 
     // remember that feedback was queued, and which frame it was queued in.
     auto& f = m_queuedFeedback[m_readbackIndex];
-    f.m_feedbackQueued = true;
     f.m_renderFenceForFeedback = m_pTileUpdateManager->GetFrameFenceValue();
+    f.m_feedbackQueued = true;
 
     m_resources->ResolveFeedback(out_pCmdList, m_readbackIndex);
 }

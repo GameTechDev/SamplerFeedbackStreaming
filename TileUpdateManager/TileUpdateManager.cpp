@@ -106,7 +106,7 @@ TileUpdateManager::~TileUpdateManager()
 const TileUpdateManager::BatchTimes& TileUpdateManager::GetBatchTimes() const { return m_pDataUploader->GetStreamingTimes(); }
 float TileUpdateManager::GetGpuStreamingTime() const { return m_pDataUploader->GetGpuStreamingTime(); }
 
-// feedback resolve + readback
+// the total time the GPU spent resolving feedback during the previous frame
 float TileUpdateManager::GetGpuTime() const { return m_gpuTimerResolve.GetTimes()[m_renderFrameIndex].first; }
 UINT TileUpdateManager::GetTotalNumUploads() const { return m_pDataUploader->GetTotalNumUploads(); }
 UINT TileUpdateManager::GetTotalNumEvictions() const { return m_pDataUploader->GetTotalNumEvictions(); }

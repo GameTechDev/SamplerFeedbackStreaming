@@ -41,7 +41,7 @@
 Gui::Gui(HWND in_hWnd, ID3D12Device* in_pDevice,
     ID3D12DescriptorHeap* in_pSrvHeap, const UINT in_rootSigSlot,
     const UINT in_swapChainBufferCount, const DXGI_FORMAT in_swapChainFormat,
-    CommandLineArgs& in_args) :
+    const std::wstring& in_adapterDescription, CommandLineArgs& in_args) :
     m_initialArgs(in_args)
     , m_srvHeap(in_pSrvHeap)
     , m_width(300)
@@ -63,6 +63,9 @@ Gui::Gui(HWND in_hWnd, ID3D12Device* in_pDevice,
 
     ImGui_ImplDX12_Init(in_pDevice, in_swapChainBufferCount, in_swapChainFormat, in_pSrvHeap, cpu, gpu);
     ImGui_ImplDX12_CreateDeviceObjects();
+
+    m_adapterDescription.resize(in_adapterDescription.size());
+    ::WideCharToMultiByte(CP_UTF8, 0, in_adapterDescription.data(), -1, m_adapterDescription.data(), (int)m_adapterDescription.size(), NULL, NULL);
 }
 
 //-----------------------------------------------------------------------------
@@ -103,6 +106,16 @@ void Gui::DrawHeapOccupancyBar(UINT in_numTilesCommitted, UINT in_totalHeapSize,
 }
 
 //-----------------------------------------------------------------------------
+// compute MB/s in a consistent way across UI
+//-----------------------------------------------------------------------------
+float Gui::ComputeBandwidth(UINT in_numTiles, float in_numSeconds)
+{
+    float tilesPerSecond = float(in_numTiles) / in_numSeconds;
+    float bytesPerTileDivMega = float(64 * 1024) / (1000.f * 1000.f);
+    return (tilesPerSecond * bytesPerTileDivMega);
+}
+
+//-----------------------------------------------------------------------------
 // draw a line graph of the provided ring buffer of values
 //-----------------------------------------------------------------------------
 void Gui::DrawLineGraph(const std::vector<float>& in_ringBuffer, UINT in_head, const ImVec2 in_windowDim)
@@ -121,9 +134,8 @@ void Gui::DrawLineGraph(const std::vector<float>& in_ringBuffer, UINT in_head, c
     ASSERT(m_cpuTimes.GetNumEntries() == m_numUploads.GetNumEntries());
 
     auto numTiles = m_numUploads.GetRange();
-    auto numMBytes = numTiles * 64.f / 1024.f;
-    float timeSeconds = m_cpuTimer.GetSecondsFromDelta(m_cpuTimes.GetRange());
-    float averageMBperS = numMBytes / timeSeconds;
+    float seconds = m_cpuTimer.GetSecondsFromDelta(m_cpuTimes.GetRange());
+    float mbps = ComputeBandwidth((UINT)numTiles, seconds);
 
     float graphMin = 0.0f;
     float graphMax = 0.0f;
@@ -141,7 +153,7 @@ void Gui::DrawLineGraph(const std::vector<float>& in_ringBuffer, UINT in_head, c
 
     std::stringstream overlay;
     overlay.setf(std::ios::fixed, std::ios::floatfield);
-    overlay << "Bandwidth (MB/s) avg = " << std::setprecision(3) << std::setw(9) << averageMBperS;
+    overlay << "Bandwidth (MB/s) avg = " << std::setprecision(3) << std::setw(9) << mbps;
     ImGui::PlotLines("Label", drawBuffer.data(), (int)drawBuffer.size(), 0, overlay.str().c_str(), graphMin, graphMaxScale, in_windowDim);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Bandwidth (MB/s) max: %.2f, scale: %.2f", graphMax, graphMaxScale);
 
@@ -155,11 +167,8 @@ void Gui::DrawLineGraph(const std::vector<float>& in_ringBuffer, UINT in_head, c
 //-----------------------------------------------------------------------------
 void Gui::UpdateBandwidthHistory(UINT in_numTilesUploaded)
 {
-    float cpuTimeDelta = m_cpuTimer.GetSecondsFromDelta(m_cpuTimes.GetMostRecentDelta());
-
-    float bandwidth = in_numTilesUploaded * 65536.f / cpuTimeDelta; // bytes / second
-    bandwidth *= (1.f) / (1024 * 1024); // bytes / s * 1MB / 1M bytes = MB/s
-    m_bandwidthHistory[m_bandwidthHistoryIndex] = bandwidth;
+    float seconds = m_cpuTimer.GetSecondsFromDelta(m_cpuTimes.GetMostRecentDelta());
+    m_bandwidthHistory[m_bandwidthHistoryIndex] = ComputeBandwidth(in_numTilesUploaded, seconds);
     m_bandwidthHistoryIndex = (m_bandwidthHistoryIndex + 1) % m_bandwidthHistory.size();
 }
 
@@ -246,25 +255,27 @@ void Gui::Draw(ID3D12GraphicsCommandList* in_pCommandList,
     ImGui::SetWindowPos(v);
     ImGui::SetWindowSize(windowSize);
 
+    ImGui::Text(m_adapterDescription.data());
+
     ImGui::SliderFloat("Spin", &in_args.m_animationRate, 0, 2.0f);
     ImGui::SliderFloat("Camera", &in_args.m_cameraAnimationRate, 0, 2.0f);
+    ImGui::Checkbox("Roller Coaster", &in_args.m_cameraRollerCoaster);
 
-    if (in_args.m_cameraAnimationRate) { ImGui::Checkbox("Roller Coaster", &in_args.m_cameraRollerCoaster); }
     ImGui::SliderFloat("Bias", &in_args.m_lodBias, -2.0f, 4.0f);
 
-    ImGui::SliderInt("Max Updates", &in_args.m_maxTileUpdatesPerFrame, 0, m_initialArgs.m_maxTileUpdatesPerFrame);
     ImGui::SliderFloat("Feedback ms", &in_args.m_maxGpuFeedbackTimeMs, 0, 30);
     
     const char* visualizationModes[] = { "Texture", "Color = Mip", "Random Tile Color" };
     ImGui::Combo("Visualize", &in_args.m_dataVisualizationMode, visualizationModes, _countof(visualizationModes));
 
     ImGui::Checkbox("Color MinMip", &in_args.m_visualizeMinMip);
+    ImGui::Checkbox("Uploads Enabled", &in_args.m_enableTileUpdates);
     ImGui::Checkbox("Drain Tiles", &in_args.m_drainTiles);
     ImGui::Checkbox("Lock Frustum", &in_args.m_visualizeFrustum);
     ImGui::Checkbox("Update Every Object Every Frame", &in_args.m_updateEveryObjectEveryFrame);
+    ImGui::Checkbox("VSync", &in_args.m_vsyncEnabled);
     ImGui::Checkbox("Lock \"Up\" Dir", &in_args.m_cameraUpLock);
     ImGui::SliderInt("Num Objects", &in_args.m_numSpheres, 0, (int)in_args.m_maxNumObjects);
-    ImGui::Checkbox("VSync", &in_args.m_vsyncEnabled);
 
 #if 0
     // FIXME: turn this on when DirectStorage is public
@@ -291,8 +302,6 @@ void Gui::Draw(ID3D12GraphicsCommandList* in_pCommandList,
 
     DrawLineGraph(m_bandwidthHistory, m_bandwidthHistoryIndex, ImVec2(m_width, 50.0f));
 
-    ImGui::Text("# Tile Uploads: %d", in_drawParams.m_numTilesUploaded);
-    ImGui::Text("# Tile Evictions: %d", in_drawParams.m_numTilesEvicted);
     ImGui::Text("Reserved KB: %d", (in_drawParams.m_numTilesVirtual * 64));
     ImGui::Text("Committed KB: %d (%.2f %%)", (in_drawParams.m_numTilesCommitted * 64), 100.f * float(in_drawParams.m_numTilesCommitted) / float(in_drawParams.m_numTilesVirtual));
 
@@ -301,13 +310,27 @@ void Gui::Draw(ID3D12GraphicsCommandList* in_pCommandList,
 
     DrawHeapOccupancyBar(in_drawParams.m_numTilesCommitted, in_drawParams.m_totalHeapSize, 10.0f);
 
-    ImGui::Separator();
     ImGui::Checkbox("Feedback Viewer", &in_args.m_showFeedbackMaps);
     if (in_args.m_showFeedbackMaps)
     {
         ImGui::Checkbox("Mip Window Orientation", &in_args.m_showFeedbackMapVertical);
         ImGui::Checkbox("Raw Feedback", &in_args.m_showFeedbackViewer);
         ImGui::SliderInt("Viewer Mips", &in_args.m_visualizationBaseMip, 0, in_drawParams.m_scrollMipDim);
+    }
+
+    if (ImGui::Button("BENCHMARK MODE", ImVec2(m_width, 0)))
+    {
+        static bool paintmixer = true;
+        static float bias = -2;
+        static float cameraRate = 2;
+        static float animationRate = 2;
+
+        std::swap(paintmixer, in_args.m_cameraPaintMixer);
+        std::swap(bias, in_args.m_lodBias);
+        std::swap(cameraRate, in_args.m_cameraAnimationRate);
+        std::swap(animationRate, in_args.m_animationRate);
+        in_args.m_showFeedbackMaps = false;
+        in_args.m_numSpheres = (int)m_initialArgs.m_maxNumObjects;
     }
 
     // resize the UI to fit the dynamically-sized components

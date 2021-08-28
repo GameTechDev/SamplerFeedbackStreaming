@@ -147,7 +147,7 @@ namespace Streaming
         //-------------------------------------------
         // statistics
         //-------------------------------------------
-        UINT m_numTotalEvictions{ 0 };
-        UINT m_numTotalUploads{ 0 };
+        std::atomic<UINT> m_numTotalEvictions{ 0 };
+        std::atomic<UINT> m_numTotalUploads{ 0 };
     };
 }
