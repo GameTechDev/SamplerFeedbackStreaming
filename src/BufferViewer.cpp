@@ -62,13 +62,15 @@ BufferViewer::BufferViewer(
         bufferViewDesc.Buffer.NumElements = (UINT)in_pBuffer->GetDesc().Width;
     }
 
+    m_constants.resize(sizeof(BufferViewerConstantBuffer) / sizeof(UINT32));
+
     CreateResources(
         in_pBuffer, bufferViewDesc,
         in_swapChainFormat,
         in_pDescriptorHeap, in_descriptorOffset,
-        sizeof(BufferViewerConstantBuffer), L"BufferViewer.hlsl", psEntryPoint);
+        L"BufferViewer.hlsl", psEntryPoint);
 
-    BufferViewerConstantBuffer* pConstants = (BufferViewerConstantBuffer*)m_pConstantBufferData;
+    BufferViewerConstantBuffer* pConstants = (BufferViewerConstantBuffer*)m_constants.data();
 
     pConstants->bufferWidth = in_width;
     pConstants->bufferHeight = in_height;
@@ -88,7 +90,7 @@ void BufferViewer::Draw(ID3D12GraphicsCommandList* in_pCL,
         return;
     }
 
-    BufferViewerConstantBuffer* pConstants = (BufferViewerConstantBuffer*)m_pConstantBufferData;
+    BufferViewerConstantBuffer* pConstants = (BufferViewerConstantBuffer*)m_constants.data();
 
     pConstants->x = 2 * float(in_position.x) / in_viewPort.Width;
     pConstants->y = 2 * float(in_position.y) / in_viewPort.Height;

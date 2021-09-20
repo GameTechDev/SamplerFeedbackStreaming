@@ -46,8 +46,8 @@ struct ConstantBuffer
 {
     float x, y, width, height;
     float gap;
-    int visBaseMip;
-    bool vertical;
+    float visBaseMip;
+    UINT32 vertical;
 };
 
 //-----------------------------------------------------------------------------
@@ -67,7 +67,7 @@ void TextureViewer::CreateResources(
     ID3D12Resource* in_pResource, D3D12_SHADER_RESOURCE_VIEW_DESC& in_desc,
     const DXGI_FORMAT in_swapChainFormat,
     ID3D12DescriptorHeap* in_pDescriptorHeap, INT in_descriptorOffset,
-    UINT in_constantBufferSize, const wchar_t* in_pShaderFileName, const char* in_psEntryPoint)
+    const wchar_t* in_pShaderFileName, const char* in_psEntryPoint)
 {
     in_pResource->GetDevice(IID_PPV_ARGS(&m_device));
     m_descriptorOffset = in_descriptorOffset;
@@ -87,7 +87,8 @@ void TextureViewer::CreateResources(
             m_descriptorOffset);
 
         CD3DX12_ROOT_PARAMETER1 rootParameters[ROOT_SIG_NUM_DESCRIPTORS] = {};
-        rootParameters[ROOT_SIG_CONSTANT_BUFFER].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
+
+        rootParameters[ROOT_SIG_CONSTANT_BUFFER].InitAsConstants((UINT)m_constants.size(), 0, 0, D3D12_SHADER_VISIBILITY_ALL);
         rootParameters[ROOT_SIG_SRV_TABLE].InitAsDescriptorTable(_countof(ranges), ranges, D3D12_SHADER_VISIBILITY_PIXEL);
 
         CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
@@ -126,7 +127,7 @@ void TextureViewer::CreateResources(
             m_descriptorOffset = 0;
 
             D3D12_DESCRIPTOR_HEAP_DESC descriptorHeapDesc = { };
-            descriptorHeapDesc.NumDescriptors = ROOT_SIG_NUM_DESCRIPTORS;
+            descriptorHeapDesc.NumDescriptors = 1;
             descriptorHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
             descriptorHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
             ThrowIfFailed(m_device->CreateDescriptorHeap(&descriptorHeapDesc, IID_PPV_ARGS(&m_descriptorHeap)));
@@ -200,24 +201,6 @@ void TextureViewer::CreateResources(
 
         hr = m_device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_pipelineState));
     }
-
-    //-------------------------------------------------------------------------
-    // Create the vertex shader's constant buffer
-    //-------------------------------------------------------------------------
-    {
-        const auto heapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-        const auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(in_constantBufferSize);
-        ThrowIfFailed(m_device->CreateCommittedResource(
-            &heapProperties,
-            D3D12_HEAP_FLAG_NONE,
-            &resourceDesc,
-            D3D12_RESOURCE_STATE_GENERIC_READ,
-            nullptr,
-            IID_PPV_ARGS(&m_constantBuffer)
-        ));
-
-        ThrowIfFailed(m_constantBuffer->Map(0, nullptr, reinterpret_cast<void**>(&m_pConstantBufferData)));
-    }
 }
 
 //-----------------------------------------------------------------------------
@@ -237,18 +220,19 @@ TextureViewer::TextureViewer(
     textureViewDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
     textureViewDesc.Texture2D.MipLevels = resourceDesc.MipLevels;
 
+    m_constants.resize(sizeof(ConstantBuffer) / sizeof(UINT32));
+
     CreateResources(
         in_pResource, textureViewDesc,
         in_swapChainFormat,
         in_pDescriptorHeap, in_descriptorOffset,
-        sizeof(ConstantBuffer), L"TextureViewer.hlsl");
+        L"TextureViewer.hlsl");
 }
 
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 TextureViewer::~TextureViewer()
 {
-    m_constantBuffer->Unmap(0, nullptr);
 }
 
 //-----------------------------------------------------------------------------
@@ -266,7 +250,6 @@ void TextureViewer::DrawWindows(ID3D12GraphicsCommandList* in_pCL, D3D12_VIEWPOR
     in_pCL->SetGraphicsRootSignature(m_rootSignature.Get());
     in_pCL->SetPipelineState(m_pipelineState.Get());
 
-    in_pCL->SetGraphicsRootConstantBufferView(ROOT_SIG_CONSTANT_BUFFER, m_constantBuffer->GetGPUVirtualAddress());
     in_pCL->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
 
     ID3D12DescriptorHeap* ppHeaps[] = { m_descriptorHeap.Get() };
@@ -275,10 +258,10 @@ void TextureViewer::DrawWindows(ID3D12GraphicsCommandList* in_pCL, D3D12_VIEWPOR
     in_pCL->IASetIndexBuffer(nullptr);
     in_pCL->IASetVertexBuffers(0, 0, nullptr);
 
+    in_pCL->SetGraphicsRoot32BitConstants(ROOT_SIG_CONSTANT_BUFFER, (UINT)m_constants.size(), m_constants.data(), 0);
     in_pCL->SetGraphicsRootDescriptorTable(ROOT_SIG_SRV_TABLE, (m_descriptorHeap->GetGPUDescriptorHandleForHeapStart()));
 
     in_pCL->DrawInstanced(4 * in_numWindows, 1, 0, 0);
-
 }
 
 //-----------------------------------------------------------------------------
@@ -300,15 +283,16 @@ void TextureViewer::Draw(ID3D12GraphicsCommandList* in_pCL,
         in_visualizationBaseMip = m_numMips - in_numMips;
     }
 
-    m_pConstantBufferData->x = 2 * float(in_position.x) / in_viewPort.Width;
-    m_pConstantBufferData->y = 2 * float(in_position.y) / in_viewPort.Height;
+    ConstantBuffer* pConstants = (ConstantBuffer*)m_constants.data();
+    pConstants->x = 2 * float(in_position.x) / in_viewPort.Width;
+    pConstants->y = 2 * float(in_position.y) / in_viewPort.Height;
 
-    m_pConstantBufferData->width = in_windowDim.x / in_viewPort.Width;
-    m_pConstantBufferData->height = in_windowDim.y / in_viewPort.Height;
-    m_pConstantBufferData->gap = 2.0f / in_viewPort.Height;
+    pConstants->width = in_windowDim.x / in_viewPort.Width;
+    pConstants->height = in_windowDim.y / in_viewPort.Height;
+    pConstants->gap = 2.0f / in_viewPort.Height;
 
-    m_pConstantBufferData->visBaseMip = in_visualizationBaseMip;
-    m_pConstantBufferData->vertical = in_vertical;
+    pConstants->visBaseMip = (float)in_visualizationBaseMip;
+    pConstants->vertical = in_vertical ? 1 : 0;
 
     DrawWindows(in_pCL, in_viewPort, in_numMips);
 }

@@ -80,6 +80,12 @@ private:
     UINT m_bandwidthHistoryIndex{ 0 };
     void UpdateBandwidthHistory(UINT in_numTilesUploaded);
 
+    bool m_benchmarkMode{ false };
+    void ToggleBenchmarkMode(CommandLineArgs& in_args);
+
+    bool m_demoMode{ false };
+    void ToggleDemoMode(CommandLineArgs& in_args);
+
     float ComputeBandwidth(UINT in_numTiles, float in_numSeconds);
 
     void DrawLineGraph(const std::vector<float>& in_ringBuffer, UINT in_head, const ImVec2 in_windowDim);

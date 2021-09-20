@@ -619,11 +619,15 @@ void StreamingResource::QueueTiles()
             // rarely will have an empty updatelist, due to pending evictions or loads. let a different resource update.
             else
             {
+                ASSERT(0 == pUpdateList->GetNumStandardUpdates());
+                ASSERT(0 == pUpdateList->GetNumPackedUpdates());
+                ASSERT(0 == pUpdateList->m_evictCoords.size());
+
                 m_pTileUpdateManager->FreeEmptyUpdateList(*pUpdateList);
                 break;
             }
         }
-        // if we don't break, this will keep trying until all uploads are satisfied
+        // if we don't break, this will keep trying to allocate UpdateLists until all uploads are satisfied
         // but, no other update list can make progress either
         else
         {
@@ -807,8 +811,8 @@ void StreamingResource::UpdateMinMipMap()
         const UINT width = GetNumTilesWidth();
         const UINT height = GetNumTilesHeight();
 
+        // FIXME: disabled optimization that seems like it must introduce artifacts on corner cases.
 #if 0
-        // FIXME? disabled optimization that seems like it must introduce artifacts on corner cases.
         const UINT8 minResidentMip = (UINT8)m_tileMappingState.GetNumSubresources();
 #else
         // a simple optimization that's especially effective for large textures

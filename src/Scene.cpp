@@ -1116,7 +1116,6 @@ UINT Scene::DetermineMaxNumFeedbackResolves()
 //-----------------------------------------------------------------------------
 void Scene::DrawObjects()
 {
-    GpuScopeTimer gpuScopeTimer(m_pGpuTimer, m_commandList.Get(), "GPU Frame Time");
     if (0 == m_objects.size())
     {
         return;
@@ -1476,127 +1475,43 @@ void Scene::DeleteTerrainViewers()
 
 //-------------------------------------------------------------------------
 //-------------------------------------------------------------------------
-bool Scene::Draw()
+void Scene::StartScene()
 {
-    if (m_deviceRemoved)
+    // the first 0..(m_swapBufferCount-1) rtv handles point to the swap chain
+    // there is one rtv in the rtv heap that points to the color buffer, at offset m_swapBufferCount:
+    const CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), m_swapBufferCount, m_rtvDescriptorSize);
+    const CD3DX12_CPU_DESCRIPTOR_HANDLE dsvHandle(m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
+    ID3D12DescriptorHeap* ppHeaps[] = { m_srvHeap.Get(), m_samplerHeap.Get() };
+    m_commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+
+    m_commandList->OMSetRenderTargets(1, &rtvHandle, TRUE, &dsvHandle);
+
+    m_commandList->ClearRenderTargetView(rtvHandle, m_clearColor, 0, nullptr);
+    m_commandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+
+    m_commandList->RSSetViewports(1, &m_viewport);
+    m_commandList->RSSetScissorRects(1, &m_scissorRect);
+
+    SetSampler();
+    m_pFrameConstantData->g_view = m_viewMatrix;
+    m_pFrameConstantData->g_visualizeFeedback = m_args.m_visualizeMinMip;
+
+    if (m_args.m_lightFromView)
     {
-        return false;
+        auto transposeView = DirectX::XMMatrixTranspose(m_viewMatrix);
+        DirectX::XMVECTOR lookDir = DirectX::XMVectorNegate(transposeView.r[2]);
+        m_pFrameConstantData->g_lightDir = (XMFLOAT4&)lookDir;
     }
-
-    if (m_useDirectStorage != m_args.m_useDirectStorage)
+    else
     {
-        m_useDirectStorage = m_args.m_useDirectStorage;
-        m_pTileUpdateManager->UseDirectStorage(m_useDirectStorage);
+        m_pFrameConstantData->g_lightDir = XMFLOAT4(-0.449135751f, 0.656364977f, 0.25f, 0);
     }
+}
 
-    // handle any changes to window dimensions or enter/exit full screen
-    Resize();
-
-    DrainTiles();
-
-    // load more spheres?
-    // SceneResource destruction/creation must be done outside of BeginFrame/EndFrame
-    LoadSpheres();
-
-    m_renderThreadTimes.Set(RenderEvents::FrameBegin);
-
-    // get the total time the GPU spent processing feedback during the previous frame
-    m_gpuProcessFeedbackTime = m_pTileUpdateManager->GetGpuTime();
-
-    // prepare to update Feedback & stream textures
-    D3D12_CPU_DESCRIPTOR_HANDLE minmipmapDescriptor = CD3DX12_CPU_DESCRIPTOR_HANDLE(m_srvHeap->GetCPUDescriptorHandleForHeapStart(), (UINT)DescriptorHeapOffsets::SHARED_MIN_MIP_MAP, m_srvUavCbvDescriptorSize);
-    m_pTileUpdateManager->BeginFrame(m_srvHeap.Get(), minmipmapDescriptor);
-
-    Animate();
-
-    //-------------------------------------------
-    // frustum visualization
-    //-------------------------------------------
-    if (m_showFrustum != m_args.m_visualizeFrustum)
-    {
-        m_showFrustum = m_args.m_visualizeFrustum;
-        static bool enableTileUpdates = m_args.m_enableTileUpdates;
-        static float samplerLodBias = m_args.m_lodBias;
-
-        // stop updating while the frustum is shown
-        if (m_showFrustum)
-        {
-            // stop spinning
-            m_args.m_animationRate = 0;
-
-            XMVECTOR lookDir = m_viewMatrixInverse.r[2];
-            XMVECTOR pos = m_viewMatrixInverse.r[3];
-                
-            // scale to something within universe scale
-            float scale = SharedConstants::SPHERE_SCALE * 2.5;
-
-            m_pFrustumViewer->SetView(m_viewMatrixInverse, scale);
-
-            enableTileUpdates = m_args.m_enableTileUpdates;
-            m_args.m_enableTileUpdates = false;
-            m_args.m_lodBias = -5.0f;
-        }
-        else
-        {
-            m_args.m_enableTileUpdates = enableTileUpdates;
-            m_args.m_lodBias = samplerLodBias;
-        }
-    }
-
-    //-------------------------------------------
-    // set rendering state
-    //-------------------------------------------
-    {
-        m_commandAllocators[m_frameIndex]->Reset();
-        m_commandList->Reset((ID3D12CommandAllocator*)m_commandAllocators[m_frameIndex].Get(), nullptr);
-
-        // the first 0..(m_swapBufferCount-1) rtv handles point to the swap chain
-        // there is one rtv in the rtv heap that points to the color buffer, at offset m_swapBufferCount:
-        const CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), m_swapBufferCount, m_rtvDescriptorSize);
-        const CD3DX12_CPU_DESCRIPTOR_HANDLE dsvHandle(m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
-        ID3D12DescriptorHeap* ppHeaps[] = { m_srvHeap.Get(), m_samplerHeap.Get() };
-        m_commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
-
-        m_commandList->OMSetRenderTargets(1, &rtvHandle, TRUE, &dsvHandle);
-
-        m_commandList->ClearRenderTargetView(rtvHandle, m_clearColor, 0, nullptr);
-        m_commandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
-
-        m_commandList->RSSetViewports(1, &m_viewport);
-        m_commandList->RSSetScissorRects(1, &m_scissorRect);
-
-        SetSampler();
-        m_pFrameConstantData->g_view = m_viewMatrix;
-        m_pFrameConstantData->g_visualizeFeedback = m_args.m_visualizeMinMip;
-
-        if (m_args.m_lightFromView)
-        {
-            auto transposeView = DirectX::XMMatrixTranspose(m_viewMatrix);
-            DirectX::XMVECTOR lookDir = DirectX::XMVectorNegate(transposeView.r[2]);
-            m_pFrameConstantData->g_lightDir = (XMFLOAT4&)lookDir;
-        }
-        else
-        {
-            m_pFrameConstantData->g_lightDir = XMFLOAT4(-0.449135751f, 0.656364977f, 0.25f, 0);
-        }
-    }
-
-    DrawObjects();
-
-    if (m_showFrustum)
-    {
-        XMMATRIX combinedTransform = XMMatrixMultiply(m_viewMatrix, m_projection);
-        m_pFrustumViewer->Draw(m_commandList.Get(), combinedTransform, m_fieldOfView, m_aspectRatio);
-    }
-
-    //-------------------------------------------
-    // MSAA resolve
-    //-------------------------------------------
-    {
-        GpuScopeTimer msaaScopeTimer(m_pGpuTimer, m_commandList.Get(), "GPU MSAA resolve");
-        MsaaResolve();
-    }
-
+//-------------------------------------------------------------------------
+//-------------------------------------------------------------------------
+void Scene::DrawUI(float in_cpuProcessFeedbackTime)
+{
     //-------------------------------------------
     // Display various textures
     //-------------------------------------------
@@ -1604,10 +1519,35 @@ bool Scene::Draw()
     {
         CreateTerrainViewers();
 
+        const float minDim = std::min(m_viewport.Height, m_viewport.Width) / 5;
+        const DirectX::XMFLOAT2 windowSize = DirectX::XMFLOAT2(minDim, minDim);
+
+        // terrain object's texture
+        if (m_args.m_showFeedbackMapVertical)
+        {
+            UINT areaHeight = UINT(m_viewport.Height - minDim);
+            UINT numMips = areaHeight / (UINT)minDim;
+            if (numMips > 1)
+            {
+                DirectX::XMFLOAT2 windowPos = DirectX::XMFLOAT2(m_viewport.Width - minDim, minDim);
+                m_pTextureViewer->Draw(m_commandList.Get(), windowPos, windowSize,
+                    m_viewport,
+                    m_args.m_visualizationBaseMip, numMips - 1,
+                    m_args.m_showFeedbackMapVertical);
+            }
+        }
+        else
+        {
+            UINT numMips = UINT(m_viewport.Width) / (UINT)minDim;
+            DirectX::XMFLOAT2 windowPos = DirectX::XMFLOAT2(0, minDim);
+            m_pTextureViewer->Draw(m_commandList.Get(), windowPos, windowSize,
+                m_viewport,
+                m_args.m_visualizationBaseMip, numMips,
+                m_args.m_showFeedbackMapVertical);
+        }
+
         // terrain object's residency map
-        float minDim = std::min(m_viewport.Height, m_viewport.Width) / 5;
         DirectX::XMFLOAT2 windowPos = DirectX::XMFLOAT2(m_viewport.Width - minDim, m_viewport.Height);
-        DirectX::XMFLOAT2 windowSize = DirectX::XMFLOAT2(minDim, minDim);
         if (m_args.m_showFeedbackViewer)
         {
             m_pMinMipMapViewer->Draw(m_commandList.Get(), windowPos, windowSize, m_viewport);
@@ -1618,37 +1558,14 @@ bool Scene::Draw()
             m_pFeedbackViewer->Draw(m_commandList.Get(), windowPos, windowSize, m_viewport);
 #endif
         }
-
-        // terrain object's texture
-        if (m_args.m_showFeedbackMapVertical)
-        {
-            UINT areaHeight = UINT(m_viewport.Height - minDim);
-            UINT numMips = areaHeight / (UINT)minDim;
-            if (numMips > 1)
-            {
-                windowPos = DirectX::XMFLOAT2(m_viewport.Width - minDim, minDim);
-                m_pTextureViewer->Draw(m_commandList.Get(), windowPos, windowSize,
-                    m_viewport,
-                    m_args.m_visualizationBaseMip, numMips - 1,
-                    m_args.m_showFeedbackMapVertical);
-            }
-        }
-        else
-        {
-            UINT numMips = UINT(m_viewport.Width) / (UINT)minDim;
-            windowPos = DirectX::XMFLOAT2(0, minDim);
-            m_pTextureViewer->Draw(m_commandList.Get(), windowPos, windowSize,
-                m_viewport,
-                m_args.m_visualizationBaseMip, numMips,
-                m_args.m_showFeedbackMapVertical);
-        }
     }
+
 
     //-------------------------------------------
     // Display UI
     //-------------------------------------------
-    float cpuProcessFeedbackTime = m_pTileUpdateManager->GetProcessFeedbackTime();
-    float gpuDrawTime = m_pGpuTimer->GetTimes()[0].first; // frame draw time
+    const auto& times = m_pGpuTimer->GetTimes();
+    float gpuDrawTime = times[0].first; // frame draw time
     if (m_args.m_showUI)
     {
         // note: TextureViewer and BufferViewer may have internal descriptor heaps
@@ -1675,7 +1592,8 @@ bool Scene::Draw()
             auto a = m_renderThreadTimes.GetLatest();
             guiDrawParams.m_cpuDrawTime = a.Get(RenderEvents::TumEndFrameBegin) - a.Get(RenderEvents::FrameBegin);
         }
-        guiDrawParams.m_cpuFeedbackTime = cpuProcessFeedbackTime;
+
+        guiDrawParams.m_cpuFeedbackTime = in_cpuProcessFeedbackTime;
         if (m_pTerrainSceneObject)
         {
             guiDrawParams.m_scrollMipDim = m_pTerrainSceneObject->GetStreamingResource()->GetTiledResource()->GetDesc().MipLevels;
@@ -1696,46 +1614,144 @@ bool Scene::Draw()
             m_pGui->Draw(m_commandList.Get(), m_args, guiDrawParams);
         }
     }
+}
+
+//-------------------------------------------------------------------------
+//-------------------------------------------------------------------------
+bool Scene::Draw()
+{
+    if (m_deviceRemoved)
+    {
+        return false;
+    }
+
+    if (m_useDirectStorage != m_args.m_useDirectStorage)
+    {
+        m_useDirectStorage = m_args.m_useDirectStorage;
+        m_pTileUpdateManager->UseDirectStorage(m_useDirectStorage);
+    }
+
+    // handle any changes to window dimensions or enter/exit full screen
+    Resize();
+
+    DrainTiles();
+
+    // load more spheres?
+    // SceneResource destruction/creation must be done outside of BeginFrame/EndFrame
+    LoadSpheres();
+
+    m_renderThreadTimes.Set(RenderEvents::FrameBegin);
+
+    // get the total time the GPU spent processing feedback during the previous frame (by calling before TUM::BeginFrame)
+    m_gpuProcessFeedbackTime = m_pTileUpdateManager->GetGpuTime();
+    float cpuProcessFeedbackTime = m_pTileUpdateManager->GetProcessFeedbackTime();
+
+    // prepare to update Feedback & stream textures
+    D3D12_CPU_DESCRIPTOR_HANDLE minmipmapDescriptor = CD3DX12_CPU_DESCRIPTOR_HANDLE(m_srvHeap->GetCPUDescriptorHandleForHeapStart(), (UINT)DescriptorHeapOffsets::SHARED_MIN_MIP_MAP, m_srvUavCbvDescriptorSize);
+    m_pTileUpdateManager->BeginFrame(m_srvHeap.Get(), minmipmapDescriptor);
+
+    Animate();
+
+    //-------------------------------------------
+    // frustum visualization
+    //-------------------------------------------
+    if (m_showFrustum != m_args.m_visualizeFrustum)
+    {
+        m_showFrustum = m_args.m_visualizeFrustum;
+        static bool enableTileUpdates = m_args.m_enableTileUpdates;
+        static float samplerLodBias = m_args.m_lodBias;
+
+        // stop updating while the frustum is shown
+        if (m_showFrustum)
+        {
+            // stop spinning
+            m_args.m_animationRate = 0;
+
+            XMVECTOR lookDir = m_viewMatrixInverse.r[2];
+            XMVECTOR pos = m_viewMatrixInverse.r[3];
+
+            // scale to something within universe scale
+            float scale = SharedConstants::SPHERE_SCALE * 2.5;
+
+            m_pFrustumViewer->SetView(m_viewMatrixInverse, scale);
+
+            enableTileUpdates = m_args.m_enableTileUpdates;
+            m_args.m_enableTileUpdates = false;
+            m_args.m_lodBias = -5.0f;
+        }
+        else
+        {
+            m_args.m_enableTileUpdates = enableTileUpdates;
+            m_args.m_lodBias = samplerLodBias;
+        }
+    }
+
+    //-------------------------------------------
+    // draw everything
+    //-------------------------------------------
+    m_commandAllocators[m_frameIndex]->Reset();
+    m_commandList->Reset((ID3D12CommandAllocator*)m_commandAllocators[m_frameIndex].Get(), nullptr);
+    {
+        GpuScopeTimer gpuScopeTimer(m_pGpuTimer, m_commandList.Get(), "GPU Frame Time");
+
+        // set RTV, DSV, descriptor heap, etc.
+        StartScene();
+
+        // draw all geometry
+        DrawObjects();
+
+        if (m_showFrustum)
+        {
+            XMMATRIX combinedTransform = XMMatrixMultiply(m_viewMatrix, m_projection);
+            m_pFrustumViewer->Draw(m_commandList.Get(), combinedTransform, m_fieldOfView, m_aspectRatio);
+        }
+
+        // MSAA resolve
+        {
+            //GpuScopeTimer msaaScopeTimer(m_pGpuTimer, m_commandList.Get(), "GPU MSAA resolve");
+            MsaaResolve();
+        }
+
+        DrawUI(cpuProcessFeedbackTime);
+
+        D3D12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_frameIndex].Get(),
+            D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
+        m_commandList->ResourceBarrier(1, &barrier);
+    }
+    m_pGpuTimer->ResolveAllTimers(m_commandList.Get());
+    m_commandList->Close();
 
     //-------------------------------------------
     // execute command lists
     //-------------------------------------------
-    bool success = true;
+    m_renderThreadTimes.Set(RenderEvents::TumEndFrameBegin);
+    auto commandLists = m_pTileUpdateManager->EndFrame();
+    m_renderThreadTimes.Set(RenderEvents::TumEndFrame);
+
+    ID3D12CommandList* pCommandLists[] = { commandLists.m_beforeDrawCommands, m_commandList.Get(), commandLists.m_afterDrawCommands };
+    m_commandQueue->ExecuteCommandLists(_countof(pCommandLists), pCommandLists);
+
+    //-------------------------------------------
+    // Present the frame
+    //-------------------------------------------
+    UINT syncInterval = m_args.m_vsyncEnabled ? 1 : 0;
+    UINT presentFlags = 0;
+    if ((m_windowedSupportsTearing) && (!m_fullScreen) && (0 == syncInterval))
     {
-        D3D12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_frameIndex].Get(),
-            D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
-        m_commandList->ResourceBarrier(1, &barrier);
-
-        m_pGpuTimer->ResolveAllTimers(m_commandList.Get());
-        m_commandList->Close();
-
-        m_renderThreadTimes.Set(RenderEvents::TumEndFrameBegin);
-        auto commandLists = m_pTileUpdateManager->EndFrame();
-        m_renderThreadTimes.Set(RenderEvents::TumEndFrame);
-
-        ID3D12CommandList* pCommandLists[] = { commandLists.m_beforeDrawCommands, m_commandList.Get(), commandLists.m_afterDrawCommands };
-        m_commandQueue->ExecuteCommandLists(_countof(pCommandLists), pCommandLists);
-
-        //-------------------------------------------
-        // Present the frame.
-        //-------------------------------------------
-        UINT syncInterval = m_args.m_vsyncEnabled ? 1 : 0;
-        UINT presentFlags = 0;
-        if ((m_windowedSupportsTearing) && (!m_fullScreen) && (0 == syncInterval))
-        {
-            presentFlags = DXGI_PRESENT_ALLOW_TEARING;
-        }
-        success = IsDeviceOk(m_swapChain->Present(syncInterval, presentFlags));
-
-        // gather statistics before moving to next frame
-        GatherStatistics(cpuProcessFeedbackTime, m_gpuProcessFeedbackTime);
-
-        m_renderThreadTimes.Set(RenderEvents::WaitOnFencesBegin);
-
-        MoveToNextFrame();
-        m_renderThreadTimes.Set(RenderEvents::FrameEnd);
+        presentFlags = DXGI_PRESENT_ALLOW_TEARING;
     }
+    bool success = IsDeviceOk(m_swapChain->Present(syncInterval, presentFlags));
 
+    //-------------------------------------------
+    // gather statistics before moving to next frame
+    //-------------------------------------------
+    GatherStatistics(cpuProcessFeedbackTime, m_gpuProcessFeedbackTime);
+    m_renderThreadTimes.Set(RenderEvents::WaitOnFencesBegin);
+
+    MoveToNextFrame();
+
+    m_renderThreadTimes.Set(RenderEvents::FrameEnd);
     m_renderThreadTimes.NextFrame();
+
     return success;
 }

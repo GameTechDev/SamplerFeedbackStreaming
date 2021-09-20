@@ -227,7 +227,7 @@ inline void D3D12GpuTimer::ResolveTimer(ID3D12GraphicsCommandList* in_pCommandLi
     if (in_mapReadback)
     {
         UINT64* pTimestamps = nullptr;
-        const auto range = CD3DX12_RANGE(index, index + 2);
+        const auto range = CD3DX12_RANGE(index, index + 1);
         ThrowIfFailed(m_buffer->Map(0, &range, (void**)&pTimestamps));
         UINT64 deltaTime = pTimestamps[index + 1] - pTimestamps[index];
         if (pTimestamps[index] > pTimestamps[index + 1])

@@ -251,4 +251,7 @@ private:
     void GatherStatistics(float in_cpuProcessFeedbackTime, float in_gpuProcessFeedbackTime);
     UINT m_startUploadCount{ 0 };
     Timer m_cpuTimer;
+
+    void StartScene();
+    void DrawUI(float in_cpuProcessFeedbackTime);
 };

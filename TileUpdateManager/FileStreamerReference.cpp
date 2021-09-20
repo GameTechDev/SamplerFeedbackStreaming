@@ -172,20 +172,26 @@ Streaming::FileStreamer::FileHandle* Streaming::FileStreamerReference::OpenFile(
 // Best guess is OS pauses the thread delaying when the copybatch is released
 // very rarely, the result is a (very) long delay waiting for an available batch
 //-----------------------------------------------------------------------------
-Streaming::FileStreamerReference::CopyBatch& Streaming::FileStreamerReference::AllocateCopyBatch(Streaming::UpdateList& in_updateList)
+void Streaming::FileStreamerReference::AllocateCopyBatch(Streaming::UpdateList& in_updateList, CopyBatch::State in_desiredState)
 {
-    UINT numBatches = (UINT)m_copyBatches.size();
+    const UINT numBatches = (UINT)m_copyBatches.size();
 
     while (1)
     {
         // by allocating the least-recently-used, measured ~100% success on first try
+        // might have a race here with multiple threads, but it'll never read out-of-bounds
         auto& batch = m_copyBatches[m_batchAllocIndex];
         m_batchAllocIndex = (m_batchAllocIndex + 1) % numBatches;
 
-        if (CopyBatch::State::FREE == batch.m_state)
+        // multiple threads may be trying to allocate a CopyBatch
+        CopyBatch::State expected = CopyBatch::State::FREE;
+        if (batch.m_state.compare_exchange_weak(expected, CopyBatch::State::ALLOCATED))
         {
+            // set the update list while the CopyBatch is in the "allocated" state
             batch.m_pUpdateList = &in_updateList;
-            return batch;
+            // as soon as this state changes, the 
+            batch.m_state = in_desiredState;
+            break;
         }
     }
 }
@@ -197,8 +203,7 @@ void Streaming::FileStreamerReference::StreamPackedMips(Streaming::UpdateList& i
     ASSERT(in_updateList.GetNumPackedUpdates());
     ASSERT(0 == in_updateList.GetNumStandardUpdates());
 
-    CopyBatch& batch = AllocateCopyBatch(in_updateList);
-    batch.m_state = CopyBatch::State::LOAD_PACKEDMIPS;
+    AllocateCopyBatch(in_updateList, CopyBatch::State::LOAD_PACKEDMIPS);
 }
 
 //-----------------------------------------------------------------------------
@@ -208,9 +213,7 @@ void Streaming::FileStreamerReference::StreamTexture(Streaming::UpdateList& in_u
     ASSERT(0 == in_updateList.GetNumPackedUpdates());
     ASSERT(in_updateList.GetNumStandardUpdates());
 
-    CopyBatch& batch = AllocateCopyBatch(in_updateList);
-
-    batch.m_state = CopyBatch::State::LOAD_TILES;
+    AllocateCopyBatch(in_updateList, CopyBatch::State::LOAD_TILES);
 }
 
 //-----------------------------------------------------------------------------
@@ -404,6 +407,7 @@ void Streaming::FileStreamerReference::CopyThread()
             break;
 
         case CopyBatch::State::WAIT_COMPLETE:
+            // can't recycle this command allocator until the corresponding fence has completed
             if (c.m_copyFenceValue <= m_copyFence->GetCompletedValue())
             {
                 m_uploadAllocator.Free(c.m_uploadIndices);

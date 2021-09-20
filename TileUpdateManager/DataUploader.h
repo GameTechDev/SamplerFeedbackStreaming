@@ -69,8 +69,9 @@ namespace Streaming
 
         void SubmitUpdateList(Streaming::UpdateList& in_updateList);
 
-        // Streaming resource may find it can't use an updatelist
-        void FreeEmptyUpdateList(Streaming::UpdateList& in_updateList);
+        // free updatelist after processing
+        // Streaming resource may call this (via TUM) if it allocates but doesn't use an updatelist
+        void FreeUpdateList(Streaming::UpdateList& in_updateList);
 
         enum class StreamerType
         {
@@ -91,9 +92,6 @@ namespace Streaming
 
         void SetVisualizationMode(UINT in_mode) { m_pFileStreamer->SetVisualizationMode(in_mode); }
     private:
-        // free updatelist after processing
-        void FreeUpdateList(Streaming::UpdateList& in_updateList);
-
         // affects upload buffer size. 1024 would become a 64MB upload buffer
         const UINT m_maxTileCopiesInFlight{ 0 };
         const UINT m_maxBatchSize{ 0 };
@@ -149,5 +147,6 @@ namespace Streaming
         //-------------------------------------------
         std::atomic<UINT> m_numTotalEvictions{ 0 };
         std::atomic<UINT> m_numTotalUploads{ 0 };
+        std::atomic<UINT> m_numTotalUpdateListsProcessed{ 0 };
     };
 }

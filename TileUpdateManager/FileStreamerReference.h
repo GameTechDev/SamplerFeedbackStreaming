@@ -78,6 +78,7 @@ namespace Streaming
             enum class State : UINT
             {
                 FREE = 0,
+                ALLOCATED,
                 LOAD_PACKEDMIPS,
                 LOAD_TILES,
                 COPY_TILES,
@@ -128,7 +129,7 @@ namespace Streaming
         std::atomic<bool> m_copyThreadRunning{ false };
         std::thread m_copyThread;
 
-        CopyBatch& AllocateCopyBatch(Streaming::UpdateList& in_updateList);
+        void AllocateCopyBatch(Streaming::UpdateList& in_updateList, CopyBatch::State in_desiredState);
 
         void LoadTexture(CopyBatch& in_copyBatch);
         void CopyTiles(ID3D12GraphicsCommandList* out_pCopyCmdList, ID3D12Resource* in_pSrcResource,

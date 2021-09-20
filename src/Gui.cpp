@@ -231,6 +231,42 @@ void Gui::DrawMini(ID3D12GraphicsCommandList* in_pCommandList, const DrawParams&
 
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
+void Gui::ToggleDemoMode(CommandLineArgs& in_args)
+{
+    m_demoMode = !m_demoMode;
+
+    static float bias = 0;
+    static float cameraRate = 0.4f;
+    static float animationRate = 0.4f;
+
+    std::swap(bias, in_args.m_lodBias);
+    std::swap(cameraRate, in_args.m_cameraAnimationRate);
+    std::swap(animationRate, in_args.m_animationRate);
+    in_args.m_showFeedbackMaps = false;
+    in_args.m_numSpheres = (int)m_initialArgs.m_maxNumObjects;
+}
+
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+void Gui::ToggleBenchmarkMode(CommandLineArgs& in_args)
+{
+    m_benchmarkMode = !m_benchmarkMode;
+
+    static bool paintmixer = true;
+    static float bias = -2;
+    static float cameraRate = 2;
+    static float animationRate = 2;
+
+    std::swap(paintmixer, in_args.m_cameraPaintMixer);
+    std::swap(bias, in_args.m_lodBias);
+    std::swap(cameraRate, in_args.m_cameraAnimationRate);
+    std::swap(animationRate, in_args.m_animationRate);
+    in_args.m_showFeedbackMaps = false;
+    in_args.m_numSpheres = (int)m_initialArgs.m_maxNumObjects;
+}
+
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
 void Gui::Draw(ID3D12GraphicsCommandList* in_pCommandList,
     CommandLineArgs& in_args, const DrawParams& in_drawParams)
 {
@@ -259,7 +295,7 @@ void Gui::Draw(ID3D12GraphicsCommandList* in_pCommandList,
 
     ImGui::SliderFloat("Spin", &in_args.m_animationRate, 0, 2.0f);
     ImGui::SliderFloat("Camera", &in_args.m_cameraAnimationRate, 0, 2.0f);
-    ImGui::Checkbox("Roller Coaster", &in_args.m_cameraRollerCoaster);
+    ImGui::Checkbox("Roller Coaster (when camera > 0)", &in_args.m_cameraRollerCoaster);
 
     ImGui::SliderFloat("Bias", &in_args.m_lodBias, -2.0f, 4.0f);
 
@@ -287,8 +323,10 @@ void Gui::Draw(ID3D12GraphicsCommandList* in_pCommandList,
 
     // GPU timers
     ImGui::Separator();
-    ImGui::Text("GPU ms: Feedback |  Draw ");
-    ImGui::Text("         %7.2f | %5.2f", in_drawParams.m_gpuFeedbackTime * 1000.f, in_drawParams.m_gpuDrawTime * 1000.f);
+    ImGui::Text("GPU ms: Feedback |   Draw");
+    ImGui::Text("         %7.2f | %6.3f",
+        in_drawParams.m_gpuFeedbackTime * 1000.f,
+        in_drawParams.m_gpuDrawTime * 1000.f);
 
     // CPU timers
     ImGui::Separator();
@@ -318,19 +356,24 @@ void Gui::Draw(ID3D12GraphicsCommandList* in_pCommandList,
         ImGui::SliderInt("Viewer Mips", &in_args.m_visualizationBaseMip, 0, in_drawParams.m_scrollMipDim);
     }
 
-    if (ImGui::Button("BENCHMARK MODE", ImVec2(m_width, 0)))
+    if (ImGui::Button("DEMO MODE", ImVec2(-1, 0)))
     {
-        static bool paintmixer = true;
-        static float bias = -2;
-        static float cameraRate = 2;
-        static float animationRate = 2;
+        if (m_benchmarkMode)
+        {
+            ToggleBenchmarkMode(in_args);
+        }
 
-        std::swap(paintmixer, in_args.m_cameraPaintMixer);
-        std::swap(bias, in_args.m_lodBias);
-        std::swap(cameraRate, in_args.m_cameraAnimationRate);
-        std::swap(animationRate, in_args.m_animationRate);
-        in_args.m_showFeedbackMaps = false;
-        in_args.m_numSpheres = (int)m_initialArgs.m_maxNumObjects;
+        ToggleDemoMode(in_args);
+    }
+
+    if (ImGui::Button("BENCHMARK MODE", ImVec2(-1, 0)))
+    {
+        if (m_demoMode)
+        {
+            ToggleDemoMode(in_args);
+        }
+
+        ToggleBenchmarkMode(in_args);
     }
 
     // resize the UI to fit the dynamically-sized components

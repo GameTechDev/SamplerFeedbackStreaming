@@ -162,16 +162,18 @@ void Streaming::DataUploader::StopThreads()
         m_submitFlag.Set();
         m_monitorFenceFlag.Set();
 
-        if (m_fenceMonitorThread.joinable())
-        {
-            m_fenceMonitorThread.join();
-            DebugPrint(L"JOINED Fence Monitor Thread\n");
-        }
-
+        // stop submitting new work
         if (m_submitThread.joinable())
         {
             m_submitThread.join();
             DebugPrint(L"JOINED Submit Thread\n");
+        }
+
+        // finish up any remaining work
+        if (m_fenceMonitorThread.joinable())
+        {
+            m_fenceMonitorThread.join();
+            DebugPrint(L"JOINED Fence Monitor Thread\n");
         }
     }
 }
@@ -182,7 +184,7 @@ void Streaming::DataUploader::StopThreads()
 void Streaming::DataUploader::FlushCommands()
 {
     DebugPrint(m_updateListFreeCount.load(), " DU flush\n");
-    while (m_updateListFreeCount < m_updateLists.size())
+    while (m_updateListFreeCount.load() < m_updateLists.size())
     {
         _mm_pause();
     }
@@ -205,8 +207,11 @@ Streaming::UpdateList* Streaming::DataUploader::AllocateUpdateList(StreamingReso
     UpdateList* pUpdateList = nullptr;
 
     // early out if there are none available
-    if (m_updateListFreeCount)
+    if (m_updateListFreeCount.load() > 0)
     {
+        // there is definitely at least one updatelist that is STATE_FREE
+        m_updateListFreeCount.fetch_sub(1);
+
         // Idea: consider allocating in order, that is index 0, then 1, etc.
         //       eventually will loop around. the most likely available index after the last index is index 0.
         //       that is, the next index is likely available because has had the longest time to execute
@@ -223,8 +228,6 @@ Streaming::UpdateList* Streaming::DataUploader::AllocateUpdateList(StreamingReso
                 pUpdateList = &p;
                 // it is only safe to clear the state within the allocating thread
                 p.Reset((Streaming::StreamingResourceDU*)in_pStreamingResource);
-                ASSERT(m_updateListFreeCount);
-                m_updateListFreeCount--;
 
                 // start fence polling thread now
                 m_monitorFenceFlag.Set();
@@ -244,7 +247,8 @@ void Streaming::DataUploader::FreeUpdateList(Streaming::UpdateList& in_updateLis
     // NOTE: updatelist is deliberately not cleared until after allocation
     // otherwise there can be a race with the mapping thread
     in_updateList.m_executionState = UpdateList::State::STATE_FREE;
-    m_updateListFreeCount++;
+    m_updateListFreeCount.fetch_add(1);
+    ASSERT(m_updateListFreeCount.load() <= m_updateLists.size());
 }
 
 //-----------------------------------------------------------------------------
@@ -261,20 +265,6 @@ void Streaming::DataUploader::SubmitUpdateList(Streaming::UpdateList& in_updateL
     in_updateList.m_executionState = UpdateList::State::STATE_SUBMITTED;
 
     m_submitFlag.Set();
-}
-
-//-----------------------------------------------------------------------------
-// Allow StreamingResource to free empty update lists that it allocates
-//-----------------------------------------------------------------------------
-void Streaming::DataUploader::FreeEmptyUpdateList(Streaming::UpdateList& in_updateList)
-{
-    ASSERT(0 == in_updateList.GetNumStandardUpdates());
-    ASSERT(0 == in_updateList.GetNumPackedUpdates());
-    ASSERT(0 == in_updateList.m_evictCoords.size());
-
-    in_updateList.m_executionState = UpdateList::State::STATE_FREE;
-    m_updateListFreeCount++;
-    ASSERT(m_updateListFreeCount.load() <= m_updateLists.size());
 }
 
 //-----------------------------------------------------------------------------

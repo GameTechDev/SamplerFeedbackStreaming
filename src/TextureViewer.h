@@ -48,23 +48,24 @@ public:
 protected:
     static const unsigned int MIN_WINDOW_DIM = 8;
 
-    TextureViewer() : m_pConstantBufferData(nullptr), m_numMips(0), m_descriptorOffset(0) {}
+    TextureViewer() {}
     void CreateResources(
         ID3D12Resource* in_pResource, D3D12_SHADER_RESOURCE_VIEW_DESC& in_desc,
         const DXGI_FORMAT in_swapChainFormat,
         ID3D12DescriptorHeap* in_pDescriptorHeap, INT in_descriptorOffset,
-        UINT in_constantBufferSize, const wchar_t* in_pShaderFileName, const char* in_psEntryPoint = "ps");
+        const wchar_t* in_pShaderFileName, const char* in_psEntryPoint = "ps");
     void DrawWindows(ID3D12GraphicsCommandList* in_pCL, D3D12_VIEWPORT in_viewPort,
         UINT in_numWindows);
 
     ComPtr<ID3D12Device> m_device;
     ComPtr<ID3D12DescriptorHeap> m_descriptorHeap;
-    struct ConstantBuffer* m_pConstantBufferData;
-    INT m_descriptorOffset;
+    INT m_descriptorOffset{ 0 };
+
+    std::vector<UINT32> m_constants;
 private:
     ComPtr<ID3D12RootSignature> m_rootSignature;
     ComPtr<ID3D12PipelineState> m_pipelineState;
-    ComPtr<ID3D12Resource> m_constantBuffer;
+    ID3D12Resource* m_pResource{ nullptr };
 
-    int m_numMips;
+    int m_numMips{ 0 };
 };

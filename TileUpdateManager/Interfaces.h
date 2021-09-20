@@ -55,7 +55,7 @@ namespace Streaming
 
         Streaming::UpdateList* AllocateUpdateList(StreamingResource* in_pStreamingResource) { return m_pDataUploader->AllocateUpdateList(in_pStreamingResource); }
         void SubmitUpdateList(Streaming::UpdateList& in_updateList) { m_pDataUploader->SubmitUpdateList(in_updateList); }
-        void FreeEmptyUpdateList(Streaming::UpdateList& in_updateList) { m_pDataUploader->FreeEmptyUpdateList(in_updateList); }
+        void FreeEmptyUpdateList(Streaming::UpdateList& in_updateList) { m_pDataUploader->FreeUpdateList(in_updateList); }
 
         // a fence on the render (direct) queue used to determine when feedback has been written & resolved
         UINT64 GetFrameFenceValue() const { return m_frameFenceValue; }

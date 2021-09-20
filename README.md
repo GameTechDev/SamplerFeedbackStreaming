@@ -1,6 +1,6 @@
 # Sampler Feedback Streaming
 
-This repository contains a demo of `DirectX12 Sampler Feedback Streaming`, a technique using [DirectX12 Sampler Feedback](https://microsoft.github.io/DirectX-Specs/d3d/SamplerFeedback.html) to guide continuous loading and eviction of reserved resource tiles. Sampler Feedback Streaming allows scenes containing 100s of gigabytes of resources to be drawn on GPUs containing much less physical memory. The scene below uses just ~200MB of a 1GB heap, despite over 350GB of total texture resources.
+This repository contains a demo of `DirectX12 Sampler Feedback Streaming`, a technique using [DirectX12 Sampler Feedback](https://microsoft.github.io/DirectX-Specs/d3d/SamplerFeedback.html) to guide continuous loading and eviction of small portions (tiles) of assets. Sampler Feedback Streaming allows scenes consisting of 100s of gigabytes of resources to be drawn on GPUs containing much less physical memory. The scene below uses just ~200MB of a 1GB heap, despite over 350GB of total texture resources.
 
 The demo requires **`Windows 10 20H1 (aka May 2020 Update, build 19041)`** or later and a GPU with Sampler Feedback Support.
 
@@ -145,4 +145,125 @@ In this case, the hardware sampler is reaching across tile boundaries to perform
 
 There are also a few known bugs:
 * entering full screen in a multi-gpu system moves the window to a monitor attached to the GPU by design. However, if the window starts on a different monitor, it "disappears" on the first maximization. Hit *escape* then maximize again, and it should work fine.
-* full-screen while remote desktop is broken *again*. Will likely fix soon.
+* full-screen while remote desktop is not borderless.
+
+## How It Works
+
+This implementation of Sampler Feedback Streaming uses DX12 Sampler Feedback in combination with DX12 Reserved Resources, aka Tiled Resources. A multi-threaded CPU library processes feedback from the GPU, makes decisions about which tiles to load and evict, loads data from disk storage, and submits mapping and uploading requests via GPU copy queues. There is no explicit GPU-side synchronization between the queues, so rendering frame rate is not dependent on completion of copy commands (on GPUs that support concurrent multi-queue operation). The CPU threads run continuously and asynchronously from the GPU (pausing when there's no work to do), polling fence completion states to determine when feedback is ready to process or copies and memory mapping has completed.
+
+All the magic can be found in  the **TileUpdateManager** library (see TileUpdateManager.h), which abstracts the creation of StreamingResources and heaps while internally managing feedback resources, file I/O, and GPU memory mapping.
+
+The technique works as follows:
+
+### 1. Create a Texture to be Streamed
+
+The streaming textures are allocated as DX12 [Reserved Resources](https://docs.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-id3d12device-createreservedresource), which behave like [VirtualAlloc](https://docs.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualalloc) in C. Each resource takes no physical GPU memory until 64KB regions of the resource are committed in 1 or more GPU [heaps](https://docs.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-id3d12device-createheap). The x/y dimensions of a reserved resource tile is a function of the texture format, such that it fills a 64KB GPU memory page. For example, BC7 textures have 256x256 tiles, while BC1 textures have 512x256 tiles.
+
+In Expanse, each tiled resource corresponds to a single .XeT file on a hard drive (though multiple resources can point to the same file). The file contains dimensions and format, but also information about how to access the tiles within the file.
+
+### 2. Create and Pair a Min-Mip Feedback Map
+
+To use sampler feedback, we create a feedback resource with identical dimensions to record information about which texels were sampled.
+
+For this streaming usage, we use the min mip feedback feature by [creating the resource](https://docs.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-id3d12device8-createcommittedresource2) with the format to DXGI_FORMAT_SAMPLER_FEEDBACK_MIN_MIP_OPAQUE. We set the region size of the feedback to match the tile dimensions through the SamplerFeedbackRegion member of [D3D12_RESOURCE_DESC1](https://docs.microsoft.com/en-us/windows/win32/api/d3d12/ns-d3d12-d3d12_resource_desc1).
+
+For the feedback to be written by GPU shaders (in this case, pixel shaders) the texture and feedback resources must be paired through a view created with [CreateSamplerFeedbackUnorderedAccessView](https://docs.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-id3d12device8-createsamplerfeedbackunorderedaccessview).
+
+### 3. Determine Resident Tiles
+
+Because textures are only partially resident, we only want the pixel shader to sample resident portions. Sampling texels that are not physically mapped that returns 0s, resulting in undesirable visual artifacts. To prevent this, we clamp all sampling operations based on a **residency map**. The residency map is relatively tiny: for a 16k x 16k BC7 texture, which would take 350MB of GPU memory, we only need a 4KB residency map. Note that the lowest-resolution "packed" mips are loaded for all objects, so there is always something available to sample. See also [GetResourceTiling](https://docs.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-id3d12device-getresourcetiling).
+
+When a texture tile has been loaded or evicted by TileUpdateManager, it updates the corresponding residency map. The residency map is an application-generated representation of the minimum mip available for each region in the texture, and is described in the [Sample Feedback spec](https://microsoft.github.io/DirectX-Specs/d3d/SamplerFeedback.html) as follows:
+
+```
+The MinMip map represents per-region mip level clamping values for the tiled texture; it represents what is actually loaded.
+```
+
+Below, the Visualization mode was set to "Color = Mip" and labels were added. TileUpdateManager processes the Min Mip Feedback (left window in top right), uploads and evicts tiles to form a Residency map, which is a proper min-mip-map (right window in top right). The contents of memory can be seen in the partially resident mips along the bottom (black is not resident). The last 3 mip levels are never evicted because they are packed mips (all fit within a 64KB tile). In this visualization mode, the colors of the texture on the bottom correspond to the colors of the visualization windows in the top right. Notice how the resident tiles do not exactly match what feedback says is required.
+![Expanse UI showing feedback and residency maps](./readme-images/labels.jpg "Expanse UI showing Min Mip Feedback, Residency Map, and Texture Mips (labels added)")
+
+To reduce GPU memory, a single combined buffer contains all the residency maps for all the resources. The pixel shader samples the corresponding residency map to clamp the sampling function to the minimum available texture data available, thereby avoiding sampling tiles that have not been mapped.
+
+We can see this in the shader "terrainPS.hlsl". Resources are defined at the top of the shader, including the reserved buffer, the residency resource, and the sampler:
+
+```cpp
+Texture2D g_streamingTexture : register(t0);
+Buffer<uint> g_minmipmap: register(t1);
+SamplerState g_sampler : register(s0);
+```
+
+The shader offsets into its region of the residency buffer (g_minmipmapOffset) and loads the minimum mip value for the region to be sampled.
+```cpp
+    int2 uv = input.tex * g_minmipmapDim;
+    uint index = g_minmipmapOffset + uv.x + (uv.y * g_minmipmapDim.x);
+    uint mipLevel = g_minmipmap.Load(index);
+```
+The sampling operation is clamped to the minimum mip resident (mipLevel).
+```cpp
+    float3 color = g_streamingTexture.Sample(g_sampler, input.tex, 0, mipLevel).rgb;
+```
+
+### 4. Draw Objects While Recording Feedback
+
+For expanse, there is a "normal" non-feedback shader named terrainPS.hlsl and a "feedback-enabled" version of the same shader, terrainPS-FB.hlsl. The latter simply writes feedback using [WriteSamplerFeedback](https://microsoft.github.io/DirectX-Specs/d3d/SamplerFeedback.html) HLSL intrinsic, using the same sampler and texture coordinates, then calls the prior shader. Compare the WriteSamplerFeedback() call below to to the Sample() call above.
+
+Include the normal pixel shader:
+```cpp
+#include "terrainPS.hlsl"
+FeedbackTexture2D<SAMPLER_FEEDBACK_MIN_MIP> g_feedback : register(u0);
+
+float4 psFB(VS_OUT input) : SV_TARGET0
+{
+
+    g_feedback.WriteSamplerFeedback(g_streamingTexture, g_sampler, input.tex.xy);
+
+    return ps(input);
+}
+```
+
+Resolving feedback for one resource is inexpensive, but adds up when there are 1000 objects. Expanse has a configurable time limit for the amount of feedback resolved each frame. The "FB" shaders are only used for a subset of resources such that the amount of feedback produced can be resolved within the time limit. The time limit is managed by the application, not by the TileUpdateManager library, by keeping a running average of resolve time as reported by GPU timers.
+
+As an optimization, Expanse tells streaming resources to evict all tiles if they are behind the camera. This could potentially be improved to include any object not in the view frustum.
+
+You can find the time limit estimation, the eviction optimization, and the request to gather sampler feedback by searching Scene.cpp for the following:
+
+* DetermineMaxNumFeedbackResolves
+* QueueEviction
+* SetFeedbackEnabled
+
+### 5. Determine Which Tiles to Load & Evict
+
+Once the draw command is complete, the feedback is ready to read on the CPU - either by copying the feedback to a readback resource, or by resolving directly to a readback resource.
+
+Min mip feedback tells us the minimum mip tile that should be loaded. The min mip feedback is traversed, updating an internal reference count for each tile. If a tile previously was unused (ref count = 0), it is queued for loading from the bottom (highest mip) up. If a tile is not needed for a particular region, its ref count is decreased (from the top down). When its ref count reaches 0, it might be ready to evict. 
+
+Data structures for tracking reference count, residency state, and heap usage can be found in StreamingResource.cpp/h, look for TileMappingState. This class also has methods for interpreting the feedback buffer (ProcessFeedback) and updating the residency map (UpdateMinMipMap).
+```cpp
+class TileMappingState
+{
+public:
+    // see file for method declarations
+private:
+    TileLayer<BYTE> m_resident;
+    TileLayer<UINT32> m_refcounts;
+    TileLayer<UINT32> m_heapIndices;
+};
+TileMappingState m_tileMappingState;
+```
+
+Tiles can only be evicted if there are no lower-mip-level tiles that depend on them, e.g. a mip 1 tile may have 4 mip 0 tiles "above" it in the mip hierarchy, and may only be evicted if all 4 of those tiles have also been evicted. The ref count helps us determine this dependency.
+
+A tile also cannot be evicted if it is being used by an outstanding draw command. We prevent this by  delaying evictions a frame or two depending on double or triple buffering of the swap chain. If a tile is needed before the delay completes, the tile is simply rescued from the pending eviction data structure instead of being re-loaded.
+
+The mechanics of loading, mapping, and unmapping tiles is all contained within the DataUploader class, which depends on a FileStreamer class to do the actual tile loads. The latter implementation (FileStreamerReference) can easily be exchanged with DirectStorage for Windows.
+
+### 6. Putting it all Together
+
+There is some work that needs to be done before drawing objects that use feedback (clearing feedback resources), and some work that needs to be done after (resolving feedback resources). TileUpdateManager creates theses commands, but does not execute them. Each frame, these command lists must be built and submitted with application draw commands, which you can find just before the call to Present() as follows:
+
+```cpp
+auto commandLists = m_pTileUpdateManager->EndFrame();
+
+ID3D12CommandList* pCommandLists[] = { commandLists.m_beforeDrawCommands, m_commandList.Get(), commandLists.m_afterDrawCommands };
+        m_commandQueue->ExecuteCommandLists(_countof(pCommandLists), pCommandLists);
+```
