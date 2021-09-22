@@ -134,15 +134,21 @@ Scene::Scene(const CommandLineArgs& in_args, HWND in_hwnd) :
         ThrowIfFailed(adapter->GetDesc1(&desc));
     }
     std::wstring adapterDescription = desc.Description;
-    ThrowIfFailed(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(&m_device)));
 
     // does this device support sampler feedback?
     D3D12_FEATURE_DATA_D3D12_OPTIONS7 feedbackOptions{};
-    m_device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS7, &feedbackOptions, sizeof(feedbackOptions));
+    HRESULT hr = D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(&m_device));
+    if (SUCCEEDED(hr))
+    {
+        m_device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS7, &feedbackOptions, sizeof(feedbackOptions));
+    }
 
     if (0 == feedbackOptions.SamplerFeedbackTier)
     {
-        MessageBox(0, L"Sampler Feedback not supported", L"Error", MB_OK);
+        std::wstring msg = L"Sampler Feedback not supported by\n";
+        msg += adapterDescription;
+        MessageBox(0, msg.c_str(), L"Error", MB_OK);
+        exit(-1);
     }
 
     D3D12_FEATURE_DATA_D3D12_OPTIONS tileOptions{};
@@ -150,7 +156,10 @@ Scene::Scene(const CommandLineArgs& in_args, HWND in_hwnd) :
 
     if (0 == tileOptions.TiledResourcesTier)
     {
-        MessageBox(0, L"Tiled Resources not supported", L"Error", MB_OK);
+        std::wstring msg = L"Tiled Resources not supported by\n";
+        msg += adapterDescription;
+        MessageBox(0, msg.c_str(), L"Error", MB_OK);
+        exit(-1);
     }
 
     m_pGpuTimer = new D3D12GpuTimer(m_device.Get(), 8, D3D12GpuTimer::TimerType::Direct);

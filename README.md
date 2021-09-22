@@ -1,90 +1,72 @@
 # Sampler Feedback Streaming
 
-This repository contains a demo of `DirectX12 Sampler Feedback Streaming`, a technique using [DirectX12 Sampler Feedback](https://microsoft.github.io/DirectX-Specs/d3d/SamplerFeedback.html) to guide continuous loading and eviction of small portions (tiles) of assets. Sampler Feedback Streaming allows scenes consisting of 100s of gigabytes of resources to be drawn on GPUs containing much less physical memory. The scene below uses just ~200MB of a 1GB heap, despite over 350GB of total texture resources.
+## Introduction
 
-The demo requires **`Windows 10 20H1 (aka May 2020 Update, build 19041)`** or later and a GPU with Sampler Feedback Support.
+This repository contains an [MIT licensed](LICENSE) demo of _DirectX12 Sampler Feedback Streaming_, a technique using [DirectX12 Sampler Feedback](https://microsoft.github.io/DirectX-Specs/d3d/SamplerFeedback.html) to guide continuous loading and eviction of small portions (tiles) of assets. Sampler Feedback Streaming allows scenes consisting of 100s of gigabytes of resources to be drawn on GPUs containing much less physical memory. The scene below uses just ~200MB of a 1GB heap, despite over 350GB of total texture resources.
+
+The demo requires ***Windows 10 20H1 (aka May 2020 Update, build 19041)*** or later and a GPU with Sampler Feedback Support, such as Intel Iris Xe Graphics as found in 11th Generation Intel&reg; Core&trade; processors and discrete GPUs (driver version **[30.0.100.9667](https://downloadcenter.intel.com/product/80939/Graphics) or later**).
+
+This repository will be updated when DirectStorage for Windows&reg; becomes available.
 
 See also:
 
 * [GDC 2021 video](https://software.intel.com/content/www/us/en/develop/events/gdc.html?videoid=6264595860001) [(alternate link)](https://www.youtube.com/watch?v=VDDbrfZucpQ) which provides an overview of Sampler Feedback and discusses this sample starting at about 15:30.
 
-* [GDC 2021 presentation](https://software.intel.com/content/dam/develop/external/us/en/documents/pdf/july-gdc-2021-sampler-feedback-texture-space-shading-direct-storage.pdf)
-
-Sampler Feedback is supported in hardware on Intel Iris Xe Graphics, as can be found in 11th Generation Intel&reg; Core&trade; processors and discrete GPUs. This sample requires driver version ***[30.0.100.9667](https://downloadcenter.intel.com/product/80939/Graphics) or later***.
+* [GDC 2021 presentation](https://software.intel.com/content/dam/develop/external/us/en/documents/pdf/july-gdc-2021-sampler-feedback-texture-space-shading-direct-storage.pdf) in PDF form
 
 ![Sample screenshot](./readme-images/sampler-feedback-streaming.jpg "Sample screenshot")
 Textures derived from [Hubble Images](https://www.nasa.gov/mission_pages/hubble/multimedia/index.html), see the [Hubble Copyright](https://hubblesite.org/copyright)
 
-## License
 
-Copyright 2021 Intel Corporation
+Note the textures shown above, which total over 13GB, are not part of the repo. A few 16k x 16k textures are available as a [release](https://github.com/GameTechDev/SamplerFeedbackStreaming/releases/tag/1)
 
-Permission is hereby granted, free of charge, to any person obtaining a copy of
-this software and associated documentation files (the "Software"), to deal in
-the Software without restriction, including without limitation the rights to
-use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
-of the Software, and to permit persons to whom the Software is furnished to do
-so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-## Requirements
-
-The demo requires **`Windows 10 20H1 (aka May 2020 Update, build 19041)`** or later and a GPU with Sampler Feedback Support.
-
-Intel Iris Xe Graphics, as can be found in 11th Generation Intel&reg; Core&trade; processors and future discrete GPUs, requires BETA driver [30.0.100.9667](https://downloadcenter.intel.com/product/80939/Graphics) or later.
-
-Note this repository does not contain the textures shown above, which total over 13GB. A link to these textures will hopefully be provided soon. Test textures are provided, as is a mechanism to convert from BCx format DDS files into the custom .XET format. UPDATE: The first "release" package (labeled "1") contains a .zip with a few hi-res textures.
-
-This repository will be updated when DirectStorage for Windows&reg; becomes available.
+Test textures are provided, as is a mechanism to convert from BCx format DDS files into the custom .XET format.
 
 ## Build Instructions
 
-Download the source. Build the solution file with Visual Studio 2019.
+Download the source. Build the solution file [SamplerFeedbackStreaming.sln](SamplerFeedbackStreaming.sln) (tested with Visual Studio 2019).
 
-## Running
-
-All executables and .bat files will be found in the x64/Release or x64/Debug directories.
+All executables, scripts, configurations, and media files will be found in the x64/Release or x64/Debug directories.
 
 To run within Visual Studio, change the working directory to $(TargetDir) under Properties/Debugging:
 
 ![set working directory to $(TargetDir)](./readme-images/project-settings.png "set Working Directory to \$(TargetDir)")
 
-By default (no command line options) the application starts looking at a single object, "terrain", which allows for exploring sampler feedback streaming. In the top right find 2 windows: on the left is the raw GPU min mip feedback, on the right is the min mip map generated by the application. Across the bottom are the mips of the texture, with mip 0 in the bottom left. Left-click drag the terrain to see sampler feedback streaming in action.
+Or cd to the build directory (x64/Release or x64/Debug) and run from the command line:
+
 
     c:\SamplerFeedbackStreaming\x64\Release> expanse.exe
 
+By default (no command line options) there will be a single object, "terrain", which allows for exploring sampler feedback streaming. In the top right find 2 windows: on the left is the raw GPU min mip feedback, on the right is the min mip map "residency map" generated by the application. Across the bottom are the mips of the texture, with mip 0 in the bottom left. Left-click drag the terrain to see sampler feedback streaming in action.
 ![default startup](./readme-images/default-startup.jpg "default startup")
 
-The batch file `demo.bat` starts in a more interesting state. Note keyboard controls are inactive while `Camera` animation is non-zero.
+The batch file _demo.bat_ starts in a more interesting state. Note keyboard controls are inactive while _Camera_ animation is non-zero.
 
     c:\SamplerFeedbackStreaming\x64\Release> demo.bat
 
 ![demo batch file](./readme-images/demo-bat.jpg "demo.bat")
 
-The textures in the first "release" package, hubble-16k.zip, work with "demo-hubble.bat". Make sure the mediadir in the batch file is set properly, or override it on the command line as follows:
+The high-resolution textures in the first "release" package, [hubble-16k.zip](https://github.com/GameTechDev/SamplerFeedbackStreaming/releases/tag/1), work with "demo-hubble.bat", including a sky and earth. Make sure the mediadir in the batch file is set properly, or override it on the command line as follows:
 
     c:\SamplerFeedbackStreaming\x64\Release> demo-hubble.bat -mediadir c:\hubble-16k
 
 ## Configurations
 
-By default, the application loads `config.json`.
+By default, the application loads [config.json](config/config.json).
 
 However, it has been observed that performance decays over time on earlier nvidia devices/drivers (as the tiles in the heap become fragmented relative to resources). Specifically, the CPU time for [UpdateTileMappings](https://docs.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-id3d12commandqueue-updatetilemappings) limits the system throughput.
 
-If you observe this issue (most obvious with stress.bat using large textures), run the included batch files with the addition of `-config nvidia.json`, which distributes resources across many small heaps. E.g.:
+If you observe this issue, obvious in demo mode or with [stress.bat](scripts/stress.bat), add `-config nvidia.json` to the command line.
+
+E.g.:
 
     c:\SamplerFeedbackStreaming\x64\Release> demo.bat -config nvidia.json
     c:\SamplerFeedbackStreaming\x64\Release> stress.bat -mediadir c:\hubble-16k -config nvidia.json
+
+The main differences in [nvidia.json](configs/nvidia.json) distribute textures across 127 heaps each sized 32MB (512 tiles * 64KB per tile), for a total of ~4GB of GPU physical memory. Since this implementation restricts resources to a single heap, it is possible for the small heaps to fill resulting in visual artifacts. However, mapping and unmapping of small heaps appears to be significantly faster on some GPUs.
+
+    "heapSizeTiles": 512, // size for each heap. 64KB per tile * 16384 tiles -> 1GB heap
+    "numHeaps": 127, // number of heaps. objects will be distributed among heaps
 
 ## Keyboard controls
 
@@ -107,7 +89,9 @@ There are a lot of keyboard controls - a function of giving many demos:
 
 ## JSON configuration files and command lines
 
-For a full list of command line options, pass the command line "?"
+For a full list of command line options, pass the command line "?", e.g.
+
+    c:> expanse.exe ?
 
 Most of the detailed controls for the system can be find in a *json* file. The options in the json have corresponding command lines, e.g.:
 
@@ -125,7 +109,7 @@ The executable `DdsToXet.exe` converts BCn DDS textures to the custom XET format
 
     c:> ddstoxet.xet -in myfile.dds -out myfile.xet
 
-The batch file `convert.bat` will read all the DDS files in one directory and write XET files to a second directory. The output directory must exist.
+The batch file [convert.bat](scripts/convert.bat) will read all the DDS files in one directory and write XET files to a second directory. The output directory must exist.
 
     c:> convert c:\myDdsFiles c:\myXetFiles
 
@@ -151,7 +135,7 @@ There are also a few known bugs:
 
 This implementation of Sampler Feedback Streaming uses DX12 Sampler Feedback in combination with DX12 Reserved Resources, aka Tiled Resources. A multi-threaded CPU library processes feedback from the GPU, makes decisions about which tiles to load and evict, loads data from disk storage, and submits mapping and uploading requests via GPU copy queues. There is no explicit GPU-side synchronization between the queues, so rendering frame rate is not dependent on completion of copy commands (on GPUs that support concurrent multi-queue operation). The CPU threads run continuously and asynchronously from the GPU (pausing when there's no work to do), polling fence completion states to determine when feedback is ready to process or copies and memory mapping has completed.
 
-All the magic can be found in  the **TileUpdateManager** library (see TileUpdateManager.h), which abstracts the creation of StreamingResources and heaps while internally managing feedback resources, file I/O, and GPU memory mapping.
+All the magic can be found in  the **TileUpdateManager** library (see [TileUpdateManager.h](TileUpdateManager/TileUpdateManager.h)), which abstracts the creation of StreamingResources and heaps while internally managing feedback resources, file I/O, and GPU memory mapping.
 
 The technique works as follows:
 
@@ -184,7 +168,7 @@ Below, the Visualization mode was set to "Color = Mip" and labels were added. Ti
 
 To reduce GPU memory, a single combined buffer contains all the residency maps for all the resources. The pixel shader samples the corresponding residency map to clamp the sampling function to the minimum available texture data available, thereby avoiding sampling tiles that have not been mapped.
 
-We can see this in the shader "terrainPS.hlsl". Resources are defined at the top of the shader, including the reserved buffer, the residency resource, and the sampler:
+We can see this in the shader [terrainPS.hlsl](src/shaders/terrainPS.hlsl). Resources are defined at the top of the shader, including the reserved buffer, the residency resource, and the sampler:
 
 ```cpp
 Texture2D g_streamingTexture : register(t0);
@@ -205,16 +189,22 @@ The sampling operation is clamped to the minimum mip resident (mipLevel).
 
 ### 4. Draw Objects While Recording Feedback
 
-For expanse, there is a "normal" non-feedback shader named terrainPS.hlsl and a "feedback-enabled" version of the same shader, terrainPS-FB.hlsl. The latter simply writes feedback using [WriteSamplerFeedback](https://microsoft.github.io/DirectX-Specs/d3d/SamplerFeedback.html) HLSL intrinsic, using the same sampler and texture coordinates, then calls the prior shader. Compare the WriteSamplerFeedback() call below to to the Sample() call above.
+For expanse, there is a "normal" non-feedback shader named [terrainPS.hlsl](src/shaders/terrainPS.hlsl) and a "feedback-enabled" version of the same shader, [terrainPS-FB.hlsl](src/shaders/terrainPS-FB.hlsl). The latter simply writes feedback using [WriteSamplerFeedback](https://microsoft.github.io/DirectX-Specs/d3d/SamplerFeedback.html) HLSL intrinsic, using the same sampler and texture coordinates, then calls the prior shader. Compare the WriteSamplerFeedback() call below to to the Sample() call above.
 
-Include the normal pixel shader:
+To add feedback to an existing shader:
+
+1. include the original shader hlsl
+2. add binding for the paired feedback resource
+3. call the WriteSamplerFeedback intrinsic with the resource and sampler defined in the original shader
+4. call the original shader
+
 ```cpp
 #include "terrainPS.hlsl"
+
 FeedbackTexture2D<SAMPLER_FEEDBACK_MIN_MIP> g_feedback : register(u0);
 
 float4 psFB(VS_OUT input) : SV_TARGET0
 {
-
     g_feedback.WriteSamplerFeedback(g_streamingTexture, g_sampler, input.tex.xy);
 
     return ps(input);
@@ -225,11 +215,13 @@ Resolving feedback for one resource is inexpensive, but adds up when there are 1
 
 As an optimization, Expanse tells streaming resources to evict all tiles if they are behind the camera. This could potentially be improved to include any object not in the view frustum.
 
-You can find the time limit estimation, the eviction optimization, and the request to gather sampler feedback by searching Scene.cpp for the following:
+You can find the time limit estimation, the eviction optimization, and the request to gather sampler feedback by searching [Scene.cpp](src/Scene.cpp) for the following:
 
-* DetermineMaxNumFeedbackResolves
-* QueueEviction
-* SetFeedbackEnabled
+- **DetermineMaxNumFeedbackResolves** determines how many resources to gather feedback for
+- **QueueEviction** tell runtime to evict tiles for this resource (as soon as possible)
+- **SetFeedbackEnabled** results in 2 actions:
+    1. tell the runtime to collect feedback for this object via TileUpdateManager::QueueFeedback(), which results in clearing and resolving the feedback resource for this resource for this frame
+    2. use the feedback-enabled pixel shader for this object
 
 ### 5. Determine Which Tiles to Load & Evict
 
@@ -237,7 +229,8 @@ Once the draw command is complete, the feedback is ready to read on the CPU - ei
 
 Min mip feedback tells us the minimum mip tile that should be loaded. The min mip feedback is traversed, updating an internal reference count for each tile. If a tile previously was unused (ref count = 0), it is queued for loading from the bottom (highest mip) up. If a tile is not needed for a particular region, its ref count is decreased (from the top down). When its ref count reaches 0, it might be ready to evict. 
 
-Data structures for tracking reference count, residency state, and heap usage can be found in StreamingResource.cpp/h, look for TileMappingState. This class also has methods for interpreting the feedback buffer (ProcessFeedback) and updating the residency map (UpdateMinMipMap).
+Data structures for tracking reference count, residency state, and heap usage can be found in [StreamingResource.cpp](TileUpdateManager/StreamingResource.cpp) and [StreamingResource.h](TileUpdateManager/StreamingResource.h), look for TileMappingState. This class also has methods for interpreting the feedback buffer (ProcessFeedback) and updating the residency map (UpdateMinMipMap), which execute concurrently in separate CPU threads.
+
 ```cpp
 class TileMappingState
 {
@@ -255,11 +248,11 @@ Tiles can only be evicted if there are no lower-mip-level tiles that depend on t
 
 A tile also cannot be evicted if it is being used by an outstanding draw command. We prevent this by  delaying evictions a frame or two depending on double or triple buffering of the swap chain. If a tile is needed before the delay completes, the tile is simply rescued from the pending eviction data structure instead of being re-loaded.
 
-The mechanics of loading, mapping, and unmapping tiles is all contained within the DataUploader class, which depends on a FileStreamer class to do the actual tile loads. The latter implementation (FileStreamerReference) can easily be exchanged with DirectStorage for Windows.
+The mechanics of loading, mapping, and unmapping tiles is all contained within the DataUploader class, which depends on a [FileStreamer](TileUpdateManager/FileStreamer.h) class to do the actual tile loads. The latter implementation ([FileStreamerReference](TileUpdateManager/FileStreamerReference.h)) can easily be exchanged with DirectStorage for Windows.
 
 ### 6. Putting it all Together
 
-There is some work that needs to be done before drawing objects that use feedback (clearing feedback resources), and some work that needs to be done after (resolving feedback resources). TileUpdateManager creates theses commands, but does not execute them. Each frame, these command lists must be built and submitted with application draw commands, which you can find just before the call to Present() as follows:
+There is some work that needs to be done before drawing objects that use feedback (clearing feedback resources), and some work that needs to be done after (resolving feedback resources). TileUpdateManager creates theses commands, but does not execute them. Each frame, these command lists must be built and submitted with application draw commands, which you can find just before the call to Present() in [Scene.cpp](src/Scene.cpp) as follows:
 
 ```cpp
 auto commandLists = m_pTileUpdateManager->EndFrame();
@@ -267,3 +260,9 @@ auto commandLists = m_pTileUpdateManager->EndFrame();
 ID3D12CommandList* pCommandLists[] = { commandLists.m_beforeDrawCommands, m_commandList.Get(), commandLists.m_afterDrawCommands };
         m_commandQueue->ExecuteCommandLists(_countof(pCommandLists), pCommandLists);
 ```
+
+## License
+
+Sample and its code provided under MIT license, please see [LICENSE](/LICENSE). All third-party source code provided under their own respective and MIT-compatible Open Source licenses.
+
+Copyright (C) 2021, Intel Corporation  
