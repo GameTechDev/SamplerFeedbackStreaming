@@ -107,7 +107,7 @@ command line:
 
 The executable `DdsToXet.exe` converts BCn DDS textures to the custom XET format. Only BC1 and BC7 textures have been tested. Usage:
 
-    c:> ddstoxet.xet -in myfile.dds -out myfile.xet
+    c:> ddstoxet.exe -in myfile.dds -out myfile.xet
 
 The batch file [convert.bat](scripts/convert.bat) will read all the DDS files in one directory and write XET files to a second directory. The output directory must exist.
 
