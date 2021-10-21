@@ -41,9 +41,9 @@
 
   "updateAll": false, // update feedback for every object every frame
 
-  "heapSizeTiles": 16384, // size for each heap. 64KB per tile * 16384 tiles -> 1GB heap
+  "heapSizeTiles": 24576, // size for each heap. 64KB per tile * 16384 tiles -> 1GB heap
   "numHeaps": 1, // number of heaps. objects will be distributed among heaps
-  "maxTileUpdatesPerApiCall": 512, // limit to # tiles passed to D3D12 UpdateTileMappings()
+  "maxTileUpdatesPerApiCall": 4096, // limit to # tiles passed to D3D12 UpdateTileMappings()
 
   // maximum number of in-flight command lists
   // note a command list can only target a single resource

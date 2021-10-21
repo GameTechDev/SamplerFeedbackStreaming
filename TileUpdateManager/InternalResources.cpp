@@ -27,7 +27,7 @@
 #include "pch.h"
 
 #include "InternalResources.h"
-#include "TileUpdateManager.h"
+#include "DXSampleHelper.h"
 #include "XeTexture.h"
 
 //-----------------------------------------------------------------------------

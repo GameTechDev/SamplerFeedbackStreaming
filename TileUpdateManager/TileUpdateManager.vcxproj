@@ -92,6 +92,7 @@
     <ClCompile Include="DataUploader.cpp" />
     <ClCompile Include="FileStreamer.cpp" />
     <ClCompile Include="FileStreamerReference.cpp" />
+    <ClCompile Include="StreamingResourceExt.cpp" />
     <ClCompile Include="StreamingHeap.cpp" />
     <ClCompile Include="HeapAllocator.cpp" />
     <ClCompile Include="InternalResources.cpp" />
@@ -100,7 +101,9 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="StreamingResource.cpp" />
+    <ClCompile Include="StreamingResourceDU.cpp" />
     <ClCompile Include="TileUpdateManager.cpp" />
+    <ClCompile Include="TileUpdateManagerExt.cpp" />
     <ClCompile Include="UpdateList.cpp" />
     <ClCompile Include="UploadAllocator.cpp" />
     <ClCompile Include="XeTexture.cpp" />
@@ -109,6 +112,8 @@
     <ClInclude Include="DataUploader.h" />
     <ClInclude Include="FileStreamer.h" />
     <ClInclude Include="FileStreamerReference.h" />
+    <ClInclude Include="SamplerFeedbackStreaming.h" />
+    <ClInclude Include="StreamingResourceDU.h" />
     <ClInclude Include="XetFileHeader.h" />
     <ClInclude Include="XeTexture.h" />
     <ClInclude Include="StreamingHeap.h" />
@@ -116,7 +121,6 @@
     <ClInclude Include="InternalResources.h" />
     <ClInclude Include="MappingUpdater.h" />
     <ClInclude Include="pch.h" />
-    <ClInclude Include="Interfaces.h" />
     <ClInclude Include="Streaming.h" />
     <ClInclude Include="StreamingResource.h" />
     <ClInclude Include="TileUpdateManager.h" />

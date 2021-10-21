@@ -207,14 +207,13 @@ Scene::Scene(const CommandLineArgs& in_args, HWND in_hwnd) :
     // statistics gathering
     if (m_args.m_timingFrameFileName.size() && (m_args.m_timingStopFrame >= m_args.m_timingStartFrame))
     {
-        m_csvFile = std::make_unique<FrameEventTracing>(m_args);
+        m_csvFile = std::make_unique<FrameEventTracing>(m_args.m_timingFrameFileName, adapterDescription);
     }
 }
 
 Scene::~Scene()
 {
     WaitForGpu();
-    m_pTileUpdateManager->Finish();
 
     if (GetSystemMetrics(SM_REMOTESESSION) == 0)
     {
@@ -661,7 +660,7 @@ void Scene::WaitForGpu()
 //-----------------------------------------------------------------------------
 void Scene::StartStreamingLibrary()
 {
-    TileUpdateManager::TileUpdateManagerDesc tumDesc;
+    TileUpdateManagerDesc tumDesc;
     tumDesc.m_maxNumCopyBatches = m_args.m_numStreamingBatches;
     tumDesc.m_maxTileCopiesPerBatch = m_args.m_streamingBatchSize;
     tumDesc.m_maxTileCopiesInFlight = m_args.m_maxTilesInFlight;
@@ -670,7 +669,8 @@ void Scene::StartStreamingLibrary()
     tumDesc.m_useDirectStorage = m_args.m_useDirectStorage;
 
     m_pTileUpdateManager = std::make_unique<TileUpdateManager>(m_device.Get(), m_commandQueue.Get(), tumDesc);
-
+    
+    // create 1 or more heaps to contain our StreamingResources
     for (UINT i = 0; i < m_args.m_numHeaps; i++)
     {
         m_sharedHeaps.push_back(m_pTileUpdateManager->CreateStreamingHeap(m_args.m_streamingHeapSize));
@@ -769,12 +769,6 @@ XMMATRIX Scene::SetSphereMatrix()
 //-----------------------------------------------------------------------------
 void Scene::LoadSpheres()
 {
-    // can't add or remove spheres before flushing all outstanding commands
-    if (m_numSpheresLoaded != (UINT)m_args.m_numSpheres)
-    {
-        m_pTileUpdateManager->Finish();
-    }
-
     if (m_numSpheresLoaded < (UINT)m_args.m_numSpheres)
     {
         // sphere descriptors start after the terrain descriptor
@@ -1071,7 +1065,6 @@ void Scene::DrainTiles()
 
     if (drainTiles)
     {
-        m_pTileUpdateManager->Finish();
         for (auto m : m_objects)
         {
             m->GetStreamingResource()->ClearAllocations();
@@ -1590,7 +1583,7 @@ void Scene::DrawUI(float in_cpuProcessFeedbackTime)
         UINT numTilesCommitted = 0;
         for (auto h : m_sharedHeaps)
         {
-            numTilesCommitted += h->GetAllocator().GetNumAllocated();
+            numTilesCommitted += h->GetNumTilesAllocated();
         }
 
         Gui::DrawParams guiDrawParams;
@@ -1653,7 +1646,7 @@ bool Scene::Draw()
 
     // get the total time the GPU spent processing feedback during the previous frame (by calling before TUM::BeginFrame)
     m_gpuProcessFeedbackTime = m_pTileUpdateManager->GetGpuTime();
-    float cpuProcessFeedbackTime = m_pTileUpdateManager->GetProcessFeedbackTime();
+    float cpuProcessFeedbackTime = m_pTileUpdateManager->GetCpuProcessFeedbackTime();
 
     // prepare to update Feedback & stream textures
     D3D12_CPU_DESCRIPTOR_HANDLE minmipmapDescriptor = CD3DX12_CPU_DESCRIPTOR_HANDLE(m_srvHeap->GetCPUDescriptorHandleForHeapStart(), (UINT)DescriptorHeapOffsets::SHARED_MIN_MIP_MAP, m_srvUavCbvDescriptorSize);

@@ -26,16 +26,18 @@
 
 #include "pch.h"
 
-#include "TileUpdateManager.h"
-#include "Interfaces.h"
+#include "SamplerFeedbackStreaming.h"  // required for TileUpdateManagerDesc
+#include "DataUploader.h"
+#include "StreamingResource.h"
 #include "XeTexture.h"
+#include "StreamingHeap.h"
 
 #define COPY_RESIDENCY_MAPS 0
 
 //=============================================================================
-// data structure to manage reserved resource
+// constructor for streaming library base class
 //=============================================================================
-TileUpdateManager::TileUpdateManager(
+Streaming::TileUpdateManagerBase::TileUpdateManagerBase(
     // query resource for tiling properties. use its device to create internal resources
     ID3D12Device8* in_pDevice,
 
@@ -56,9 +58,8 @@ m_numSwapBuffers(in_desc.m_swapChainBufferCount)
     ASSERT(D3D12_COMMAND_LIST_TYPE_DIRECT == in_pDirectCommandQueue->GetDesc().Type);
 
     ThrowIfFailed(in_pDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_frameFence)));
-    m_frameFence->SetName(L"TileUpdateManager::m_frameFence");
+    m_frameFence->SetName(L"Streaming::TileUpdateManagerBase::m_frameFence");
 
-    // NOTE: DataUploader creates an atlas, which determines the heap size.
     m_pDataUploader = std::make_unique<Streaming::DataUploader>(
         in_pDevice,
         in_desc.m_maxNumCopyBatches,
@@ -77,83 +78,33 @@ m_numSwapBuffers(in_desc.m_swapChainBufferCount)
             ThrowIfFailed(in_pDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&cl.m_allocators[i])));
 
             std::wstringstream name;
-            name << "Shared::m_commandLists.m_allocators[" << c << "][" << i << "]";
+            name << "Streaming::TileUpdateManagerBase::m_commandLists.m_allocators[" << c << "][" << i << "]";
             cl.m_allocators[i]->SetName(name.str().c_str());
         }
         ThrowIfFailed(in_pDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, cl.m_allocators[m_renderFrameIndex].Get(), nullptr, IID_PPV_ARGS(&cl.m_commandList)));
 
         std::wstringstream name;
-        name << "Shared::m_commandLists.m_commandList[" << c << "]";
+        name << "Streaming::TileUpdateManagerBase::m_commandLists.m_commandList[" << c << "]";
         cl.m_commandList->SetName(name.str().c_str());
         cl.m_commandList->Close();
     }
 
     // advance frame number to the first frame...
     m_frameFenceValue++;
-
-    UseDirectStorage(in_desc.m_useDirectStorage);
 }
 
-TileUpdateManager::~TileUpdateManager()
+Streaming::TileUpdateManagerBase::~TileUpdateManagerBase()
 {
-    // DataUploader destructor flushes outstanding commands, but we want to make sure that's the first thing that happens in the desctructor for TileUpdateManager
+    // force DataUploader to flush now, rather than waiting for its destructor
     Finish();
 }
 
-//-----------------------------------------------------------------------------
-// performance and visualization
-//-----------------------------------------------------------------------------
-const TileUpdateManager::BatchTimes& TileUpdateManager::GetBatchTimes() const { return m_pDataUploader->GetStreamingTimes(); }
-float TileUpdateManager::GetGpuStreamingTime() const { return m_pDataUploader->GetGpuStreamingTime(); }
-
-// the total time the GPU spent resolving feedback during the previous frame
-float TileUpdateManager::GetGpuTime() const { return m_gpuTimerResolve.GetTimes()[m_renderFrameIndex].first; }
-UINT TileUpdateManager::GetTotalNumUploads() const { return m_pDataUploader->GetTotalNumUploads(); }
-UINT TileUpdateManager::GetTotalNumEvictions() const { return m_pDataUploader->GetTotalNumEvictions(); }
-void TileUpdateManager::SetVisualizationMode(UINT in_mode) { m_pDataUploader->SetVisualizationMode(in_mode); }
-
-// returns time since last query. expected usage is once per frame.
-float TileUpdateManager::GetProcessFeedbackTime()
-{
-    // read latest cumulative time
-    INT64 processFeedbackTime = m_processFeedbackTime;
-
-    float t = m_cpuTimer.GetSecondsFromDelta(processFeedbackTime - m_previousFeedbackTime);
-
-    // remember current time for next call
-    m_previousFeedbackTime = processFeedbackTime;
-
-    return t;
-}
-
-//-----------------------------------------------------------------------------
-// set which file streaming system to use
-// will reset even if previous setting was the same. so?
-//-----------------------------------------------------------------------------
-void TileUpdateManager::UseDirectStorage(bool in_useDS)
-{
-    Finish();
-    auto streamerType = Streaming::DataUploader::StreamerType::Reference;
-    if (in_useDS)
-    {
-        streamerType = Streaming::DataUploader::StreamerType::DirectStorage;
-    }
-
-    auto pOldStreamer = m_pDataUploader->SetStreamer(streamerType);
-
-    for (auto& s : m_streamingResources)
-    {
-        s->SetFileHandle(m_pDataUploader.get());
-    }
-
-    delete pOldStreamer;
-}
 
 //-----------------------------------------------------------------------------
 // kick off thread that continuously streams tiles
 // gives StreamingResources opportunities to update feedback
 //-----------------------------------------------------------------------------
-void TileUpdateManager::StartThreads()
+void Streaming::TileUpdateManagerBase::StartThreads()
 {
     if (m_threadsRunning)
     {
@@ -282,7 +233,7 @@ void TileUpdateManager::StartThreads()
 // submits all outstanding command lists
 // stops all processing threads
 //-----------------------------------------------------------------------------
-void TileUpdateManager::Finish()
+void Streaming::TileUpdateManagerBase::Finish()
 {
     ASSERT(!GetWithinFrame());
  
@@ -315,36 +266,11 @@ void TileUpdateManager::Finish()
 }
 
 //-----------------------------------------------------------------------------
-// Heap to old a number of 64KB tiles
-//-----------------------------------------------------------------------------
-Streaming::Heap* TileUpdateManager::CreateStreamingHeap(UINT in_maxNumTilesHeap)
-{
-    return new Streaming::Heap(m_pDataUploader->GetMappingQueue(), in_maxNumTilesHeap);
-}
-
-//-----------------------------------------------------------------------------
-// create a StreamingResource, passing in a version of TileUpdateManager with extra methods
-//-----------------------------------------------------------------------------
-StreamingResource* TileUpdateManager::CreateStreamingResource(const std::wstring& in_filename, Streaming::Heap* in_pHeap)
-{
-    ASSERT(!m_threadsRunning);
-
-    Streaming::FileStreamer::FileHandle* pFileHandle = m_pDataUploader->OpenFile(in_filename);
-    Streaming::StreamingResourceTUM* pRsrc = new Streaming::StreamingResourceTUM(in_filename, pFileHandle, (Streaming::TileUpdateManagerSR*)this, in_pHeap);
-    m_streamingResources.push_back(pRsrc);
-    m_numStreamingResourcesChanged = true;
-
-    m_havePackedMipsToLoad = true;
-
-    return pRsrc;
-}
-
-//-----------------------------------------------------------------------------
 // allocate residency map buffer large enough for numswapbuffers * min mip map buffers for each StreamingResource
 // StreamingResource::SetResidencyMapOffsetBase() will populate the residency map with latest
 // descriptor handle required to update the assoiated shader resource view
 //-----------------------------------------------------------------------------
-void TileUpdateManager::AllocateResidencyMap(D3D12_CPU_DESCRIPTOR_HANDLE in_descriptorHandle)
+void Streaming::TileUpdateManagerBase::AllocateResidencyMap(D3D12_CPU_DESCRIPTOR_HANDLE in_descriptorHandle)
 {
     static const UINT alignment = 32; // these are bytes, so align by 32 corresponds to SIMD32
     static const UINT minBufferSize = 64 * 1024; // multiple of 64KB page
@@ -362,7 +288,7 @@ void TileUpdateManager::AllocateResidencyMap(D3D12_CPU_DESCRIPTOR_HANDLE in_desc
     {
         m_residencyMapOffsets[i] = offset;
 
-        UINT minMipMapSize = m_streamingResources[i]->GetMinMipMapWidth() * m_streamingResources[i]->GetMinMipMapHeight();
+        UINT minMipMapSize = m_streamingResources[i]->GetNumTilesWidth() * m_streamingResources[i]->GetNumTilesHeight();
 
         offset += minMipMapSize;
 
@@ -397,7 +323,7 @@ void TileUpdateManager::AllocateResidencyMap(D3D12_CPU_DESCRIPTOR_HANDLE in_desc
 
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
-void TileUpdateManager::CreateMinMipMapView(D3D12_CPU_DESCRIPTOR_HANDLE in_descriptorHandle)
+void Streaming::TileUpdateManagerBase::CreateMinMipMapView(D3D12_CPU_DESCRIPTOR_HANDLE in_descriptorHandle)
 {
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
     srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
@@ -414,174 +340,29 @@ void TileUpdateManager::CreateMinMipMapView(D3D12_CPU_DESCRIPTOR_HANDLE in_descr
 }
 
 //-----------------------------------------------------------------------------
-// Call this method once for each TileUpdateManager that shares heap/upload buffers
-// expected to be called once per frame, before anything is drawn.
 //-----------------------------------------------------------------------------
-void TileUpdateManager::BeginFrame(ID3D12DescriptorHeap* in_pDescriptorHeap,
-    D3D12_CPU_DESCRIPTOR_HANDLE in_minmipmapDescriptorHandle)
+Streaming::UpdateList* Streaming::TileUpdateManagerBase::AllocateUpdateList(StreamingResourceBase* in_pStreamingResource)
 {
-    ASSERT(!GetWithinFrame());
-    m_withinFrame = true; 
-
-    StartThreads();
-
-    m_processFeedbackFlag.Set();
-
-    // if new StreamingResources have been created...
-    if (m_numStreamingResourcesChanged)
-    {
-        m_numStreamingResourcesChanged = false;
-        AllocateResidencyMap(in_minmipmapDescriptorHandle);
-    }
-
-    // the frame fence is used to optimize readback of feedback
-    // only read back the feedback after the frame that writes to it has completed
-    // note the signal is for the previous frame, the value is for "this" frame
-    m_directCommandQueue->Signal(m_frameFence.Get(), m_frameFenceValue);
-    m_frameFenceValue++;
-
-    m_renderFrameIndex = (m_renderFrameIndex + 1) % m_numSwapBuffers;
-    for (auto& cl : m_commandLists)
-    {
-        auto& allocator = cl.m_allocators[m_renderFrameIndex];
-        allocator->Reset();
-        ThrowIfFailed(cl.m_commandList->Reset(allocator.Get(), nullptr));
-    }
-    ID3D12DescriptorHeap* ppHeaps[] = { in_pDescriptorHeap };
-    GetCommandList(CommandListName::Before)->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+    return m_pDataUploader->AllocateUpdateList(in_pStreamingResource);
 }
 
 //-----------------------------------------------------------------------------
-// note to self to create Clear() and Resolve() commands during EndFrame()
 //-----------------------------------------------------------------------------
-void TileUpdateManager::QueueFeedback(StreamingResource* in_pResource, D3D12_GPU_DESCRIPTOR_HANDLE in_gpuDescriptor)
+void Streaming::TileUpdateManagerBase::SubmitUpdateList(Streaming::UpdateList& in_updateList)
 {
-    Streaming::StreamingResourceTUM* pResource = (Streaming::StreamingResourceTUM*)in_pResource;
-
-    m_feedbackReadbacks.push_back({ pResource, in_gpuDescriptor });
-
-    // add feedback clears
-    pResource->ClearFeedback(GetCommandList(CommandListName::Before), in_gpuDescriptor);
-
-    // barrier coalescing around blocks of commands in EndFrame():
-
-    // after drawing, transition the opaque feedback resources from UAV to resolve source
-    // transition the feedback decode target to resolve_dest
-    m_barrierUavToResolveSrc.push_back(CD3DX12_RESOURCE_BARRIER::Transition(pResource->GetOpaqueFeedback(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_RESOLVE_SOURCE));
-
-    // after resolving, transition the opaque resources back to UAV. Transition the resolve destination to copy source for read back on cpu
-    m_barrierResolveSrcToUav.push_back(CD3DX12_RESOURCE_BARRIER::Transition(pResource->GetOpaqueFeedback(), D3D12_RESOURCE_STATE_RESOLVE_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS));
-
-#if RESOLVE_TO_TEXTURE
-    // resolve to texture incurs a subsequent copy to linear buffer
-    m_barrierUavToResolveSrc.push_back(CD3DX12_RESOURCE_BARRIER::Transition(pResource->GetResolvedFeedback(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_RESOLVE_DEST));
-    m_barrierResolveSrcToUav.push_back(CD3DX12_RESOURCE_BARRIER::Transition(pResource->GetResolvedFeedback(), D3D12_RESOURCE_STATE_RESOLVE_DEST, D3D12_RESOURCE_STATE_COPY_SOURCE));
-#endif
+    m_pDataUploader->SubmitUpdateList(in_updateList);
 }
 
 //-----------------------------------------------------------------------------
-// Call this method once corresponding to BeginFrame()
-// expected to be called once per frame, after everything was drawn.
 //-----------------------------------------------------------------------------
-TileUpdateManager::CommandLists TileUpdateManager::EndFrame()
+void Streaming::TileUpdateManagerBase::FreeEmptyUpdateList(Streaming::UpdateList& in_updateList)
 {
-    ASSERT(GetWithinFrame());
-    // NOTE: we are "within frame" until the end of EndFrame()
+    m_pDataUploader->FreeUpdateList(in_updateList);
+}
 
-    // transition packed mips if necessary
-    // FIXME? if any 1 needs a transition, go ahead and check all of them. not worth optimizing.
-    if (m_packedMipTransition)
-    {
-        m_packedMipTransition = false;
-        for (auto o : m_streamingResources)
-        {
-            if (o->GetPackedMipsNeedTransition())
-            {
-                D3D12_RESOURCE_BARRIER b = CD3DX12_RESOURCE_BARRIER::Transition(
-                    o->GetTiledResource(),
-                    D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-                m_packedMipTransitionBarriers.push_back(b);
-            }
-        }
-    }
-
-    //------------------------------------------------------------------
-    // before draw calls, do the following:
-    //     - clear feedback buffers
-    //     - resource barriers for aliasing and packed mip transitions
-    //------------------------------------------------------------------
-    {
-        auto pCommandList = GetCommandList(CommandListName::Before);
-
-        // get any packed mip transition barriers accumulated by DataUploader
-        if (m_packedMipTransitionBarriers.size())
-        {
-            pCommandList->ResourceBarrier((UINT)m_packedMipTransitionBarriers.size(), m_packedMipTransitionBarriers.data());
-            m_packedMipTransitionBarriers.clear();
-        }
-
-#if COPY_RESIDENCY_MAPS
-        // FIXME: would rather update multiple times per frame, and only affected regions
-        D3D12_RESOURCE_BARRIER residencyBarrier = CD3DX12_RESOURCE_BARRIER::Transition(m_residencyMapLocal.Get(),
-            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST);
-        pCommandList->ResourceBarrier(1, &residencyBarrier);
-
-        pCommandList->CopyResource(m_residencyMapLocal.Get(), m_residencyMap.m_resource.Get());
-
-        std::swap(residencyBarrier.Transition.StateBefore, residencyBarrier.Transition.StateAfter);
-        pCommandList->ResourceBarrier(1, &residencyBarrier);
-#endif
-        pCommandList->Close();
-    }
-
-    //------------------------------------------------------------------
-    // after draw calls,
-    // resolve feedback and copy to readback buffers
-    //------------------------------------------------------------------
-    {
-        auto pCommandList = GetCommandList(CommandListName::After);
-
-        if (m_feedbackReadbacks.size())
-        {
-            m_gpuTimerResolve.BeginTimer(pCommandList, m_renderFrameIndex);
-
-            // transition all feeback resources UAV->RESOLVE_SOURCE
-            // also transition the (non-opaque) resolved resources COPY_SOURCE->RESOLVE_DEST
-            pCommandList->ResourceBarrier((UINT)m_barrierUavToResolveSrc.size(), m_barrierUavToResolveSrc.data());
-            m_barrierUavToResolveSrc.clear();
-
-            // do the feedback resolves
-            for (auto& t : m_feedbackReadbacks)
-            {
-                t.m_pStreamingResource->ResolveFeedback(pCommandList);
-            }
-
-            // transition all feedback resources RESOLVE_SOURCE->UAV
-            // also transition the (non-opaque) resolved resources RESOLVE_DEST->COPY_SOURCE
-            pCommandList->ResourceBarrier((UINT)m_barrierResolveSrcToUav.size(), m_barrierResolveSrcToUav.data());
-            m_barrierResolveSrcToUav.clear();
-
-            m_gpuTimerResolve.EndTimer(pCommandList, m_renderFrameIndex);
-#if RESOLVE_TO_TEXTURE
-            // copy readable feedback buffers to cpu
-            for (auto& t : m_feedbackReadbacks)
-            {
-                t.m_pStreamingResource->ReadbackFeedback(pCommandList);
-            }
-#endif
-            m_feedbackReadbacks.clear();
-
-            m_gpuTimerResolve.ResolveTimer(pCommandList, m_renderFrameIndex);
-        }
-
-        pCommandList->Close();
-    }
-
-    TileUpdateManager::CommandLists outputCommandLists;
-    outputCommandLists.m_beforeDrawCommands = m_commandLists[(UINT)CommandListName::Before].m_commandList.Get();
-    outputCommandLists.m_afterDrawCommands = m_commandLists[(UINT)CommandListName::After].m_commandList.Get();
-
-    m_withinFrame = false;
-
-    return outputCommandLists;
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+ID3D12CommandQueue* Streaming::TileUpdateManagerBase::GetMappingQueue() const
+{
+    return m_pDataUploader->GetMappingQueue();
 }

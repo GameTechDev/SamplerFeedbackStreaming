@@ -47,7 +47,7 @@
 SceneObjects::BaseObject::BaseObject(
     const std::wstring& in_filename,
     TileUpdateManager* in_pTileUpdateManager,
-    Streaming::Heap* in_pStreamingHeap,
+    StreamingHeap* in_pStreamingHeap,
     ID3D12Device* in_pDevice,
     D3D12_CPU_DESCRIPTOR_HANDLE in_srvBaseCPU,
     BaseObject* in_pSharedObject) :
@@ -544,7 +544,7 @@ void SceneObjects::CreateSphere(SceneObjects::BaseObject* out_pObject,
 //=========================================================================
 SceneObjects::Terrain::Terrain(const std::wstring& in_filename,
     TileUpdateManager* in_pTileUpdateManager,
-    Streaming::Heap* in_pStreamingHeap,
+    StreamingHeap* in_pStreamingHeap,
     ID3D12Device* in_pDevice,
     UINT in_sampleCount,
     D3D12_CPU_DESCRIPTOR_HANDLE in_srvBaseCPU,
@@ -615,7 +615,7 @@ SceneObjects::Terrain::Terrain(const std::wstring& in_filename,
 //=========================================================================
 SceneObjects::Planet::Planet(const std::wstring& in_filename,
     TileUpdateManager* in_pTileUpdateManager,
-    Streaming::Heap* in_pStreamingHeap,
+    StreamingHeap* in_pStreamingHeap,
     ID3D12Device* in_pDevice,
     UINT in_sampleCount,
     D3D12_CPU_DESCRIPTOR_HANDLE in_srvBaseCPU,
@@ -638,7 +638,7 @@ SceneObjects::Planet::Planet(const std::wstring& in_filename,
 //-------------------------------------------------------------------------
 SceneObjects::Planet::Planet(const std::wstring& in_filename,
     TileUpdateManager* in_pTileUpdateManager,
-    Streaming::Heap* in_pStreamingHeap,
+    StreamingHeap* in_pStreamingHeap,
     ID3D12Device* in_pDevice,
     D3D12_CPU_DESCRIPTOR_HANDLE in_srvBaseCPU,
     BaseObject* in_pSharedObject) :
@@ -656,7 +656,7 @@ SceneObjects::Planet::Planet(const std::wstring& in_filename,
 //=============================================================================
 SceneObjects::Sky::Sky(const std::wstring& in_filename,
     TileUpdateManager* in_pTileUpdateManager,
-    Streaming::Heap* in_pStreamingHeap,
+    StreamingHeap* in_pStreamingHeap,
     ID3D12Device* in_pDevice,
     UINT in_sampleCount,
     D3D12_CPU_DESCRIPTOR_HANDLE in_srvBaseCPU) :

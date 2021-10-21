@@ -34,8 +34,6 @@
 
 #include "TileUpdateManager.h"
 
-class StreamingResource;
-
 //==================================================
 // UploadBuffer keeps an upload buffer per swapchain backbuffer
 // and tracks occupancy of current buffer
@@ -57,7 +55,7 @@ namespace Streaming
         );
         ~DataUploader();
 
-        FileStreamer::FileHandle* OpenFile(const std::wstring& in_path) const { return m_pFileStreamer->OpenFile(in_path); }
+        FileHandle* OpenFile(const std::wstring& in_path) const { return m_pFileStreamer->OpenFile(in_path); }
  
         // wait for all outstanding commands to complete. 
         void FlushCommands();
@@ -65,7 +63,7 @@ namespace Streaming
         ID3D12CommandQueue* GetMappingQueue() const { return m_mappingCommandQueue.Get(); }
 
         // may return null. called by StreamingResource.
-        UpdateList* AllocateUpdateList(StreamingResource* in_pStreamingResource);
+        UpdateList* AllocateUpdateList(StreamingResourceBase* in_pStreamingResource);
 
         void SubmitUpdateList(Streaming::UpdateList& in_updateList);
 
@@ -83,7 +81,7 @@ namespace Streaming
         //----------------------------------
         // statistics and visualization
         //----------------------------------
-        const TileUpdateManager::BatchTimes& GetStreamingTimes() const { return m_streamingTimes; }
+        const BatchTimes& GetStreamingTimes() const { return m_streamingTimes; }
 
         float GetGpuStreamingTime() const { return m_gpuTimer.GetTimes()[0].first; }
 
@@ -118,7 +116,7 @@ namespace Streaming
         UINT m_updateListAllocIndex{ 0 };
 
         UINT m_streamingTimeIndex{ 0 }; // index into cpu or gpu streaming history arrays
-        TileUpdateManager::BatchTimes m_streamingTimes;
+        BatchTimes m_streamingTimes;
 
         // object that performs UpdateTileMappings() requests
         Streaming::MappingUpdater m_mappingUpdater;

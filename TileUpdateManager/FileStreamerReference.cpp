@@ -29,8 +29,9 @@
 #include "FileStreamerReference.h"
 #include "UpdateList.h"
 #include "XeTexture.h"
-#include "Interfaces.h"
+#include "StreamingResourceDU.h"
 #include "DXSampleHelper.h"
+#include "StreamingHeap.h"
 
 //-----------------------------------------------------------------------------
 // Constructor
@@ -141,7 +142,7 @@ bool Streaming::FileStreamerReference::CopyBatch::GetReadsComplete()
 //-----------------------------------------------------------------------------
 // opening a file returns an opaque file handle
 //-----------------------------------------------------------------------------
-Streaming::FileStreamer::FileHandle* Streaming::FileStreamerReference::OpenFile(const std::wstring& in_path)
+Streaming::FileHandle* Streaming::FileStreamerReference::OpenFile(const std::wstring& in_path)
 {
     // open the file
     HANDLE fileHandle = CreateFile(in_path.c_str(), GENERIC_READ,

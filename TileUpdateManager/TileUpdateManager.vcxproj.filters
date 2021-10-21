@@ -32,11 +32,7 @@
     <ClInclude Include="UploadAllocator.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="TileUpdateManager.h" />
     <ClInclude Include="UpdateList.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="Interfaces.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="StreamingHeap.h">
@@ -57,6 +53,13 @@
     <ClInclude Include="FileStreamerReference.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="StreamingResourceDU.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="TileUpdateManager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="SamplerFeedbackStreaming.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="TileUpdateManager.cpp">
@@ -96,6 +99,15 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="FileStreamerReference.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="StreamingResourceDU.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="StreamingResourceExt.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="TileUpdateManagerExt.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

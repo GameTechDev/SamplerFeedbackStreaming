@@ -26,13 +26,15 @@
 
 #include "pch.h"
 
+#include "StreamingResource.h"
 #include "TileUpdateManager.h"
-#include "DXSampleHelper.h"
-#include "Interfaces.h"
 #include "XeTexture.h"
 
-using Streaming::HeapAllocator;
-using Streaming::DataUploader;
+#include "UpdateList.h"
+
+#include "HeapAllocator.h"
+#include "StreamingHeap.h"
+#include "DataUploader.h"
 
 /*-----------------------------------------------------------------------------
 * Rules regarding order of operations:
@@ -44,12 +46,12 @@ using Streaming::DataUploader;
 //=============================================================================
 // data structure to manage reserved resource
 //=============================================================================
-StreamingResource::StreamingResource(
+Streaming::StreamingResourceBase::StreamingResourceBase(
     // method that will fill a tile-worth of bits, for streaming
     const std::wstring& in_filename,
-    Streaming::FileStreamer::FileHandle* in_pFileHandle,
+    Streaming::FileHandle* in_pFileHandle,
     // share upload buffers with other InternalResources
-    Streaming::TileUpdateManagerSR* in_pTileUpdateManager,
+    Streaming::TileUpdateManagerBase* in_pTileUpdateManager,
     // share heap with other StreamingResources
     Streaming::Heap* in_pHeap) :
     m_readbackIndex(0)
@@ -95,11 +97,12 @@ StreamingResource::StreamingResource(
 // Free() all heap allocations, then release the heap
 // release the upload buffer allocator
 //-----------------------------------------------------------------------------
-StreamingResource::~StreamingResource()
+Streaming::StreamingResourceBase::~StreamingResourceBase()
 {
     // do not delete StreamingResource between BeginFrame() and EndFrame(). It's complicated.
     ASSERT(!m_pTileUpdateManager->GetWithinFrame());
 
+    // other threads are manipulating the eviction and load arrays. stop them.
     m_pTileUpdateManager->Finish();
 
     // remove this object's allocations from the heap, which might be shared
@@ -122,105 +125,20 @@ StreamingResource::~StreamingResource()
 // when the StreamingResource gets an offset into the shared ResidencyMap,
 // it can be initialized to the current minmipmap state
 //-----------------------------------------------------------------------------
-void StreamingResource::SetResidencyMapOffsetBase(UINT in_residencyMapOffsetBase)
+void Streaming::StreamingResourceBase::SetResidencyMapOffsetBase(UINT in_residencyMapOffsetBase)
 {
     m_residencyMapOffsetBase = in_residencyMapOffsetBase;
 
     auto& outBuffer = m_pTileUpdateManager->GetResidencyMap();
-    UINT8* pResidencyMap = GetMinMipMapOffset() + (UINT8*)outBuffer.m_pData;
+    UINT8* pResidencyMap = m_residencyMapOffsetBase + (UINT8*)outBuffer.m_pData;
     memcpy(pResidencyMap, m_minMipMap.data(), m_minMipMap.size());
-}
-
-//-----------------------------------------------------------------------------
-// can map the packed mips as soon as we have heap indices
-//-----------------------------------------------------------------------------
-void Streaming::StreamingResourceDU::MapPackedMips(ID3D12CommandQueue* in_pCommandQueue)
-{
-    UINT firstSubresource = GetPackedMipInfo().NumStandardMips;
-
-    // mapping packed mips is different from regular tiles: must be mapped before we can use copytextureregion() instead of copytiles()
-    UINT numTiles = GetPackedMipInfo().NumTilesForPackedMips;
-
-    std::vector<D3D12_TILE_RANGE_FLAGS> rangeFlags(numTiles, D3D12_TILE_RANGE_FLAG_NONE);
-
-    // if the number of standard (not packed) mips is n, then start updating at subresource n
-    D3D12_TILED_RESOURCE_COORDINATE resourceRegionStartCoordinates{ 0, 0, 0, firstSubresource };
-    D3D12_TILE_REGION_SIZE resourceRegionSizes{ numTiles, FALSE, 0, 0, 0 };
-
-    // perform packed mip tile mapping on the copy queue
-    in_pCommandQueue->UpdateTileMappings(
-        GetTiledResource(),
-        1, // numRegions
-        &resourceRegionStartCoordinates,
-        &resourceRegionSizes,
-        m_pHeap->GetHeap(),
-        numTiles,
-        rangeFlags.data(),
-        m_packedMipHeapIndices.data(),
-        nullptr,
-        D3D12_TILE_MAPPING_FLAG_NONE
-    );
-
-    // DataUploader will synchronize around a mapping fence before uploading packed mips
-}
-
-//-----------------------------------------------------------------------------
-// set mapping and initialize bits for the packed tile(s)
-//-----------------------------------------------------------------------------
-bool Streaming::StreamingResourceTUM::InitPackedMips()
-{
-    // nothing to do if the copy has been requested
-    // return true if ready to sample
-    if ((UINT)m_packedMipStatus >= (UINT)PackedMipStatus::REQUESTED)
-    {
-        return true;
-    }
-
-    // allocate heap space
-    if (PackedMipStatus::HEAP_RESERVED > m_packedMipStatus)
-    {
-        UINT numTiles = m_resources->GetPackedMipInfo().NumTilesForPackedMips;
-
-        // try to commit some heap space, even if we can't get everything this frame.
-        while (m_packedMipHeapIndices.size() < numTiles)
-        {
-            UINT heapIndex = m_pHeap->GetAllocator().Allocate();
-            if (HeapAllocator::InvalidIndex != heapIndex)
-            {
-                m_packedMipHeapIndices.push_back(heapIndex);
-            }
-            else
-            {
-                return false;
-            }
-        }
-
-        m_packedMipStatus = PackedMipStatus::HEAP_RESERVED;
-    }
-
-    ASSERT(m_packedMipHeapIndices.size() == m_resources->GetPackedMipInfo().NumTilesForPackedMips);
-
-    // attempt to upload by acquiring an update list. may take many tries.
-    Streaming::UpdateList* pUpdateList = m_pTileUpdateManager->AllocateUpdateList(this);
-
-    if (pUpdateList)
-    {
-        pUpdateList->AddPackedMipRequest(GetPackedMipInfo().NumPackedMips);
-        pUpdateList->m_heapIndices = m_packedMipHeapIndices;
-        m_pTileUpdateManager->SubmitUpdateList(*pUpdateList);
-
-        m_packedMipStatus = PackedMipStatus::REQUESTED;
-        return true;
-    }
-
-    return false;
 }
 
 //-----------------------------------------------------------------------------
 // Upload or Evict tiles to match the incoming requested minimum mip
 // if fails to adjust tile reference, then sets out_needRetry = true. Unchanged otherwise.
 //-----------------------------------------------------------------------------
-void StreamingResource::SetMinMip(UINT8 in_current, UINT in_x, UINT in_y, UINT in_s)
+void Streaming::StreamingResourceBase::SetMinMip(UINT8 in_current, UINT in_x, UINT in_y, UINT in_s)
 {
     // what mip level is currently referenced at this tile?
     UINT8 s = in_current;
@@ -250,7 +168,7 @@ void StreamingResource::SetMinMip(UINT8 in_current, UINT in_x, UINT in_y, UINT i
 // if first time, will allocate & load
 // if can't allocate & load, addref DOES NOT increase refcount, leaves it at 0
 //-----------------------------------------------------------------------------
-void StreamingResource::AddTileRef(UINT in_x, UINT in_y, UINT in_s)
+void Streaming::StreamingResourceBase::AddTileRef(UINT in_x, UINT in_y, UINT in_s)
 {
     auto& refCount = m_tileMappingState.GetRefCount(in_x, in_y, in_s);
 
@@ -269,7 +187,7 @@ void StreamingResource::AddTileRef(UINT in_x, UINT in_y, UINT in_s)
 // reduce ref count
 // if 0, evicts the tile
 //-----------------------------------------------------------------------------
-void StreamingResource::DecTileRef(UINT in_x, UINT in_y, UINT in_s)
+void Streaming::StreamingResourceBase::DecTileRef(UINT in_x, UINT in_y, UINT in_s)
 {
     auto& refCount = m_tileMappingState.GetRefCount(in_x, in_y, in_s);
 
@@ -285,30 +203,9 @@ void StreamingResource::DecTileRef(UINT in_x, UINT in_y, UINT in_s)
 }
 
 //-----------------------------------------------------------------------------
-// eject all tiles and remove mappings into heap
-//-----------------------------------------------------------------------------
-void StreamingResource::ClearAllocations()
-{
-    ASSERT(!m_pTileUpdateManager->GetWithinFrame());
-
-    m_tileMappingState.FreeHeapAllocations(m_pHeap);
-    m_tileMappingState.Init(m_resources->GetPackedMipInfo().NumStandardMips, m_resources->GetTiling());
-    m_tileReferences.assign(m_tileReferences.size(), m_maxMip);
-    m_minMipMap.assign(m_minMipMap.size(), m_maxMip);
-
-    m_pendingEvictions.Clear();
-    m_pendingTileLoads.clear();
-
-    // want to upload a residency of all maxMip
-    // NOTE: UpdateMinMipMap() will see there are no tiles resident,
-    //       clear all tile mappings, and upload a cleared min mip map
-    SetResidencyChanged();
-}
-
-//-----------------------------------------------------------------------------
 // initialize data structure afther creating the reserved resource and querying its tiling properties
 //-----------------------------------------------------------------------------
-void StreamingResource::TileMappingState::Init(UINT in_numMips, const D3D12_SUBRESOURCE_TILING* in_pTiling)
+void Streaming::StreamingResourceBase::TileMappingState::Init(UINT in_numMips, const D3D12_SUBRESOURCE_TILING* in_pTiling)
 {
     ASSERT(in_numMips);
     m_refcounts.resize(in_numMips);
@@ -329,7 +226,7 @@ void StreamingResource::TileMappingState::Init(UINT in_numMips, const D3D12_SUBR
         }
         for (auto& row : m_heapIndices[mip])
         {
-            row.assign(width, HeapAllocator::InvalidIndex);
+            row.assign(width, Streaming::HeapAllocator::InvalidIndex);
         }
         for (auto& row : m_resident[mip])
         {
@@ -341,7 +238,7 @@ void StreamingResource::TileMappingState::Init(UINT in_numMips, const D3D12_SUBR
 //-----------------------------------------------------------------------------
 // remove all allocations from the (shared) heap
 //-----------------------------------------------------------------------------
-void StreamingResource::TileMappingState::FreeHeapAllocations(Streaming::Heap* in_pHeap)
+void Streaming::StreamingResourceBase::TileMappingState::FreeHeapAllocations(Streaming::Heap* in_pHeap)
 {
     for (auto& layer : m_heapIndices)
     {
@@ -349,10 +246,10 @@ void StreamingResource::TileMappingState::FreeHeapAllocations(Streaming::Heap* i
         {
             for (auto& i : row)
             {
-                if (HeapAllocator::InvalidIndex != i)
+                if (Streaming::HeapAllocator::InvalidIndex != i)
                 {
                     in_pHeap->GetAllocator().Free(i);
-                    i = HeapAllocator::InvalidIndex;
+                    i = Streaming::HeapAllocator::InvalidIndex;
                 }
             }
         }
@@ -362,7 +259,7 @@ void StreamingResource::TileMappingState::FreeHeapAllocations(Streaming::Heap* i
 //-----------------------------------------------------------------------------
 // search bottom layer. if refcount of any is positive, there is something resident.
 //-----------------------------------------------------------------------------
-bool StreamingResource::TileMappingState::GetAnyRefCount()
+bool Streaming::StreamingResourceBase::TileMappingState::GetAnyRefCount()
 {
     auto& lastMip = m_refcounts.back();
     for (const auto& y : lastMip)
@@ -383,7 +280,7 @@ bool StreamingResource::TileMappingState::GetAnyRefCount()
 // return true if all bottom layer standard tiles are resident
 // FIXME? currently just checks the lowest tracked mip.
 //-----------------------------------------------------------------------------
-UINT8 StreamingResource::TileMappingState::GetMinResidentMip()
+UINT8 Streaming::StreamingResourceBase::TileMappingState::GetMinResidentMip()
 {
     UINT8 minResidentMip = (UINT8)m_resident.size();
 
@@ -404,7 +301,7 @@ UINT8 StreamingResource::TileMappingState::GetMinResidentMip()
 //-----------------------------------------------------------------------------
 // if the residency changes, must also notify TUM
 //-----------------------------------------------------------------------------
-void StreamingResource::SetResidencyChanged()
+void Streaming::StreamingResourceBase::SetResidencyChanged()
 {
     m_tileResidencyChanged = true;
     m_pTileUpdateManager->SetResidencyChanged();
@@ -417,7 +314,7 @@ void StreamingResource::SetResidencyChanged()
 //            loads lower mip dependencies first
 // e.g. if we need tile 0,0,0 then 0,0,1 must have previously been loaded
 //-----------------------------------------------------------------------------
-void StreamingResource::ProcessFeedback(UINT64 in_frameFenceCompletedValue)
+void Streaming::StreamingResourceBase::ProcessFeedback(UINT64 in_frameFenceCompletedValue)
 {
     bool changed = false;
     const UINT width = GetNumTilesWidth();
@@ -561,7 +458,7 @@ void StreamingResource::ProcessFeedback(UINT64 in_frameFenceCompletedValue)
 //-----------------------------------------------------------------------------
 // drop pending loads that are no longer relevant
 //-----------------------------------------------------------------------------
-void StreamingResource::AbandonPending()
+void Streaming::StreamingResourceBase::AbandonPending()
 {
     UINT numPending = (UINT)m_pendingTileLoads.size();
     for (UINT i = 0; i < numPending;)
@@ -587,7 +484,7 @@ void StreamingResource::AbandonPending()
 //
 // note: queues as many new tiles as possible
 //-----------------------------------------------------------------------------
-void StreamingResource::QueueTiles()
+void Streaming::StreamingResourceBase::QueueTiles()
 {
     UINT numEvictions = (UINT)m_pendingEvictions.GetReadyToEvict().size();
     UINT numLoads = (UINT)m_pendingTileLoads.size();
@@ -676,7 +573,7 @@ Note that the multi-frame delay for evictions prevents allocation of an index th
 // note there are only tiles to evict after processing feedback, but it's possible
 // there was no UpdateList available at the time, so they haven't been evicted yet.
 //-----------------------------------------------------------------------------
-void StreamingResource::QueuePendingTileEvictions(Streaming::UpdateList* out_pUpdateList)
+void Streaming::StreamingResourceBase::QueuePendingTileEvictions(Streaming::UpdateList* out_pUpdateList)
 {
     ASSERT(out_pUpdateList);
     ASSERT(m_pendingEvictions.GetReadyToEvict().size());
@@ -701,7 +598,7 @@ void StreamingResource::QueuePendingTileEvictions(Streaming::UpdateList* out_pUp
             m_tileMappingState.SetEvicting(coord);
             UINT& heapIndex = m_tileMappingState.GetHeapIndex(coord);
             m_pHeap->GetAllocator().Free(heapIndex);
-            heapIndex = HeapAllocator::InvalidIndex;
+            heapIndex = Streaming::HeapAllocator::InvalidIndex;
             out_pUpdateList->m_evictCoords.push_back(coord);
         }
         // valid index but not resident means there is a pending load, do not evict
@@ -725,7 +622,7 @@ void StreamingResource::QueuePendingTileEvictions(Streaming::UpdateList* out_pUp
 // FIFO order: work from the front of the array
 // NOTE: greedy, takes every available UpdateList if it can
 //-----------------------------------------------------------------------------
-void StreamingResource::QueuePendingTileLoads(Streaming::UpdateList* out_pUpdateList)
+void Streaming::StreamingResourceBase::QueuePendingTileLoads(Streaming::UpdateList* out_pUpdateList)
 {
     ASSERT(out_pUpdateList);
     ASSERT(m_pHeap->GetAllocator().GetNumFree());
@@ -791,7 +688,7 @@ void StreamingResource::QueuePendingTileLoads(Streaming::UpdateList* out_pUpdate
 // if something has changed: traverses residency status, generates min mip map, writes to upload buffer
 // returns true if update performed, indicating TUM should upload the results
 //-----------------------------------------------------------------------------
-void StreamingResource::UpdateMinMipMap()
+void Streaming::StreamingResourceBase::UpdateMinMipMap()
 {
     // m_tileResidencyChanged is an atomic that forms a happens-before relationship between this thread and DataUploader Notify* routines
     // m_tileResidencyChanged is also set when ClearAll() evicts everything
@@ -804,7 +701,7 @@ void StreamingResource::UpdateMinMipMap()
     //ASSERT(m_packedMipsResident);
 
     auto& outBuffer = m_pTileUpdateManager->GetResidencyMap();
-    UINT8* pResidencyMap = GetMinMipMapOffset() + (UINT8*)outBuffer.m_pData;
+    UINT8* pResidencyMap = m_residencyMapOffsetBase + (UINT8*)outBuffer.m_pData;
 
     if (m_tileMappingState.GetAnyRefCount())
     {
@@ -864,39 +761,11 @@ void StreamingResource::UpdateMinMipMap()
     memcpy(pResidencyMap, m_minMipMap.data(), m_minMipMap.size());
 }
 
-//-----------------------------------------------------------------------------
-// create views of resources used directly by the application
-//-----------------------------------------------------------------------------
-void StreamingResource::CreateFeedbackView(ID3D12Device* in_pDevice, D3D12_CPU_DESCRIPTOR_HANDLE in_descriptorHandle)
-{
-    in_pDevice->CopyDescriptorsSimple(1, in_descriptorHandle,
-        m_resources->GetClearUavHeap()->GetCPUDescriptorHandleForHeapStart(),
-        D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-}
-
-void StreamingResource::CreateStreamingView(ID3D12Device* in_pDevice, D3D12_CPU_DESCRIPTOR_HANDLE in_descriptorHandle)
-{
-    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
-    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-    srvDesc.Texture2D.MipLevels = UINT(-1);
-    srvDesc.Format = m_resources->GetTiledResource()->GetDesc().Format;
-    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-
-    in_pDevice->CreateShaderResourceView(m_resources->GetTiledResource(), &srvDesc, in_descriptorHandle);
-}
-
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-ID3D12Resource* StreamingResource::GetMinMipMap() const
-{
-    return m_pTileUpdateManager->GetResidencyMap().m_resource.Get();
-}
-
 //=============================================================================
 // class used to delay decmaps by a number of frames = # swap buffers
 // easy way to prevent decmapping an in-flight tile
 //=============================================================================
-StreamingResource::EvictionDelay::EvictionDelay(UINT in_numSwapBuffers)
+Streaming::StreamingResourceBase::EvictionDelay::EvictionDelay(UINT in_numSwapBuffers)
 {
     m_mappings.resize(in_numSwapBuffers);
 }
@@ -904,7 +773,7 @@ StreamingResource::EvictionDelay::EvictionDelay(UINT in_numSwapBuffers)
 //-----------------------------------------------------------------------------
 // step pending evictions once per frame
 //-----------------------------------------------------------------------------
-void StreamingResource::EvictionDelay::NextFrame()
+void Streaming::StreamingResourceBase::EvictionDelay::NextFrame()
 {
     // start with A, B, C
     // after swaps, have C, A, B
@@ -922,7 +791,7 @@ void StreamingResource::EvictionDelay::NextFrame()
 //-----------------------------------------------------------------------------
 // dump all pending evictions. return heap indices to heap
 //-----------------------------------------------------------------------------
-void StreamingResource::EvictionDelay::Clear()
+void Streaming::StreamingResourceBase::EvictionDelay::Clear()
 {
     for (auto& i : m_mappings)
     {
@@ -933,7 +802,7 @@ void StreamingResource::EvictionDelay::Clear()
 //-----------------------------------------------------------------------------
 // drop pending evictions for tiles that now have non-zero refcount
 //-----------------------------------------------------------------------------
-void StreamingResource::EvictionDelay::Rescue(const StreamingResource::TileMappingState& in_tileMappingState)
+void Streaming::StreamingResourceBase::EvictionDelay::Rescue(const Streaming::StreamingResourceBase::TileMappingState& in_tileMappingState)
 {
     UINT numBuffers = (UINT)m_mappings.size();
 
@@ -959,100 +828,13 @@ void StreamingResource::EvictionDelay::Rescue(const StreamingResource::TileMappi
 }
 
 //-----------------------------------------------------------------------------
-// FIXME? could handle packed mips completely separate
-// NOTE: this query will only return true one time
-//-----------------------------------------------------------------------------
-bool Streaming::StreamingResourceTUM::GetPackedMipsNeedTransition()
-{
-    if (PackedMipStatus::NEEDS_TRANSITION == m_packedMipStatus)
-    {
-        m_packedMipStatus = PackedMipStatus::RESIDENT;
-        return true;
-    }
-
-    return false;
-}
-
-//-----------------------------------------------------------------------------
-// command to resolve feedback to the appropriate non-opaque buffer
-//-----------------------------------------------------------------------------
-void Streaming::StreamingResourceTUM::ResolveFeedback(ID3D12GraphicsCommandList1* out_pCmdList)
-{
-    // move to next readback index
-    m_readbackIndex = (m_readbackIndex + 1) % m_pTileUpdateManager->GetNumSwapBuffers();
-
-    // remember that feedback was queued, and which frame it was queued in.
-    auto& f = m_queuedFeedback[m_readbackIndex];
-    f.m_renderFenceForFeedback = m_pTileUpdateManager->GetFrameFenceValue();
-    f.m_feedbackQueued = true;
-
-    m_resources->ResolveFeedback(out_pCmdList, m_readbackIndex);
-}
-
-#if RESOLVE_TO_TEXTURE
-//-----------------------------------------------------------------------------
-// call after resolving to read back to CPU
-//-----------------------------------------------------------------------------
-void Streaming::StreamingResourceTUM::ReadbackFeedback(ID3D12GraphicsCommandList* out_pCmdList)
-{
-    // write readback command to command list if resolving to texture
-    m_resources->ReadbackFeedback(out_pCmdList, m_readbackIndex);
-}
-#endif
-
-//-----------------------------------------------------------------------------
-// DataUploader has completed updating a reserved texture tile
-//-----------------------------------------------------------------------------
-void Streaming::StreamingResourceDU::NotifyCopyComplete(const std::vector<D3D12_TILED_RESOURCE_COORDINATE>& in_coords)
-{
-    for (const auto& t : in_coords)
-    {
-        ASSERT(TileMappingState::Residency::Loading == m_tileMappingState.GetResidency(t));
-        m_tileMappingState.SetResident(t);
-    }
-
-    SetResidencyChanged();
-}
-
-//-----------------------------------------------------------------------------
-// DataUploader has completed updating a reserved texture tile
-//-----------------------------------------------------------------------------
-void Streaming::StreamingResourceDU::NotifyEvicted(const std::vector<D3D12_TILED_RESOURCE_COORDINATE>& in_coords)
-{
-    ASSERT(in_coords.size());
-    for (const auto& t : in_coords)
-    {
-        ASSERT(TileMappingState::Residency::Evicting == m_tileMappingState.GetResidency(t));
-        m_tileMappingState.SetNotResident(t);
-    }
-
-    SetResidencyChanged();
-}
-
-//-----------------------------------------------------------------------------
-// our packed mips have arrived!
-//-----------------------------------------------------------------------------
-void Streaming::StreamingResourceDU::NotifyPackedMips()
-{
-    m_packedMipStatus = PackedMipStatus::NEEDS_TRANSITION;
-    m_pTileUpdateManager->NotifyPackedMips();
-
-    // MinMipMap already set to packed mip values, don't need to go through UpdateMinMipMap
-    //SetResidencyChanged();
-
-    // don't need to hold on to packed mips any longer.
-    std::vector<BYTE> empty;
-    m_paddedPackedMips.swap(empty);
-}
-
-//-----------------------------------------------------------------------------
 // pad packed mips according to copyable footprint requirements
 //-----------------------------------------------------------------------------
-void StreamingResource::PadPackedMips(ID3D12Device* in_pDevice)
+void Streaming::StreamingResourceBase::PadPackedMips(ID3D12Device* in_pDevice)
 {
-    UINT firstSubresource = GetPackedMipInfo().NumStandardMips;
-    UINT numSubresources = GetPackedMipInfo().NumPackedMips;
-    D3D12_RESOURCE_DESC desc = GetTiledResource()->GetDesc();
+    UINT firstSubresource = m_resources->GetPackedMipInfo().NumStandardMips;
+    UINT numSubresources = m_resources->GetPackedMipInfo().NumPackedMips;
+    D3D12_RESOURCE_DESC desc = m_resources->GetTiledResource()->GetDesc();
     UINT64 totalBytes = 0;
 
     std::vector<D3D12_PLACED_SUBRESOURCE_FOOTPRINT> srcLayout(numSubresources);
@@ -1078,3 +860,110 @@ void StreamingResource::PadPackedMips(ID3D12Device* in_pDevice)
         }
     }
 }
+
+//-----------------------------------------------------------------------------
+// called when creating/changing FileStreamer
+//-----------------------------------------------------------------------------
+void Streaming::StreamingResourceBase::SetFileHandle(const DataUploader* in_pDataUploader)
+{
+    m_pFileHandle.reset(in_pDataUploader->OpenFile(m_filename));
+}
+
+//-----------------------------------------------------------------------------
+// set mapping and initialize bits for the packed tile(s)
+//-----------------------------------------------------------------------------
+bool Streaming::StreamingResourceBase::InitPackedMips()
+{
+    // nothing to do if the copy has been requested
+    // return true if ready to sample
+    if ((UINT)m_packedMipStatus >= (UINT)PackedMipStatus::REQUESTED)
+    {
+        return true;
+    }
+
+    // allocate heap space
+    if (PackedMipStatus::HEAP_RESERVED > m_packedMipStatus)
+    {
+        UINT numTiles = m_resources->GetPackedMipInfo().NumTilesForPackedMips;
+
+        // try to commit some heap space, even if we can't get everything this frame.
+        while (m_packedMipHeapIndices.size() < numTiles)
+        {
+            UINT heapIndex = m_pHeap->GetAllocator().Allocate();
+            if (HeapAllocator::InvalidIndex != heapIndex)
+            {
+                m_packedMipHeapIndices.push_back(heapIndex);
+            }
+            else
+            {
+                return false;
+            }
+        }
+
+        m_packedMipStatus = PackedMipStatus::HEAP_RESERVED;
+    }
+
+    ASSERT(m_packedMipHeapIndices.size() == m_resources->GetPackedMipInfo().NumTilesForPackedMips);
+
+    // attempt to upload by acquiring an update list. may take many tries.
+    Streaming::UpdateList* pUpdateList = m_pTileUpdateManager->AllocateUpdateList(this);
+
+    if (pUpdateList)
+    {
+        pUpdateList->AddPackedMipRequest(m_resources->GetPackedMipInfo().NumPackedMips);
+        pUpdateList->m_heapIndices = m_packedMipHeapIndices;
+        m_pTileUpdateManager->SubmitUpdateList(*pUpdateList);
+
+        m_packedMipStatus = PackedMipStatus::REQUESTED;
+        return true;
+    }
+
+    return false;
+}
+
+//-----------------------------------------------------------------------------
+// FIXME? could handle packed mips completely separate
+// NOTE: this query will only return true one time
+//-----------------------------------------------------------------------------
+bool Streaming::StreamingResourceBase::GetPackedMipsNeedTransition()
+{
+    if (PackedMipStatus::NEEDS_TRANSITION == m_packedMipStatus)
+    {
+        m_packedMipStatus = PackedMipStatus::RESIDENT;
+        return true;
+    }
+
+    return false;
+}
+
+void Streaming::StreamingResourceBase::ClearFeedback(ID3D12GraphicsCommandList* in_pCmdList, const D3D12_GPU_DESCRIPTOR_HANDLE in_gpuDescriptor)
+{
+    m_resources->ClearFeedback(in_pCmdList, in_gpuDescriptor);
+}
+
+//-----------------------------------------------------------------------------
+// command to resolve feedback to the appropriate non-opaque buffer
+//-----------------------------------------------------------------------------
+void Streaming::StreamingResourceBase::ResolveFeedback(ID3D12GraphicsCommandList1* out_pCmdList)
+{
+    // move to next readback index
+    m_readbackIndex = (m_readbackIndex + 1) % m_pTileUpdateManager->GetNumSwapBuffers();
+
+    // remember that feedback was queued, and which frame it was queued in.
+    auto& f = m_queuedFeedback[m_readbackIndex];
+    f.m_renderFenceForFeedback = m_pTileUpdateManager->GetFrameFenceValue();
+    f.m_feedbackQueued = true;
+
+    m_resources->ResolveFeedback(out_pCmdList, m_readbackIndex);
+}
+
+#if RESOLVE_TO_TEXTURE
+//-----------------------------------------------------------------------------
+// call after resolving to read back to CPU
+//-----------------------------------------------------------------------------
+void Streaming::StreamingResourceBase::ReadbackFeedback(ID3D12GraphicsCommandList* out_pCmdList)
+{
+    // write readback command to command list if resolving to texture
+    m_resources->ReadbackFeedback(out_pCmdList, m_readbackIndex);
+}
+#endif

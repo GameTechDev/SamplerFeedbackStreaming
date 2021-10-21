@@ -26,7 +26,6 @@
 
 #include "pch.h"
 
-#include "TileUpdateManager.h"
 #include "UpdateList.h"
 
 //-----------------------------------------------------------------------------

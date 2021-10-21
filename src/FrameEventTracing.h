@@ -54,7 +54,7 @@ public:
     using RenderEventList = TimeTracing<RenderEvents>;
     using UpdateEventList = TimeTracing<UpdateEvents>;
 
-    FrameEventTracing(const CommandLineArgs& in_args);
+    FrameEventTracing(const std::wstring& in_fileName, const std::wstring& in_adapterDescription);
     virtual ~FrameEventTracing() {}
 
     void Append(
@@ -86,12 +86,14 @@ private:
     };
 
     std::vector<FrameEvents> m_events;
+
+    const std::wstring m_adapterDescription;
 };
 
 //=============================================================================
 //=============================================================================
-inline FrameEventTracing::FrameEventTracing(const CommandLineArgs& in_args) :
-    WriteCSV(in_args.m_timingFrameFileName)
+inline FrameEventTracing::FrameEventTracing(const std::wstring& in_fileName, const std::wstring& in_adapterDescription) :
+    WriteCSV(in_fileName), m_adapterDescription(in_adapterDescription)
 {
     // reserve a bunch of space
     m_events.reserve(1000);
@@ -107,8 +109,12 @@ inline void FrameEventTracing::WriteEvents(HWND in_hWnd)
     GetWindowRect(in_hWnd, &windowRect);
 
     *this << GetCommandLineW()
-        << "\nWindowWidth: " << windowRect.right - windowRect.left
-        << "\nWindowHeight: " << windowRect.bottom - windowRect.top;
+        << "\nWindowWidth/Height: "
+        << windowRect.right - windowRect.left
+        << " "
+        << windowRect.bottom - windowRect.top;
+
+    *this << "\nAdapter: " << m_adapterDescription;
 
     *this << "\n\nTimers (ms)\n"
         << "-----------------------------------------------------------------------------------------------------------\n"

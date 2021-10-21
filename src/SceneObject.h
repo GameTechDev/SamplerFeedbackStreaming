@@ -28,7 +28,7 @@
 
 #include <d3d12.h>
 #include "CommandLineArgs.h"
-#include "TileUpdateManager.h"
+#include "SamplerFeedbackStreaming.h"
 #include "CreateSphere.h"
 
 namespace SceneObjects
@@ -94,7 +94,7 @@ namespace SceneObjects
         BaseObject(
             const std::wstring& in_filename, // this class takes ownership and deletes in destructor
             TileUpdateManager* in_pTileUpdateManager,
-            Streaming::Heap* in_pStreamingHeap,
+            StreamingHeap* in_pStreamingHeap,
             ID3D12Device* in_pDevice,
             D3D12_CPU_DESCRIPTOR_HANDLE in_srvBaseCPU,
             BaseObject* in_pSharedObject);  // to share root sig, etc.
@@ -184,7 +184,7 @@ namespace SceneObjects
     public:
         Terrain(const std::wstring& in_filename, // this class takes ownership and deletes in destructor
             TileUpdateManager* in_pTileUpdateManager,
-            Streaming::Heap* in_pStreamingHeap,
+            StreamingHeap* in_pStreamingHeap,
             ID3D12Device* in_pDevice,
             UINT in_sampleCount,
             D3D12_CPU_DESCRIPTOR_HANDLE in_srvBaseCPU,
@@ -196,7 +196,7 @@ namespace SceneObjects
     public:
         Planet(const std::wstring& in_filename, // this class takes ownership and deletes in destructor
             TileUpdateManager* in_pTileUpdateManager,
-            Streaming::Heap* in_pStreamingHeap,
+            StreamingHeap* in_pStreamingHeap,
             ID3D12Device* in_pDevice,
             UINT in_sampleCount,
             D3D12_CPU_DESCRIPTOR_HANDLE in_srvBaseCPU,
@@ -204,7 +204,7 @@ namespace SceneObjects
 
         Planet(const std::wstring& in_filename, // this class takes ownership and deletes in destructor
             TileUpdateManager* in_pTileUpdateManager,
-            Streaming::Heap* in_pStreamingHeap,
+            StreamingHeap* in_pStreamingHeap,
             ID3D12Device* in_pDevice,
             D3D12_CPU_DESCRIPTOR_HANDLE in_srvBaseCPU,
             BaseObject* in_pSharedObject);
@@ -217,7 +217,7 @@ namespace SceneObjects
     public:
         Sky(const std::wstring& in_filename, // this class takes ownership and deletes in destructor
             TileUpdateManager* in_pTileUpdateManager,
-            Streaming::Heap* in_pStreamingHeap,
+            StreamingHeap* in_pStreamingHeap,
             ID3D12Device* in_pDevice,
             UINT in_sampleCount,
             D3D12_CPU_DESCRIPTOR_HANDLE in_srvBaseCPU);

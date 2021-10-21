@@ -246,7 +246,7 @@ private:
     UINT m_numUploadsPreviousFrame{ 0 };
 
     void StartStreamingLibrary();
-    std::vector<Streaming::Heap*> m_sharedHeaps;
+    std::vector<StreamingHeap*> m_sharedHeaps;
 
     void GatherStatistics(float in_cpuProcessFeedbackTime, float in_gpuProcessFeedbackTime);
     UINT m_startUploadCount{ 0 };

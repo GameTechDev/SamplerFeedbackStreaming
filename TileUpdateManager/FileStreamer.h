@@ -32,19 +32,18 @@ namespace Streaming
 {
     struct UpdateList;
 
+    // file handle internals different between reference and DS FileStreamers
+    class FileHandle
+    {
+    public:
+        virtual ~FileHandle() {}
+    };
+
     class FileStreamer
     {
     public:
         FileStreamer(ID3D12Device* in_pDevice);
         virtual ~FileStreamer() {}
-
-        // reference implementation returns a standard file handle
-        // DS implementation may return an IDStorageFile*
-        class FileHandle
-        {
-        public:
-            virtual ~FileHandle() {}
-        };
 
         virtual FileHandle* OpenFile(const std::wstring& in_path) = 0;
 

@@ -26,9 +26,6 @@
 
 #pragma once
 
-
-#include <memory>      // for unique_ptr
-
 #include "Streaming.h" // for ComPtr
 #include "HeapAllocator.h"
 
@@ -67,7 +64,7 @@ namespace Streaming
     {
     public:
         Heap(ID3D12CommandQueue* in_pQueue, UINT in_maxNumTilesHeap);
-        ~Heap();
+        virtual ~Heap();
 
         // allocate atlases for a format. does nothing if format already has an atlas
         void AllocateAtlas(ID3D12CommandQueue* in_pQueue, const DXGI_FORMAT in_format);
