@@ -226,6 +226,9 @@ TileUpdateManager::CommandLists TileUpdateManager::EndFrame()
 
     // transition packed mips if necessary
     // FIXME? if any 1 needs a transition, go ahead and check all of them. not worth optimizing.
+    // NOTE: the debug layer will complain about CopyTextureRegion() if the resource state is not state_copy_dest (or common)
+    //       despite the fact the copy queue doesn't really care about resource state
+    //       CopyTiles() won't complain because this library always targets an atlas that is always state_copy_dest
     if (m_packedMipTransition)
     {
         m_packedMipTransition = false;
