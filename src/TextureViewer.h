@@ -26,7 +26,9 @@
 
 #pragma once
 
-// creates a number of windows showing mips of a provided texture
+// creates a windows per mip of a texture
+// screen coordinate system: (0, 0) is bottom-left. like normalized device space, (1, 1) is top-right
+// u,v coordinates: (0, 0) is top-left. like images, byte 0 is top left
 
 class TextureViewer
 {

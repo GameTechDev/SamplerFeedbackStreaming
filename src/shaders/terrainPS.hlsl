@@ -38,9 +38,9 @@ SamplerState g_sampler : register(s0);
 float3 evaluateLight(in float3 normal, in float3 reflected)
 {
     // directional light
-    float3 pointToLight = normalize(g_lightDir.xyz);
+    float3 pointToLight = g_lightDir.xyz;
 
-    float diffuse = saturate(dot(g_lightDir.xyz, normal));
+    float diffuse = saturate(dot(pointToLight, normal));
 
     float specDot = saturate(dot(reflected, pointToLight));
     float specular = pow(specDot, 2 * g_lightColor.a);

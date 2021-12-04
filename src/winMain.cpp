@@ -130,6 +130,7 @@ void AdjustArguments(CommandLineArgs& out_args)
             std::wstringstream caption;
             caption << "NOT FOUND: -mediaDir " << out_args.m_mediaDir;
             MessageBox(0, caption.str().c_str(), L"ERROR", MB_OK);
+            exit(-1);
         }
     }
 }
@@ -256,17 +257,17 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         case 'E':
             g_keyState.key.right = 0;
             break;
-        case 'Z':
+        case 'F':
             g_keyState.key.up = 0;
             break;
-        case 'C':
+        case 'V':
             g_keyState.key.down = 0;
             break;
 
-        case 'V':
+        case 'Z':
             g_keyState.key.rotzl = 0;
             break;
-        case 'B':
+        case 'C':
             g_keyState.key.rotzr = 0;
             break;
 
@@ -306,17 +307,17 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         case 'E':
             g_keyState.key.right = 1;
             break;
-        case 'Z':
+        case 'F':
             g_keyState.key.up = 1;
             break;
-        case 'C':
+        case 'V':
             g_keyState.key.down = 1;
             break;
 
-        case 'V':
+        case 'Z':
             g_keyState.key.rotzl = 1;
             break;
-        case 'B':
+        case 'C':
             g_keyState.key.rotzr = 1;
             break;
 

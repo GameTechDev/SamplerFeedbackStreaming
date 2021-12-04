@@ -70,13 +70,14 @@ VS_OUT vs(VS_IN input)
 	VS_OUT result;
 	result.pos = mul(g_combinedTransform, float4(input.pos, 1.0f));
 	
-	// rotate normal into light coordinate frame
-	result.normal = normalize(mul(float4(input.normal, 0.0f), g_worldTransform).xyz);
+	// rotate normal into light coordinate frame (world)
+	result.normal = normalize(mul((float3x3)g_worldTransform, input.normal));
 
-	result.eyeToPoint = normalize(input.pos.xyz - g_eyePos.xyz);
+	// transform position into light coordinate frame (world)
+	float3 pos = mul(g_worldTransform, float4(input.pos, 1.0f)).xyz;
 
-	// rotate eye direction into light coordinate frame
-	result.eyeToPoint = mul(result.eyeToPoint, (float3x3)g_worldTransform);
+	// direction from eye to pos
+	result.eyeToPoint = normalize(pos - g_eyePos.xyz);
 
 	result.tex = input.tex;
 	return result;

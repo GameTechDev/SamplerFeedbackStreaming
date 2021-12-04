@@ -39,7 +39,7 @@
 // NOTE: this doesn't allocate any resources. it relies on calling function to set any heaps
 //-----------------------------------------------------------------------------
 Gui::Gui(HWND in_hWnd, ID3D12Device* in_pDevice,
-    ID3D12DescriptorHeap* in_pSrvHeap, const UINT in_rootSigSlot,
+    ID3D12DescriptorHeap* in_pSrvHeap, const UINT in_descriptorHeapOffset,
     const UINT in_swapChainBufferCount, const DXGI_FORMAT in_swapChainFormat,
     const std::wstring& in_adapterDescription, CommandLineArgs& in_args) :
     m_initialArgs(in_args)
@@ -50,16 +50,16 @@ Gui::Gui(HWND in_hWnd, ID3D12Device* in_pDevice,
 {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
-    ImGuiIO& io = ImGui::GetIO(); (void)io;
+    ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableSetMousePos + ImGuiBackendFlags_HasSetMousePos;  // Enable Keyboard Controls
 
     ImGui::StyleColorsDark();
     ImGui_ImplWin32_Init(in_hWnd);
 
     CD3DX12_CPU_DESCRIPTOR_HANDLE cpu(in_pSrvHeap->GetCPUDescriptorHandleForHeapStart(),
-        in_rootSigSlot, in_pDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+        in_descriptorHeapOffset, in_pDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
     CD3DX12_GPU_DESCRIPTOR_HANDLE gpu(in_pSrvHeap->GetGPUDescriptorHandleForHeapStart(),
-        in_rootSigSlot, in_pDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+        in_descriptorHeapOffset, in_pDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
 
     ImGui_ImplDX12_Init(in_pDevice, in_swapChainBufferCount, in_swapChainFormat, in_pSrvHeap, cpu, gpu);
     ImGui_ImplDX12_CreateDeviceObjects();

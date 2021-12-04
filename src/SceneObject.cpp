@@ -248,11 +248,9 @@ void SceneObjects::BaseObject::SetModelConstants(ModelConstantData& out_modelCon
 {
     out_modelConstantData.g_combinedTransform = m_combinedMatrix;
 
-    DirectX::XMVECTOR pDet;
-    DirectX::XMMATRIX worldInverse = XMMatrixInverse(&pDet, m_matrix);
-    out_modelConstantData.g_worldTransform = worldInverse;
+    out_modelConstantData.g_worldTransform = m_matrix;
 
-    DirectX::XMVECTOR vEyePt = XMVector4Transform(in_viewInverse.r[3], worldInverse);
+    DirectX::XMVECTOR vEyePt = in_viewInverse.r[3];
 
     DirectX::XMStoreFloat4(&(out_modelConstantData.g_eyePos), vEyePt);
 
@@ -689,8 +687,6 @@ void SceneObjects::Sky::SetModelConstants(ModelConstantData& out_modelConstantDa
 
     out_modelConstantData.g_combinedTransform = m_matrix * view * in_projection;
 
-    DirectX::XMVECTOR pDet;
-    DirectX::XMMATRIX worldInverse = XMMatrixInverse(&pDet, m_matrix);
     out_modelConstantData.g_worldTransform = DirectX::XMMatrixIdentity();
 
     out_modelConstantData.g_minmipmapWidth = m_pStreamingResource->GetMinMipMapWidth();

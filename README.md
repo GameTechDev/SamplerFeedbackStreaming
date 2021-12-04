@@ -275,6 +275,16 @@ ID3D12CommandList* pCommandLists[] = { commandLists.m_beforeDrawCommands, m_comm
         m_commandQueue->ExecuteCommandLists(_countof(pCommandLists), pCommandLists);
 ```
 
+## Log
+
+- 2021-06-21: initial commit
+- 2021-07-23: use windows events to reduce cpu overhead
+- 2021-08-10: use WaitOnAddress to further reduce cpu overhead. some 16k x 16k textures (BC7 format) posted as "release 1".
+- 2021-08-28: proof-of-concept culling: textures for objects behind view are evicted
+- 2021-09-20: fixed race condition that could result in hang on exit
+- 2021-10-21: code refactor to improve sampler feedback streaming library API
+- 2021-12-03: added BC1 asset collection as "release 2." All texture assets (.xet files) can reside in the same directory despite format differences, and can co-exist in the same GPU heap. Also minor source tweaks, including fix to not cull base "terrain" object.
+
 ## License
 
 Sample and its code provided under MIT license, please see [LICENSE](/LICENSE). All third-party source code provided under their own respective and MIT-compatible Open Source licenses.

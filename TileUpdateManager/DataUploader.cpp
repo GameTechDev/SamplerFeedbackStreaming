@@ -190,7 +190,7 @@ void Streaming::DataUploader::StopThreads()
 //-----------------------------------------------------------------------------
 void Streaming::DataUploader::FlushCommands()
 {
-    DebugPrint(m_updateListFreeCount.load(), " DU flush\n");
+    DebugPrint("DataUploader Flush ", m_updateListFreeCount.load(), "/", m_updateLists.size(), " batches freed\n");
     while (m_updateListFreeCount.load() < m_updateLists.size())
     {
         _mm_pause();

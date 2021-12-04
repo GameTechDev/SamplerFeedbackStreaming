@@ -34,7 +34,7 @@ class Gui
 {
 public:
     Gui(HWND in_hWnd, ID3D12Device* in_pDevice,
-        ID3D12DescriptorHeap* in_pSrvHeap, const UINT in_rootSigSlot,
+        ID3D12DescriptorHeap* in_pSrvHeap, const UINT in_descriptorHeapOffset,
         const UINT in_swapChainBufferCount, const DXGI_FORMAT in_swapChainFormat,
         const std::wstring& in_adapterDescription, CommandLineArgs& in_args);
     ~Gui();

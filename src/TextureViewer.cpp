@@ -265,7 +265,7 @@ void TextureViewer::DrawWindows(ID3D12GraphicsCommandList* in_pCL, D3D12_VIEWPOR
 }
 
 //-----------------------------------------------------------------------------
-// note: screen space is -1,-1 to 1,1
+// draw the rectangle
 //-----------------------------------------------------------------------------
 void TextureViewer::Draw(ID3D12GraphicsCommandList* in_pCL,
     DirectX::XMFLOAT2 in_position, DirectX::XMFLOAT2 in_windowDim,
@@ -284,8 +284,8 @@ void TextureViewer::Draw(ID3D12GraphicsCommandList* in_pCL,
     }
 
     ConstantBuffer* pConstants = (ConstantBuffer*)m_constants.data();
-    pConstants->x = 2 * float(in_position.x) / in_viewPort.Width;
-    pConstants->y = 2 * float(in_position.y) / in_viewPort.Height;
+    pConstants->x = float(in_position.x) / in_viewPort.Width;
+    pConstants->y = float(in_position.y) / in_viewPort.Height;
 
     pConstants->width = in_windowDim.x / in_viewPort.Width;
     pConstants->height = in_windowDim.y / in_viewPort.Height;

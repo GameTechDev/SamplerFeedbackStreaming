@@ -275,30 +275,26 @@ void Scene::MoveView(int in_x, int in_y, int in_z)
 //-----------------------------------------------------------------------------
 void Scene::RotateView(float in_x, float in_y, float in_z)
 {
-    XMMATRIX rotation = XMMatrixRotationRollPitchYaw(in_x, 0, in_z);
+    XMMATRIX rotation;
 
-    if (in_y)
+    // NOTE: locking the "up" axis feels great when navigating the terrain
+    // however, it breaks the controls when flying to other planets
+    if (m_args.m_cameraUpLock)
     {
-        // NOTE: locking the "up" axis feels great when navigating the terrain
-        // however, it breaks the controls when flying to other planets
-        XMMATRIX rotY = XMMatrixIdentity();
-        if (m_args.m_cameraUpLock)
-        {
-            // this prevents spin while panning the terrain, but breaks if the user intentionally rotates in Z
-            rotY = XMMatrixRotationAxis(XMVectorSet(0, 1, 0, 1), in_y);
-        }
-        else
-        {
-            // this rotates correctly with any z axis rotation, but "up" can drift:
-            XMVECTOR yAxis = m_viewMatrixInverse.r[1];
-            rotY = XMMatrixRotationNormal(yAxis, in_y);
-        }
+        XMVECTOR yAxis = XMVectorSet(0, 1, 0, 1);
+        XMMATRIX rotY = XMMatrixRotationAxis(yAxis, in_y);
 
         XMVECTOR xLate = XMVectorSetW(m_viewMatrixInverse.r[3], 0);
         rotY = XMMatrixMultiply(XMMatrixTranslationFromVector(-xLate), rotY);
         rotY = XMMatrixMultiply(rotY, XMMatrixTranslationFromVector(xLate));
 
         m_viewMatrix = XMMatrixMultiply(rotY, m_viewMatrix);
+
+        rotation = XMMatrixRotationRollPitchYaw(in_x, 0, in_z);
+    }
+    else
+    {
+        rotation = XMMatrixRotationRollPitchYaw(in_x, in_y, in_z);
     }
 
     m_viewMatrix = XMMatrixMultiply(m_viewMatrix, rotation);
@@ -989,7 +985,8 @@ void Scene::CreateConstantBuffers()
         CD3DX12_RANGE readRange(0, bufferSize);
         ThrowIfFailed(m_frameConstantBuffer->Map(0, &readRange, reinterpret_cast<void**>(&m_pFrameConstantData)));
 
-        m_pFrameConstantData->g_lightDir = XMFLOAT4(-0.449135751f, 0.656364977f, 0.25f, 0);
+        m_pFrameConstantData->g_lightDir = XMFLOAT4(-0.538732767f, 0.787301660f, 0.299871892f, 0);
+        XMStoreFloat4(&m_pFrameConstantData->g_lightDir, XMVector4Normalize(XMLoadFloat4(&m_pFrameConstantData->g_lightDir)));
         m_pFrameConstantData->g_lightColor = XMFLOAT4(1, 1, 1, 40.0f);
         m_pFrameConstantData->g_specColor = XMFLOAT4(1, 1, 1, 1);
 
@@ -1153,7 +1150,9 @@ void Scene::DrawObjects()
 
             // FIXME: want proper frustum culling here
             float w = XMVectorGetW(o->GetCombinedMatrix().r[3]);
-            bool visible = (w > 0) || (o == m_pSky);
+            // never cull the sky
+            // also never cull the terrain object, or will see incorrect behavior when inspecting closely
+            bool visible = (w > 0) || (o == m_pSky) || (o == m_pTerrainSceneObject);
 
             // get sampler feedback for this object?
             bool queueFeedback = false;
@@ -1507,6 +1506,7 @@ void Scene::StartScene()
     else
     {
         m_pFrameConstantData->g_lightDir = XMFLOAT4(-0.449135751f, 0.656364977f, 0.25f, 0);
+        XMStoreFloat4(&m_pFrameConstantData->g_lightDir, XMVector4Normalize(XMLoadFloat4(&m_pFrameConstantData->g_lightDir)));
     }
 }
 
@@ -1531,7 +1531,7 @@ void Scene::DrawUI(float in_cpuProcessFeedbackTime)
             UINT numMips = areaHeight / (UINT)minDim;
             if (numMips > 1)
             {
-                DirectX::XMFLOAT2 windowPos = DirectX::XMFLOAT2(m_viewport.Width - minDim, minDim);
+                DirectX::XMFLOAT2 windowPos = DirectX::XMFLOAT2(m_viewport.Width - minDim, 0);
                 m_pTextureViewer->Draw(m_commandList.Get(), windowPos, windowSize,
                     m_viewport,
                     m_args.m_visualizationBaseMip, numMips - 1,
@@ -1541,7 +1541,7 @@ void Scene::DrawUI(float in_cpuProcessFeedbackTime)
         else
         {
             UINT numMips = UINT(m_viewport.Width) / (UINT)minDim;
-            DirectX::XMFLOAT2 windowPos = DirectX::XMFLOAT2(0, minDim);
+            DirectX::XMFLOAT2 windowPos = DirectX::XMFLOAT2(0, 0);
             m_pTextureViewer->Draw(m_commandList.Get(), windowPos, windowSize,
                 m_viewport,
                 m_args.m_visualizationBaseMip, numMips,
