@@ -344,6 +344,10 @@ void SceneObjects::BaseObject::Draw(ID3D12GraphicsCommandList1* in_pCommandList,
             SetRootSigPso(in_pCommandList);
         }
 
+        // mark our tiled resource as active so that PIX can capture it correctly
+        auto aliasBarrier = CD3DX12_RESOURCE_BARRIER::Aliasing(nullptr, GetTiledResource());
+        in_pCommandList->ResourceBarrier(1, &aliasBarrier);
+
         // uavs and srvs
         in_pCommandList->SetGraphicsRootDescriptorTable((UINT)RootSigParams::ParamObjectTextures, in_drawParams.m_srvBaseGPU);
 
