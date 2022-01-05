@@ -1127,6 +1127,7 @@ void Scene::DrawObjects()
     drawParams.m_projection = m_projection;
     drawParams.m_view = m_viewMatrix;
     drawParams.m_viewInverse = m_viewMatrixInverse;
+    drawParams.m_addAliasingBarriers = m_args.m_addAliasingBarriers;
 
     const D3D12_GPU_DESCRIPTOR_HANDLE srvBaseGPU = CD3DX12_GPU_DESCRIPTOR_HANDLE(m_srvHeap->GetGPUDescriptorHandleForHeapStart(), (UINT)DescriptorHeapOffsets::NumEntries, m_srvUavCbvDescriptorSize);
 

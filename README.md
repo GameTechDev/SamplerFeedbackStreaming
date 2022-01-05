@@ -284,6 +284,7 @@ ID3D12CommandList* pCommandLists[] = { commandLists.m_beforeDrawCommands, m_comm
 - 2021-09-20: fixed race condition that could result in hang on exit
 - 2021-10-21: code refactor to improve sampler feedback streaming library API
 - 2021-12-03: added BC1 asset collection as "release 2." All texture assets (.xet files) can reside in the same directory despite format differences, and can co-exist in the same GPU heap. Also minor source tweaks, including fix to not cull base "terrain" object.
+- 2021-12-15: "-addAliasingBarriers" command line option to add an aliasing barrier to assist PIX analysis. Can also be enabled in config.json.
 
 ## License
 

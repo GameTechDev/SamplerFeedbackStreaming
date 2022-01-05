@@ -59,6 +59,9 @@ namespace SceneObjects
         DirectX::XMMATRIX m_projection;
         DirectX::XMMATRIX m_view;
         DirectX::XMMATRIX m_viewInverse;
+
+        // Add per-draw aliasing barriers to assist PIX analysis
+        bool m_addAliasingBarriers{ false };
     };
 
     class BaseObject

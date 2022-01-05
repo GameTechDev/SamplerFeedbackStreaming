@@ -62,7 +62,7 @@ struct CommandLineArgs
     bool m_lightFromView{ false };    // light direction is look direction, useful for demos
 
     float m_maxGpuFeedbackTimeMs{ 10.0f };
-
+    bool m_addAliasingBarriers{ false }; // adds a barrier for each streaming resource: alias(nullptr, pResource)
     UINT m_streamingHeapSize{ 16384 }; // in # of tiles, not bytes
     UINT m_numHeaps{ 1 };
     UINT m_maxTileUpdatesPerApiCall{ 512 }; // max #tiles (regions) in call to UpdateTileMappings()

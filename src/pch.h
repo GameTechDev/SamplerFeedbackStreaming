@@ -27,9 +27,9 @@
 #pragma once
 
 #include <windows.h>
-#pragma warning(push, 0)
+#pragma warning( disable : 4458 )
 #include <gdiplus.h>
-#pragma warning(pop)
+#pragma warning( default : 4458 )
 #undef max
 #undef min
 

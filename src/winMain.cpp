@@ -178,6 +178,7 @@ void ParseCommandLine(CommandLineArgs& out_args)
     argParser.AddArg(L"-hideUI", [&](std::wstring) { out_args.m_showUI = false; });
     argParser.AddArg(L"-miniUI", [&](std::wstring) { out_args.m_uiModeMini = true; });
     argParser.AddArg(L"-updateAll", out_args.m_updateEveryObjectEveryFrame);
+    argParser.AddArg(L"-addAliasingBarriers", L"Add per-draw aliasing barriers to assist PIX analysis", out_args.m_addAliasingBarriers);
 
     argParser.AddArg(L"-timingStart", out_args.m_timingStartFrame);
     argParser.AddArg(L"-timingStop", out_args.m_timingStopFrame);
@@ -482,6 +483,7 @@ void LoadConfigFile(CommandLineArgs& out_args)
                 if (root.isMember("hideUI")) out_args.m_showUI = !root["hideUI"].asBool();
                 if (root.isMember("miniUI")) out_args.m_uiModeMini = root["miniUI"].asBool();
 
+                if (root.isMember("addAliasingBarriers")) out_args.m_addAliasingBarriers = root["addAliasingBarriers"].asBool();
                 if (root.isMember("updateAll")) out_args.m_updateEveryObjectEveryFrame = root["updateAll"].asBool();
 
                 if (root.isMember("timingStart")) out_args.m_timingStartFrame = root["timingStart"].asUInt();

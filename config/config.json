@@ -1,73 +1,75 @@
 {
-  "fullScreen": false,
-  "vsync": false,
-  "windowWidth": 1280,
-  "windowHeight": 800,
-  "sampleCount": 4, // multisample anti-aliasing
-  "lodBias": 0, // sampler bias. positive is blurrier
-  "anisotropy": 4, // sampler anisotropy
+    "fullScreen": false,
+    "vsync": false,
+    "windowWidth": 1280,
+    "windowHeight": 800,
+    "sampleCount": 4, // multisample anti-aliasing
+    "lodBias": 0, // sampler bias. positive is blurrier
+    "anisotropy": 4, // sampler anisotropy
 
-  "adapter": "", // in a multi-adapter system, searches description for substring ignoring case e.g. "intel"
+    "adapter": "", // in a multi-adapter system, searches description for substring ignoring case e.g. "intel"
 
-  "animationrate": 0, // rotation of individual objects
-  "cameraRate": 0, // camera motion rate
-  "rollerCoaster": false, // fly through, vs. orbiting, planets
+    "animationrate": 0, // rotation of individual objects
+    "cameraRate": 0, // camera motion rate
+    "rollerCoaster": false, // fly through, vs. orbiting, planets
 
-  "mediaDir": "media", // media directory
-  "texture": "", // setting this overrides all textures, invalidates mediadir
-  "skyTexture": "", // add a sky sphere. path relative to mediadir
-  "earthTexture": "", // when this texture is encountered, treat it as spherically projected (no uv mirror)
-  "maxNumObjects": 985, // maximum total number of objects in the scene
-  "numSpheres": 0, // number of objects besides the terrain
-  "lightFromView": false, // light direction is look direction
+    "mediaDir": "media", // media directory
+    "texture": "", // setting this overrides all textures, invalidates mediadir
+    "skyTexture": "", // add a sky sphere. path relative to mediadir
+    "earthTexture": "", // when this texture is encountered, treat it as spherically projected (no uv mirror)
+    "maxNumObjects": 985, // maximum total number of objects in the scene
+    "numSpheres": 0, // number of objects besides the terrain
+    "lightFromView": false, // light direction is look direction
 
-  // sphere geometry
-  "sphereLong": 64, // # steps vertically. must be even
-  "sphereLat": 65, // # steps around. must be odd
+    // sphere geometry
+    "sphereLong": 64, // # steps vertically. must be even
+    "sphereLat": 65, // # steps around. must be odd
 
-  // terrain (heightmap) geometry
-  "terrainSideSize": 128, // resolution, e.g. 256x256 gride
-  "heightScale": 50,
-  "noiseScale": 25,
-  "octaves": 8,
-  "mountainSize": 4000,
+    // terrain (heightmap) geometry
+    "terrainSideSize": 128, // resolution, e.g. 256x256 gride
+    "heightScale": 50,
+    "noiseScale": 25,
+    "octaves": 8,
+    "mountainSize": 4000,
 
-  "maxFeedbackTime": 5.0, // maximum milliseconds for GPU to resolve feedback
+    "maxFeedbackTime": 5.0, // maximum milliseconds for GPU to resolve feedback
 
-  "visualizeMinMip": false, // color overlayed onto texture by PS corresponding to mip level
-  "hideFeedback": false, // hide the terrain feedback windows
-  "hideUI": false, // hide the UI
-  "miniUI": false, // use "lite" UI (bandwidth & heap occupancy only)
+    "visualizeMinMip": false, // color overlayed onto texture by PS corresponding to mip level
+    "hideFeedback": false, // hide the terrain feedback windows
+    "hideUI": false, // hide the UI
+    "miniUI": false, // use "lite" UI (bandwidth & heap occupancy only)
 
-  "updateAll": false, // update feedback for every object every frame
+    "updateAll": false, // update feedback for every object every frame
 
-  "heapSizeTiles": 24576, // size for each heap. 64KB per tile * 16384 tiles -> 1GB heap
-  "numHeaps": 1, // number of heaps. objects will be distributed among heaps
-  "maxTileUpdatesPerApiCall": 4096, // limit to # tiles passed to D3D12 UpdateTileMappings()
+    "heapSizeTiles": 24576, // size for each heap. 64KB per tile * 16384 tiles -> 1GB heap
+    "numHeaps": 1, // number of heaps. objects will be distributed among heaps
+    "maxTileUpdatesPerApiCall": 4096, // limit to # tiles passed to D3D12 UpdateTileMappings()
 
-  // maximum number of in-flight command lists
-  // note a command list can only target a single resource
-  // based on guidance around maximum outstanding SSD read requests: drives aren't expected to benefit from lots of queueing
-  // more queueing is counter-productive, as copies might arrive after the target is no longer visible
-  "numStreamingBatches": 128,
+    // maximum number of in-flight command lists
+    // note a command list can only target a single resource
+    // based on guidance around maximum outstanding SSD read requests: drives aren't expected to benefit from lots of queueing
+    // more queueing is counter-productive, as copies might arrive after the target is no longer visible
+    "numStreamingBatches": 128,
 
-  // the maximum number of tile copies in a single command list
-  // a larger value allows the system to absorb a big change with a single UpdateList
-  "streamingBatchSize": 64,
+    // the maximum number of tile copies in a single command list
+    // a larger value allows the system to absorb a big change with a single UpdateList
+    "streamingBatchSize": 64,
 
-  // affects size of gpu upload buffer, that is, staging between file read and gpu copy
-  // uploads should move fast, so it should be hard to hit even a small value.
-  // NOTE: do consider # tiles in flight, that is # command lists * avg # copies per command list
-  //       e.g. 128 command lists * 32 copies each would be 4096 tiles in flight
-  // 1024 would be a 64MB upload buffer. Suggested 16-32MB.
-  "maxTilesInFlight": 512,
+    // affects size of gpu upload buffer, that is, staging between file read and gpu copy
+    // uploads should move fast, so it should be hard to hit even a small value.
+    // NOTE: do consider # tiles in flight, that is # command lists * avg # copies per command list
+    //       e.g. 128 command lists * 32 copies each would be 4096 tiles in flight
+    // 1024 would be a 64MB upload buffer. Suggested 16-32MB.
+    "maxTilesInFlight": 512,
 
-  "waitForAssetLoad": false,
+    "waitForAssetLoad": false,
 
-  "timingStart": 0, // start recording statistics this frame
-  "timingStop": 0, // stop recording statistics this frame
-  "timingFileFrames": "", // file name for per-frame statistics. no statistics unless set. ".csv" will be appended
-  "timingNumBatches": 128, // number of batches to record for writing. will capture last n batches (uploads/evictions)
-  "timingFileBatches": "", // file name for per-batch statistics. no statistics unless set. ".csv" will be appended
-  "exitImageFile": "" // if set, outputs final image on exit. extension (e.g. .png) will be appended
+    "addAliasingBarriers": false, //// adds a barrier for each streaming resource: alias(nullptr, pResource)
+
+    "timingStart": 0, // start recording statistics this frame
+    "timingStop": 0, // stop recording statistics this frame
+    "timingFileFrames": "", // file name for per-frame statistics. no statistics unless set. ".csv" will be appended
+    "timingNumBatches": 128, // number of batches to record for writing. will capture last n batches (uploads/evictions)
+    "timingFileBatches": "", // file name for per-batch statistics. no statistics unless set. ".csv" will be appended
+    "exitImageFile": "" // if set, outputs final image on exit. extension (e.g. .png) will be appended
 }

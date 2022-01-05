@@ -67,7 +67,6 @@ protected:
 private:
     ComPtr<ID3D12RootSignature> m_rootSignature;
     ComPtr<ID3D12PipelineState> m_pipelineState;
-    ID3D12Resource* m_pResource{ nullptr };
 
     int m_numMips{ 0 };
 };
