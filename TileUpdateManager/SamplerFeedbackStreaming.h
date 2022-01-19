@@ -150,6 +150,11 @@ struct TileUpdateManagerDesc
 
     UINT m_timingNumBatchesToCapture{ 512 };
 
+    // Aliasing barriers are unnecessary, as draw commands only access modified resources after a fence has signaled on the copy queue
+    // Note it is also theoretically possible for tiles to be re-assigned while a draw command is executing
+    // However, performance analysis tools like to know about changes to resources
+    bool m_addAliasingBarriers{ false };
+
     // false: use internal file streaming system. true: use Microsoft DirectStorage
     bool m_useDirectStorage{ false };
 };

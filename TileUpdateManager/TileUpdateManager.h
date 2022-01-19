@@ -177,7 +177,10 @@ namespace Streaming
         Streaming::BarrierList m_barrierUavToResolveSrc; // also copy source to resolve dest
         Streaming::BarrierList m_barrierResolveSrcToUav; // also resolve dest to copy source
 
-        UINT m_renderFrameIndex;
+        Streaming::BarrierList m_aliasingBarriers; // optional barrier for performance analysis only
+        bool m_addAliasingBarriers{ false };
+
+        UINT m_renderFrameIndex{ 0 };
 
         D3D12GpuTimer m_gpuTimerResolve; // time for feedback resolve
 

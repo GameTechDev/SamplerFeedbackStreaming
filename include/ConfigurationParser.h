@@ -49,22 +49,9 @@ C++ Reading a file:
     ConfigurationParser configurationParser;
     configurationParser.Read("filename");
 
-    auto& root = configurationParser.GetRoot();
-
-    std::string s = root["name"].asString();
-    bool x = root["a2"][0]["x"].asBool();
-    int z = root["a2"][1].asInt();
-
-    // parse an array of arrays of floats
-    for (const auto& pose : root["Poses"])
-    {
-        std::vector<float> f;
-        for (UINT i = 0; i < pose.size(); i++)
-        {
-            f.push_back(pose[i].asFloat();
-        }
-        // now do something with f...
-    }
+    std::string s = configurationParser["name"].asString();
+    bool x = configurationParser["a2"][0]["x"].asBool();
+    int z = configurationParser["a2"][1].asInt();
 
 C++ Writing a file:
 
@@ -76,10 +63,6 @@ C++ Writing a file:
 
     ConfigurationParser.Write("filename");
 
-Known issues:
-
-    reading/writing values that contain quotes, e.g. "v" : "\"value\"";
-
 =============================================================================*/
 #pragma once
 #include <stdint.h>
@@ -89,8 +72,6 @@ Known issues:
 #include <vector>
 #include <assert.h>
 #include <algorithm>
-#include <iomanip>
-#include <iostream> // for cerr
 
 //=============================================================================
 //=============================================================================
@@ -151,21 +132,19 @@ public:
         std::vector<KVP> m_values;
         std::string m_name;
         std::string m_data;
-        bool m_isString{ false }; // data was assigned as a string. when written to file, add quotes
 
         // used by ConfigurationParser::Read()
         // when loading a file, we need a guaranteed creation method. [] can find and replace.
         KVP& AddData(const std::string& in_name, const std::string& in_data)
         {
-            //c++17:
+			//c++17:
             //return m_values.emplace_back(in_name, in_data);
-            m_values.emplace_back(in_name, in_data);
-            return *std::prev(m_values.end());
+			m_values.emplace_back(in_name, in_data);
+			return *std::prev(m_values.end());
         }
 
         // used by ConfigurationParser::Write()
-        static constexpr uint32_t m_tabSize{ 2 };
-        void Write(std::ofstream& in_ofs, uint32_t in_tab = 0);
+        void Write(std::ofstream& in_ofs);
 
         friend ConfigurationParser;
     };
@@ -183,166 +162,251 @@ public:
     KVP& GetRoot() { return m_value; }
 
 private:
-
-    using Tokens = std::vector<std::string>;
-
-    inline void ParseError(uint32_t in_pos)
+    //-------------------------------------------------------------------------
+    // Split on any of a set of characters
+    //    e.g. delimeters = "):" will split one)two or one:two into one two
+    // return string to left and right of delimiter
+    // if delimeter not found, left is the original string
+    //-------------------------------------------------------------------------
+    static void Split(std::string& out_left, std::string& out_right,
+        const std::string& in_string, std::string in_delimeters)
     {
-        std::string message = "Error in comment: unexpected character at position " + std::to_string(in_pos);
-#ifdef _WINDOWS_
-        ::MessageBoxA(0, message.c_str(), "Config File Error", MB_OK);
-#else
-        std::cerr << message << std::endl;
-#endif
-        exit(-1);
-    }
-
-    inline void ParseError(const Tokens& tokens, uint32_t in_tokenIndex)
-    {
-        uint32_t firstToken = std::max((uint32_t)3, in_tokenIndex) - 3;
-        uint32_t lastToken = std::min((uint32_t)tokens.size(), in_tokenIndex + 3);
-
-        std::string message = "Error: unexpected token '" + tokens[in_tokenIndex - 1] + "', context:\n";
-        for (uint32_t i = firstToken; i < lastToken; i++)
+        auto offset = in_string.find_first_of(in_delimeters);
+        if (std::string::npos != offset)
         {
-            message += tokens[i] + " ";
+            if (offset > 0)
+            {
+                out_left = in_string.substr(0, offset);
+            }
+            if (offset < in_string.length())
+            {
+                out_right = in_string.substr(offset + 1, in_string.length());
+            }
         }
-#ifdef _WINDOWS_
-        ::MessageBoxA(0, message.c_str(), "Config File Error", MB_OK);
-#else
-        std::cerr << message << std::endl;
-#endif
-        exit(-1);
+        else
+        {
+            out_left = in_string;
+            out_right.clear();
+        }
     }
 
     //-------------------------------------------------------------------------
-    // break string into an array of symbols or substrings
+    // Split on a contiguous string
+    //    e.g. delimeter = ":)" will split one:)two into one two, but will not split one:two or one)two
+    // return strings to left and right of delimiter
+    // if delimeter not found, left is the original string
     //-------------------------------------------------------------------------
-    inline void Tokenize(Tokens& out_tokens, std::string& in_stream)
+    static bool SplitWhole(std::string& out_left, std::string& out_right,
+        const std::string& in_string, std::string in_delimeter)
     {
-        const uint32_t numChars = (uint32_t)in_stream.size();
-
-        const std::string symbols = "{}[],:";
-
-        for (uint32_t i = 0; i < numChars; i++)
+        auto offset = in_string.find(in_delimeter);
+        if (std::string::npos != offset)
         {
-            char c = in_stream[i];
-
-            if (std::isspace(c)) continue;
-
-            // comments
-            if ('/' == c)
+            if (offset > 0)
             {
-                i++;
-                switch (in_stream[i])
-                {
-                case '/':
-                    while ((i < numChars) && (in_stream[i] != '\n')) { i++; } // c++ comment
-                    break;
-                case '*':
-                    while (i < numChars) /* comment */
-                    {
-                        i++;
-                        while ((i < numChars) && (in_stream[i] != '*')) { i++; }
-                        i++;
-                        if ((i < numChars) && ('/' == in_stream[i])) break;
-                    }
-                    break;
-                default:
-                    ParseError(i - 1);
-                }
+                out_left = in_string.substr(0, offset);
             }
-
-            // symbols
-            else if (symbols.find(c) != std::string::npos)
+            offset += in_delimeter.size();
+            if (offset < in_string.length())
             {
-                out_tokens.push_back(std::string(1, c));
+                out_right = in_string.substr(offset, in_string.length());
             }
+            return true;
+        }
 
-            // quoted strings (ignore spaces within)
-            // fixme: handle escaped characters
-            else if ('"' == c)
+        out_left = in_string;
+        out_right.clear();
+        return false;
+    }
+
+    //-------------------------------------------------------------------------
+    // remove C++-style "//" comment from string
+    //-------------------------------------------------------------------------
+    static void TrimComment(std::string& inout_string)
+    {
+        std::string nonComment;
+        std::string comment;
+        SplitWhole(nonComment, comment, inout_string, "//");
+        inout_string = nonComment;
+    }
+
+    //-------------------------------------------------------------------------
+    // remove C-style "/*... */" comments
+    // hanldes multi-line blocks, and multiple blocks in a single line
+    //-------------------------------------------------------------------------
+    static void TrimCommentBlock(std::string& inout_streamLine, std::ifstream& in_ifs)
+    {
+        std::string before;
+        std::string after;
+        // remove all block comments in this line
+        // if it's more than one line, read a character at a time until we find the end
+        while (SplitWhole(before, after, inout_streamLine, "/*"))
+        {
+            inout_streamLine = before;
+
+            // end of block within the same line?
+            std::string rest;
+            if (SplitWhole(before, rest, after, "*/"))
             {
-                std::string s(1, c);
-                while (i < numChars - 1)
-                {
-                    i++;
-                    s.push_back(in_stream[i]);
-                    if ('"' == in_stream[i]) break;
-                }
-                out_tokens.push_back(s);
+                inout_streamLine += rest;
             }
-
-            // values
             else
             {
-                std::string s;
-                while ((i < numChars) && (!std::isspace(in_stream[i])))
+                char c = 0;
+                bool foundStar = false;
+                while (in_ifs.get(c))
                 {
-                    if (symbols.find(in_stream[i]) != std::string::npos)
+                    if ('*' == c)
                     {
-                        i--;
+                        foundStar = true;
+                    }
+                    else if (foundStar && ('/' == c))
+                    {
                         break;
                     }
-                    s.push_back(in_stream[i]);
-                    i++;
+                    else
+                    {
+                        foundStar = false;
+                    }
                 }
-                out_tokens.push_back(s);
-            }
+            } // end if block within a single line
         }
     }
 
     //-------------------------------------------------------------------------
-    // values can be blocks, arrays, quoted strings, or strings
+    // data is of the form:
+    // "name" : value
     //-------------------------------------------------------------------------
-    uint32_t ReadValue(KVP& out_value, const Tokens& in_tokens, uint32_t in_tokenIndex)
+    static void SplitDataLine(std::string& out_name, std::string& out_data, const std::string& in_dataLine)
     {
-        auto t = in_tokens[in_tokenIndex++];
-        switch (t[0])
-        {
-        case '{': in_tokenIndex = ReadBlock(out_value, in_tokens, in_tokenIndex); break;
-        case '[': in_tokenIndex = ReadArray(out_value, in_tokens, in_tokenIndex); break;
-        case '"': out_value.m_data = t.substr(1, t.size() - 2);  out_value.m_isString = true; break;
-        default: out_value.m_data = t;
-        }
-        return in_tokenIndex;
+        auto nameStart = in_dataLine.find('\"');
+
+        assert(std::string::npos != nameStart);
+        std::string blockName;
+        Split(blockName, out_data, in_dataLine, ":");
+        auto nameEnd = blockName.find('"', nameStart + 1);
+        out_name = blockName.substr(nameStart + 1, nameEnd - nameStart - 1);
+
+        RemoveWhiteSpaceFront(out_data);
     }
 
     //-------------------------------------------------------------------------
-    // An "Array" is of the form NAME COLON [ comma-separated un-named VALUES within square brackets ]
-    //     "array" : [ value, value, { "block" : value }]
+    // reads a Block of name:data pairs
+    //
+    // Data are stored in blocks, e.g.:
+    // "BlockName":{
+    // "name1" : value1,
+    // "name2" : value2
+    // }
     //-------------------------------------------------------------------------
-    uint32_t ReadArray(KVP& out_value, const Tokens& in_tokens, uint32_t in_tokenIndex)
+    static void RemoveWhiteSpaceFront(std::string& in_string)
     {
-        while (1)
-        {
-            if (in_tokenIndex + 3 >= in_tokens.size()) ParseError(in_tokens, in_tokenIndex);
-
-            out_value.m_values.resize(out_value.m_values.size() + 1);
-            KVP& v = out_value.m_values.back();
-
-            auto t = in_tokens[in_tokenIndex];
-            if (('"' == t[0]) || (':' == t[0]))
-            {
-                ParseError(in_tokens, in_tokenIndex);
-            }
-
-            in_tokenIndex = ReadValue(v, in_tokens, in_tokenIndex);
-
-            t = in_tokens[in_tokenIndex++];
-            if (',' != t[0])
-            {
-                if (']' != t[0]) ParseError(in_tokens, in_tokenIndex);
-                break;
-            }
-        }
-
-        return in_tokenIndex;
+        auto endOfWhiteSpace = in_string.find_first_not_of(" \t");
+        in_string = in_string.substr(endOfWhiteSpace);
     }
 
     //-------------------------------------------------------------------------
-    // A "Block" is of the form NAME COLON { comma-separated named VALUES within curly brackets }
-    // "nameOfBlock": {
+    // read the value part of a name/value pair
+    //-------------------------------------------------------------------------
+    void ReadValue(
+        std::string& out_remainingString,
+        KVP& out_value,
+        const std::string& in_name,
+        const std::string& in_restOfLine)
+    {
+        // remove initial whitespace
+        std::string stringToParse = in_restOfLine;
+        RemoveWhiteSpaceFront(stringToParse);
+
+        // a value can be contained within { }
+        if ('{' == stringToParse[0])
+        {
+            KVP& v = out_value.AddData(in_name, "");
+            out_remainingString = ReadBlock(v, stringToParse);
+        }
+        // an array is a number of comma-separated /nameless/ values associated with "this" name
+        else if ('[' == stringToParse[0])
+        {
+            // add the array itself
+            KVP& v = out_value.AddData(in_name, "");
+
+            std::vector<std::string> values;
+            uint32_t level = 0;
+            uint32_t currentStart = 1;
+            uint32_t index = 0;
+
+            // make an array of the values
+            for (char c : stringToParse)
+            {
+                bool foundEnd = false;
+                if ((']' == c) || ('}' == c))
+                {
+                    level--;
+                    if (0 == level)
+                    {
+                        foundEnd = true;
+                    }
+                }
+                if (('[' == c) || ('{' == c))
+                {
+                    level++;
+                }
+                if ((',' == c) && (1 == level))
+                {
+                    foundEnd = true;
+                }
+
+                // found a value?
+                if (foundEnd)
+                {
+                    std::string data = stringToParse.substr(currentStart, index - currentStart);
+                    values.push_back(data);
+                    currentStart = index + 1;
+                }
+
+                // reached final bracket
+                if (0 == level)
+                {
+                    break;
+                }
+
+                index++;
+            }
+            out_remainingString = stringToParse.substr(index);
+
+            // create a value for each thing in the array
+            for (auto s : values)
+            {
+                ReadValue(s, v, "", s);
+            }
+        }
+        // a value that is neither of the above is a string, which may be quoted
+        else
+        {
+            std::string data;
+            Split(data, out_remainingString, stringToParse, "},");
+
+            // is this a string?
+            if ('\"' == data[0])
+            {
+                auto endOfData = data.find('\"', 1);
+                data = data.substr(1, endOfData - 1);
+            }
+
+            // consume trailing bracket and/or comma
+            auto endOfData = data.find_first_of(",}");
+            if (std::string::npos != endOfData)
+            {
+                data = data.substr(0, endOfData);
+            }
+
+            out_value.AddData(in_name, data);
+        }
+    }
+
+    //-------------------------------------------------------------------------
+    // A "Block" is of the form NAME COLON { VALUES within curly brackets }
+    // "nameOfStruct": {
     //    "name" : value,
     //    "array" : [ value, value, value],
     //    "struct" : {
@@ -350,32 +414,50 @@ private:
     //     }
     // }
     //-------------------------------------------------------------------------
-    uint32_t ReadBlock(KVP& out_value, const Tokens& in_tokens, uint32_t in_tokenIndex)
+    std::string ReadBlock(KVP& out_value, std::string in_string)
     {
-        while (1)
+        while (in_string.length())
         {
-            if (in_tokenIndex + 3 >= in_tokens.size()) ParseError(in_tokens, in_tokenIndex);
-
-            out_value.m_values.resize(out_value.m_values.size() + 1);
-            KVP& v = out_value.m_values.back();
-
-            auto t = in_tokens[in_tokenIndex++];
-            if (t[0] != '"') ParseError(in_tokens, in_tokenIndex); // name must be quoted
-            v.m_name = t.substr(1, t.size() - 2); // remove quotes from names
-
-            t = in_tokens[in_tokenIndex++];
-            if (':' != t[0]) ParseError(in_tokens, in_tokenIndex);
-
-            in_tokenIndex = ReadValue(v, in_tokens, in_tokenIndex);
-
-            t = in_tokens[in_tokenIndex++];
-            if (',' != t[0])
+            bool exitLoop = false;
+            // all values must be name/data pairs. find first quoted name.
+            auto offset = in_string.find('\"');
+            if (std::string::npos != offset)
             {
-                if ('}' != t[0]) ParseError(in_tokens, in_tokenIndex);
+                in_string = in_string.substr(offset);
+
+                // split on :
+                std::string name;
+                std::string restOfLine;
+                SplitDataLine(name, restOfLine, in_string);
+
+                // are we at the end of a block?
+                // we are /not/ if we find a comma before the }
+                // we are /not/ if we find another { before the next }
+                auto lastDelimeter = restOfLine.find_first_of(",{}");
+                if ((std::string::npos == lastDelimeter) || // parsing error?
+                    ('}' == restOfLine[lastDelimeter]))
+                {
+                    exitLoop = true;
+                }
+
+                /* did we find:
+                    1) a new block '{'
+                    2) a new name/value '"'
+                    3) a new array '['
+                */
+                ReadValue(in_string, out_value, name, restOfLine);
+
+            } // end if we found a potential name
+            else
+            {
+                exitLoop = true; // parsing error?
+            }
+            if (exitLoop)
+            {
                 break;
             }
-        }
-        return in_tokenIndex;
+        } // end while reading block
+        return in_string;
     }
 
     KVP m_value;
@@ -386,18 +468,50 @@ private:
 //-------------------------------------------------------------------------
 inline bool ConfigurationParser::Read(const std::wstring& in_filePath)
 {
-    std::ifstream ifs(in_filePath, std::ios::in | std::ifstream::binary);
+    std::string fileString;
+
+    std::ifstream ifs(in_filePath, std::ifstream::binary);
     bool success = ifs.good();
     if (success)
     {
-        std::string stream((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+        // read file into a single-line string,
+        // removing newlines and C++ style comments
+        std::string streamLine;
 
-        Tokens tokens;
-        Tokenize(tokens, stream);
+        const size_t max_num_chars = std::min<size_t>(MAX_FILE_NUM_CHARS, fileString.max_size());
 
-        if ("{" != tokens[0]) ParseError(tokens, 0);
+        while (std::getline(ifs, streamLine))
+        {
+            std::string comment;
+            TrimComment(streamLine);
 
-        ReadBlock(m_value, tokens, 1);
+            TrimCommentBlock(streamLine, ifs);
+
+            streamLine.erase(std::remove(streamLine.begin(), streamLine.end(), '\n'), streamLine.end());
+            streamLine.erase(std::remove(streamLine.begin(), streamLine.end(), '\r'), streamLine.end());
+
+            // limit the number of characters read
+            size_t numNewChars = streamLine.size();
+            size_t numCharsAllowed = max_num_chars - fileString.size();
+
+            if (numNewChars < numCharsAllowed)
+            {
+                fileString = fileString + streamLine;
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        // first thing must be enclosed in a block:
+        auto offset = fileString.find('{');
+        if (std::string::npos != offset)
+        {
+            fileString = fileString.substr(offset);
+            // read the string as a sequence of name/value pairs
+            std::string unusedRemainder = ReadBlock(m_value, fileString);
+        }
     }
 
     return success;
@@ -434,10 +548,10 @@ inline ConfigurationParser::KVP& ConfigurationParser::KVP::operator [](const std
     }
 
     // didn't find it? create a new node. Useful for adding new values with =
-    //c++17:
+	//c++17:
     //return m_values.emplace_back(in_blockName, "");
-    m_values.emplace_back(in_blockName, "");
-    return m_values.back();
+	m_values.emplace_back(in_blockName, "");
+	return *std::prev(m_values.end());
 }
 
 // constant version will not create new values
@@ -458,11 +572,6 @@ inline const ConfigurationParser::KVP& ConfigurationParser::KVP::operator [](con
 //-------------------------------------------------------------------------
 inline ConfigurationParser::KVP& ConfigurationParser::KVP::operator [](const int in_index)
 {
-    uint32_t index = (uint32_t)std::max(in_index, 0);
-    if (index >= m_values.size()) // appending?
-    {
-        m_values.resize(in_index + 1);
-    }
     return m_values[in_index];
 }
 
@@ -476,38 +585,18 @@ inline const ConfigurationParser::KVP& ConfigurationParser::KVP::operator [](con
 //-------------------------------------------------------------------------
 template<> inline ConfigurationParser::KVP& ConfigurationParser::KVP::operator=<std::string>(std::string in_v)
 {
-    m_isString = true;
     m_data = in_v;
     return *this;
 }
 
 template<> inline ConfigurationParser::KVP& ConfigurationParser::KVP::operator=<const char*>(const char* in_v)
 {
-    *this = std::string(in_v); // use std::string assignment
-    return *this;
-}
-
-template<> inline ConfigurationParser::KVP& ConfigurationParser::KVP::operator=(float in_v)
-{
-    m_isString = false;
-    std::stringstream o;
-    o << std::setprecision(std::numeric_limits<float>::digits10 + 1) << in_v;
-    m_data = o.str();
-    return *this;
-}
-
-template<> inline ConfigurationParser::KVP& ConfigurationParser::KVP::operator=(double in_v)
-{
-    m_isString = false;
-    std::stringstream o;
-    o << std::setprecision(std::numeric_limits<double>::digits10 + 1) << in_v;
-    m_data = o.str();
+    m_data = in_v;
     return *this;
 }
 
 template<typename T> inline ConfigurationParser::KVP& ConfigurationParser::KVP::operator=(T in_v)
 {
-    m_isString = false;
     m_data = std::to_string(in_v);
     return *this;
 }
@@ -622,22 +711,18 @@ inline bool ConfigurationParser::KVP::asBool() const
 //-------------------------------------------------------------------------
 // write a KVP
 //-------------------------------------------------------------------------
-inline void ConfigurationParser::KVP::Write(std::ofstream& in_ofs, uint32_t in_tab)
+inline void ConfigurationParser::KVP::Write(std::ofstream& in_ofs)
 {
     // value may be a block {} or a name:value
-
-    // if there's a name, start a new line with quoted name and colon
-    if (m_name.length())
-    {
-        in_ofs << std::endl << std::string(in_tab, ' ') << "\"" << m_name << "\": ";
-    }
 
     // if there are multiple values and no data, this is a block or an array
     // an array contains nameless values
     if ((m_values.size()) && (0 == m_data.length()))
     {
-        // start new line for nameless array or block
-        if (0 == m_name.length()) { in_ofs << std::endl << std::string(in_tab, ' '); }
+        if (m_name.length())
+        {
+            in_ofs << '\"' << m_name << "\":";
+        }
 
         char startChar = '{';
         char endChar = '}';
@@ -648,28 +733,33 @@ inline void ConfigurationParser::KVP::Write(std::ofstream& in_ofs, uint32_t in_t
             endChar = ']';
         }
 
-        in_ofs << startChar;
-        in_tab += m_tabSize;
-        for (uint32_t i = 0; i < m_values.size(); i++)
+        in_ofs << startChar << std::endl;
+        bool firstOne = true;
+        for (auto& v : m_values)
         {
-            if (0 != i)
+            if (firstOne)
             {
-                in_ofs << ", ";
+                firstOne = false;
             }
-            m_values[i].Write(in_ofs, in_tab);
-            // FIXME: would be prettier if newlines within ]], ]]]}, ]}, "x":1} ...
+            else
+            {
+                in_ofs << "," << std::endl;
+            }
+            v.Write(in_ofs);
+
         }
-        in_ofs << endChar;
+        in_ofs << std::endl << endChar << std::endl;
     }
-    else if (m_data.length())
+    else if (m_name.length())
     {
-        if (m_isString)
-        {
-            in_ofs << '"' << m_data << '"';
-        }
-        else
+        in_ofs << "\"" << m_name << "\":";
+        if (m_data.length())
         {
             in_ofs << m_data;
+        }
+        else if (m_values.size())
+        {
+            m_values[0].Write(in_ofs);
         }
     }
 }

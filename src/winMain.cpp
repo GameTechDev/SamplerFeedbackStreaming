@@ -101,6 +101,7 @@ void AdjustArguments(CommandLineArgs& out_args)
     {
         out_args.m_mediaDir.clear();
         out_args.m_skyTexture.clear();
+        out_args.m_terrainTexture = out_args.m_textureFilename;
         out_args.m_textures.clear();
         out_args.m_textures.push_back(out_args.m_textureFilename);
     }
@@ -118,12 +119,24 @@ void AdjustArguments(CommandLineArgs& out_args)
         {
             for (const auto& filename : std::filesystem::directory_iterator(out_args.m_mediaDir))
             {
-                auto f = std::filesystem::absolute(filename.path());
+                std::wstring f = std::filesystem::absolute(filename.path());
                 out_args.m_textures.push_back(f);
+
+                // matched the requested terrain texture name? substitute the full path
+                if ((out_args.m_terrainTexture.size()) && (std::wstring::npos != f.find(out_args.m_terrainTexture)))
+                {
+                    out_args.m_terrainTexture = f;
+                }
             }
 
-            // media directory overrides textureFilename, used for terrain texture
+            // media directory overrides textureFilename
             out_args.m_textureFilename = out_args.m_textures[0];
+
+            // no terrain texture set? set to something.
+            if (0 == out_args.m_terrainTexture.size())
+            {
+                out_args.m_terrainTexture = out_args.m_textureFilename;
+            }
         }
         else
         {
@@ -163,6 +176,7 @@ void ParseCommandLine(CommandLineArgs& out_args)
 
     argParser.AddArg(L"-maxNumObjects", out_args.m_maxNumObjects);
     argParser.AddArg(L"-numSpheres", out_args.m_numSpheres);
+    argParser.AddArg(L"-terrainTexture", out_args.m_terrainTexture);
     argParser.AddArg(L"-skyTexture", out_args.m_skyTexture);
     argParser.AddArg(L"-earthTexture", out_args.m_earthTexture);
     argParser.AddArg(L"-mediaDir", out_args.m_mediaDir);
@@ -452,6 +466,7 @@ void LoadConfigFile(CommandLineArgs& out_args)
 
                 if (root.isMember("texture")) out_args.m_textureFilename = StrToWstr(root["texture"].asString());
                 if (root.isMember("mediaDir")) out_args.m_mediaDir = StrToWstr(root["mediaDir"].asString());
+                if (root.isMember("terrainTexture")) out_args.m_terrainTexture = StrToWstr(root["terrainTexture"].asString());
                 if (root.isMember("skyTexture")) out_args.m_skyTexture = StrToWstr(root["skyTexture"].asString());
                 if (root.isMember("earthTexture")) out_args.m_earthTexture = StrToWstr(root["earthTexture"].asString());
                 if (root.isMember("maxNumObjects")) out_args.m_maxNumObjects = root["maxNumObjects"].asUInt();

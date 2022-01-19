@@ -662,6 +662,7 @@ void Scene::StartStreamingLibrary()
     tumDesc.m_maxTileCopiesInFlight = m_args.m_maxTilesInFlight;
     tumDesc.m_maxTileMappingUpdatesPerApiCall = m_args.m_maxTileUpdatesPerApiCall;
     tumDesc.m_swapChainBufferCount = SharedConstants::SWAP_CHAIN_BUFFER_COUNT;
+    tumDesc.m_addAliasingBarriers = m_args.m_addAliasingBarriers;
     tumDesc.m_useDirectStorage = m_args.m_useDirectStorage;
 
     m_pTileUpdateManager = std::make_unique<TileUpdateManager>(m_device.Get(), m_commandQueue.Get(), tumDesc);
@@ -775,6 +776,7 @@ void Scene::LoadSpheres()
 
         const UINT numSpheresToLoad = m_args.m_numSpheres - m_numSpheresLoaded;
 
+        UINT textureIndex = 0;
         for (UINT i = 0; i < numSpheresToLoad; i++)
         {
             // this object's index-to-be
@@ -785,7 +787,8 @@ void Scene::LoadSpheres()
             auto pHeap = m_sharedHeaps[heapIndex];
 
             // grab the next texture
-            UINT fileIndex = objectIndex % m_args.m_textures.size();
+            UINT fileIndex = textureIndex % m_args.m_textures.size();
+            textureIndex++;
             const auto& textureFilename = m_args.m_textures[fileIndex];
 
             SceneObjects::BaseObject* o = nullptr;
@@ -807,7 +810,7 @@ void Scene::LoadSpheres()
 
             else if (nullptr == m_pTerrainSceneObject)
             {
-                m_pTerrainSceneObject = new SceneObjects::Terrain(m_args.m_textureFilename, m_pTileUpdateManager.get(), pHeap, m_device.Get(), m_args.m_sampleCount, descCPU, m_args);
+                m_pTerrainSceneObject = new SceneObjects::Terrain(m_args.m_terrainTexture, m_pTileUpdateManager.get(), pHeap, m_device.Get(), m_args.m_sampleCount, descCPU, m_args);
                 m_terrainObjectIndex = objectIndex;
                 o = m_pTerrainSceneObject;
             }
@@ -826,6 +829,13 @@ void Scene::LoadSpheres()
                     o = new SceneObjects::Planet(textureFilename, m_pTileUpdateManager.get(), pHeap, m_device.Get(), descCPU, m_pEarth);
                 }
                 o->GetModelMatrix() = SetSphereMatrix();
+            }
+
+            // if there are textures other than the terrain texture, skip this one
+            else if ((std::wstring::npos != textureFilename.find(m_args.m_terrainTexture)) && (m_args.m_textures.size() > 1))
+            {
+                i--;
+                continue;
             }
 
             // planet
@@ -1127,7 +1137,6 @@ void Scene::DrawObjects()
     drawParams.m_projection = m_projection;
     drawParams.m_view = m_viewMatrix;
     drawParams.m_viewInverse = m_viewMatrixInverse;
-    drawParams.m_addAliasingBarriers = m_args.m_addAliasingBarriers;
 
     const D3D12_GPU_DESCRIPTOR_HANDLE srvBaseGPU = CD3DX12_GPU_DESCRIPTOR_HANDLE(m_srvHeap->GetGPUDescriptorHandleForHeapStart(), (UINT)DescriptorHeapOffsets::NumEntries, m_srvUavCbvDescriptorSize);
 

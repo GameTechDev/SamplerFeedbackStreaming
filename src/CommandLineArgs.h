@@ -40,6 +40,7 @@ struct CommandLineArgs
     std::wstring m_mediaDir;
     bool m_vsyncEnabled{ false };
 
+    std::wstring m_terrainTexture;
     std::wstring m_skyTexture;
     std::wstring m_earthTexture;
     std::vector<std::wstring> m_textures; // textures for things other than the terrain

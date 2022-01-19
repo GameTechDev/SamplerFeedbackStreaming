@@ -54,6 +54,7 @@ m_numSwapBuffers(in_desc.m_swapChainBufferCount)
 , m_commandLists((UINT)CommandListName::Num)
 , m_maxTileMappingUpdatesPerApiCall(in_desc.m_maxTileMappingUpdatesPerApiCall)
 , m_maxTileCopiesPerBatch(in_desc.m_maxTileCopiesPerBatch)
+, m_addAliasingBarriers(in_desc.m_addAliasingBarriers)
 {
     ASSERT(D3D12_COMMAND_LIST_TYPE_DIRECT == in_pDirectCommandQueue->GetDesc().Type);
 
