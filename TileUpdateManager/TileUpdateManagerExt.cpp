@@ -145,7 +145,7 @@ void TileUpdateManager::QueueFeedback(StreamingResource* in_pResource, D3D12_GPU
     // aliasing barriers to assist analysis tools, not functionally required
     if (m_addAliasingBarriers)
     {
-        m_aliasingBarriers.push_back(CD3DX12_RESOURCE_BARRIER::Aliasing(pResource->GetTiledResource(), nullptr));
+        m_aliasingBarriers.push_back(CD3DX12_RESOURCE_BARRIER::Aliasing(nullptr, pResource->GetTiledResource()));
     }
 
 #if RESOLVE_TO_TEXTURE
