@@ -10,7 +10,7 @@
       <AdditionalIncludeDirectories>$(ProjectDir)../imgui;$(ProjectDir)../include;$(ProjectDir)../DirectXTK12;$(ProjectDir)../TileUpdateManager</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
-      <AdditionalLibraryDirectories>$(OutDir)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(OutDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup />

@@ -78,11 +78,6 @@ namespace Streaming
         // packed mips:
         UINT m_numPackedMips = 0;
 
-        // statistics
-        INT64 m_startTime{ 0 };
-        float m_copyTime{ 0 };
-        float m_mappingTime{ 0 };
-
         void Init(UINT in_maxNumUpdates);
 
         UINT GetNumStandardUpdates() const { return (UINT)m_coords.size(); }

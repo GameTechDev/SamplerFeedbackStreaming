@@ -50,8 +50,7 @@ namespace Streaming
             UINT in_maxCopyBatches,                     // maximum number of batches
             UINT in_maxTileCopiesPerBatch,              // batch size. a small number, like 32
             UINT in_maxTileCopiesInFlight,              // upload buffer size. 1024 would become a 64MB upload buffer
-            UINT in_maxTileMappingUpdatesPerApiCall,    // some HW/drivers seem to have a limit
-            UINT in_timingNumBatchesToCapture           // number of UpdateList timings to save for statistics gathering
+            UINT in_maxTileMappingUpdatesPerApiCall     // some HW/drivers seem to have a limit
         );
         ~DataUploader();
 
@@ -81,8 +80,6 @@ namespace Streaming
         //----------------------------------
         // statistics and visualization
         //----------------------------------
-        const BatchTimes& GetStreamingTimes() const { return m_streamingTimes; }
-
         float GetGpuStreamingTime() const { return m_gpuTimer.GetTimes()[0].first; }
 
         UINT GetTotalNumUploads() const { return m_numTotalUploads; }
@@ -114,9 +111,6 @@ namespace Streaming
 
         // pointer to next address to attempt allocation from
         UINT m_updateListAllocIndex{ 0 };
-
-        UINT m_streamingTimeIndex{ 0 }; // index into cpu or gpu streaming history arrays
-        BatchTimes m_streamingTimes;
 
         // object that performs UpdateTileMappings() requests
         Streaming::MappingUpdater m_mappingUpdater;

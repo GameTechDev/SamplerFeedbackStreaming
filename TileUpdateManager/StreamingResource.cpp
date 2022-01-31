@@ -95,7 +95,6 @@ Streaming::StreamingResourceBase::StreamingResourceBase(
 //-----------------------------------------------------------------------------
 // destroy this object
 // Free() all heap allocations, then release the heap
-// release the upload buffer allocator
 //-----------------------------------------------------------------------------
 Streaming::StreamingResourceBase::~StreamingResourceBase()
 {
@@ -165,8 +164,7 @@ void Streaming::StreamingResourceBase::SetMinMip(UINT8 in_current, UINT in_x, UI
 
 //-----------------------------------------------------------------------------
 // add to refcount for a tile
-// if first time, will allocate & load
-// if can't allocate & load, addref DOES NOT increase refcount, leaves it at 0
+// if first time, add tile to list of pending loads
 //-----------------------------------------------------------------------------
 void Streaming::StreamingResourceBase::AddTileRef(UINT in_x, UINT in_y, UINT in_s)
 {
@@ -185,7 +183,7 @@ void Streaming::StreamingResourceBase::AddTileRef(UINT in_x, UINT in_y, UINT in_
 
 //-----------------------------------------------------------------------------
 // reduce ref count
-// if 0, evicts the tile
+// if 0, add tile to list of pending evictions
 //-----------------------------------------------------------------------------
 void Streaming::StreamingResourceBase::DecTileRef(UINT in_x, UINT in_y, UINT in_s)
 {
@@ -371,7 +369,7 @@ void Streaming::StreamingResourceBase::ProcessFeedback(UINT64 in_frameFenceCompl
         UINT feedbackIndex = 0;
 
         //------------------------------------------------------------------
-        // deterimine if there is feedback to process
+        // determine if there is feedback to process
         // if there is more than one feedback ready to process (unlikely), only use the most recent one
         //------------------------------------------------------------------
         {
@@ -534,11 +532,11 @@ void Streaming::StreamingResourceBase::QueueTiles()
 }
 
 /*-----------------------------------------------------------------------------
-This technique depends on an extended logic table that prevents race conditions
+This technique depends on a logic table that prevents race conditions
 
 The table has two halves:
-1) refcount > 0 is handled by loads. pending loads with refcount = 0 are dropped.
-2) refcount == 0 is handled by evictions. pending evictions of a tile with refcount > 0 is dropped.
+1) refcount > 0 is handled by loads. pending loads with refcount = 0 are dropped ("abandoned")
+2) refcount == 0 is handled by evictions. pending evictions with refcount > 0 are dropped ("rescued")
 
 ProcessFeedback() scans pending loads and pending evictions prune the drops above.
 
@@ -708,8 +706,8 @@ void Streaming::StreamingResourceBase::UpdateMinMipMap()
         const UINT width = GetNumTilesWidth();
         const UINT height = GetNumTilesHeight();
 
-        // FIXME: disabled optimization that seems like it must introduce artifacts on corner cases.
 #if 0
+        // FIXME? if the optimization below introduces artifacts, this might work:
         const UINT8 minResidentMip = (UINT8)m_tileMappingState.GetNumSubresources();
 #else
         // a simple optimization that's especially effective for large textures

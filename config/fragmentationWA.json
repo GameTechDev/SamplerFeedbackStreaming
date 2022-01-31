@@ -26,7 +26,7 @@
   "sphereLat": 65, // # steps around. must be odd
 
   // terrain (heightmap) geometry
-  "terrainSideSize": 128, // resolution, e.g. 256x256 gride
+  "terrainSideSize": 128, // resolution of terrain vertex buffer, e.g. 256x256 grid
   "heightScale": 50,
   "noiseScale": 25,
   "octaves": 8,
@@ -41,8 +41,8 @@
 
   "updateAll": false, // update feedback for every object every frame
 
-  "heapSizeTiles": 512, // size for each heap. 64KB per tile * 16384 tiles -> 1GB heap
-  "numHeaps": 127, // number of heaps. objects will be distributed among heaps
+  "heapSizeTiles": 512, // size for each heap. 64KB per tile * 512 tiles -> 32MB heap
+  "numHeaps": 127, // number of heaps. streaming resources will be distributed among heaps
   "maxTileUpdatesPerApiCall": 512, // limit to # tiles passed to D3D12 UpdateTileMappings()
 
   // maximum number of in-flight command lists
@@ -67,7 +67,5 @@
   "timingStart": 0, // start recording statistics this frame
   "timingStop": 0, // stop recording statistics this frame
   "timingFileFrames": "", // file name for per-frame statistics. no statistics unless set. ".csv" will be appended
-  "timingNumBatches": 128, // number of batches to record for writing. will capture last n batches (uploads/evictions)
-  "timingFileBatches": "", // file name for per-batch statistics. no statistics unless set. ".csv" will be appended
   "exitImageFile": "" // if set, outputs final image on exit. extension (e.g. .png) will be appended
 }

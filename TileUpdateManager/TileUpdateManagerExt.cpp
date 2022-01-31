@@ -174,7 +174,6 @@ float TileUpdateManager::GetCpuProcessFeedbackTime()
 //-----------------------------------------------------------------------------
 // performance and visualization
 //-----------------------------------------------------------------------------
-const Streaming::BatchTimes& TileUpdateManager::GetBatchTimes() const { return m_pDataUploader->GetStreamingTimes(); }
 float TileUpdateManager::GetGpuStreamingTime() const { return m_pDataUploader->GetGpuStreamingTime(); }
 
 // the total time the GPU spent resolving feedback during the previous frame

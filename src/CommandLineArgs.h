@@ -75,8 +75,6 @@ struct CommandLineArgs
     UINT m_timingStartFrame{ 0 };
     UINT m_timingStopFrame{ 0 };
     std::wstring m_timingFrameFileName; // where to write per-frame statistics
-    UINT m_numBatchCaptures{ 0 };       // capture buffer size (# of batches) for statistics gathering
-    std::wstring m_timingBatchFileName; // where to write per-batch statistics
     std::wstring m_exitImageFileName;   // write an image on exit
 
     bool m_waitForAssetLoad{ false };   // wait for assets to load before progressing frame #

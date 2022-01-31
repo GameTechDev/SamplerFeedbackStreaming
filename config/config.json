@@ -27,7 +27,7 @@
   "sphereLat": 65, // # steps around. must be odd
 
   // terrain (heightmap) geometry
-  "terrainSideSize": 128, // resolution, e.g. 256x256 gride
+  "terrainSideSize": 128, // resolution of terrain vertex buffer, e.g. 256x256 grid
   "heightScale": 50,
   "noiseScale": 25,
   "octaves": 8,
@@ -70,7 +70,5 @@
   "timingStart": 0, // start recording statistics this frame
   "timingStop": 0, // stop recording statistics this frame
   "timingFileFrames": "", // file name for per-frame statistics. no statistics unless set. ".csv" will be appended
-  "timingNumBatches": 128, // number of batches to record for writing. will capture last n batches (uploads/evictions)
-  "timingFileBatches": "", // file name for per-batch statistics. no statistics unless set. ".csv" will be appended
   "exitImageFile": "" // if set, outputs final image on exit. extension (e.g. .png) will be appended
 }

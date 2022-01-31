@@ -115,6 +115,14 @@ private:
         w << ": " << d << " (default: " << value << ") ";
         AddArg(s, w.str().c_str(), f);;
     }
+
+    template<> void AddArg(std::wstring s, std::wstring d, std::function<void(std::wstring)> f, bool& value)
+    {
+        std::wstringstream w;
+        std::string b = value ? "True" : "False";
+        w << ": " << d << " (default: " << b.c_str() << ") ";
+        AddArg(s, w.str().c_str(), f);;
+    }
 };
 
 //-----------------------------------------------------------------------------

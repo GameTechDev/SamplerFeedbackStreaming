@@ -66,8 +66,7 @@ m_numSwapBuffers(in_desc.m_swapChainBufferCount)
         in_desc.m_maxNumCopyBatches,
         in_desc.m_maxTileCopiesPerBatch,
         in_desc.m_maxTileCopiesInFlight,
-        in_desc.m_maxTileMappingUpdatesPerApiCall,
-        in_desc.m_timingNumBatchesToCapture);
+        in_desc.m_maxTileMappingUpdatesPerApiCall);
 
     const UINT numAllocators = m_numSwapBuffers;
     for (UINT c = 0; c < (UINT)CommandListName::Num; c++)

@@ -249,8 +249,6 @@ public:
     UINT GetTotalNumUploads() const;
     UINT GetTotalNumEvictions() const;
     void SetVisualizationMode(UINT in_mode);
-
-    const Streaming::BatchTimes& GetBatchTimes() const;
 private:
     TileUpdateManager(const TileUpdateManager&) = delete;
     TileUpdateManager(TileUpdateManager&&) = delete;

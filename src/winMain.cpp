@@ -1,5 +1,4 @@
 //*********************************************************
-//*********************************************************
 //
 // Copyright 2020 Intel Corporation 
 //
@@ -132,8 +131,8 @@ void AdjustArguments(CommandLineArgs& out_args)
             // media directory overrides textureFilename
             out_args.m_textureFilename = out_args.m_textures[0];
 
-            // no terrain texture set? set to something.
-            if (0 == out_args.m_terrainTexture.size())
+            // no terrain texture set or not found? set to something.
+            if ((0 == out_args.m_terrainTexture.size()) || (!std::filesystem::exists(out_args.m_terrainTexture)))
             {
                 out_args.m_terrainTexture = out_args.m_textureFilename;
             }
@@ -197,8 +196,6 @@ void ParseCommandLine(CommandLineArgs& out_args)
     argParser.AddArg(L"-timingStart", out_args.m_timingStartFrame);
     argParser.AddArg(L"-timingStop", out_args.m_timingStopFrame);
     argParser.AddArg(L"-timingFileFrames", out_args.m_timingFrameFileName);
-    argParser.AddArg(L"-timingNumBatches", out_args.m_numBatchCaptures);
-    argParser.AddArg(L"-timingFileBatches", out_args.m_timingBatchFileName);
     argParser.AddArg(L"-exitImageFile", out_args.m_exitImageFileName);
 
     argParser.AddArg(L"-waitForAssetLoad", L"stall animation & statistics until assets have minimally loaded", out_args.m_waitForAssetLoad);
@@ -504,8 +501,6 @@ void LoadConfigFile(CommandLineArgs& out_args)
                 if (root.isMember("timingStart")) out_args.m_timingStartFrame = root["timingStart"].asUInt();
                 if (root.isMember("timingStop")) out_args.m_timingStopFrame = root["timingStop"].asUInt();
                 if (root.isMember("timingFileFrames")) out_args.m_timingFrameFileName = StrToWstr(root["timingFileFrames"].asString());
-                if (root.isMember("timingNumBatches")) out_args.m_numBatchCaptures = root["timingNumBatches"].asUInt();
-                if (root.isMember("timingFileBatches")) out_args.m_timingBatchFileName = StrToWstr(root["timingFileBatches"].asString());
                 if (root.isMember("exitImageFile")) out_args.m_exitImageFileName = StrToWstr(root["exitImage"].asString());
 
                 if (root.isMember("waitForAssetLoad")) out_args.m_waitForAssetLoad = root["waitForAssetLoad"].asBool();
@@ -657,11 +652,6 @@ int WINAPI WinMain(
         if (args.m_exitImageFileName.size())
         {
             g_pScene->ScreenShot(args.m_exitImageFileName);
-        }
-
-        if (args.m_timingBatchFileName.size())
-        {
-            g_pScene->WriteBatchTimes(args.m_timingBatchFileName);
         }
 
         delete g_pScene;

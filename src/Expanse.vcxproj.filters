@@ -160,7 +160,7 @@
     <CopyFileToFolders Include="BufferViewer.hlsl">
       <Filter>Shaders</Filter>
     </CopyFileToFolders>
-    <CopyFileToFolders Include="..\config\nvidia.json">
+    <CopyFileToFolders Include="..\config\fragmentationWA.json">
       <Filter>config</Filter>
     </CopyFileToFolders>
   </ItemGroup>

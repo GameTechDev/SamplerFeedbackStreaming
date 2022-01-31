@@ -121,19 +121,6 @@ namespace Streaming
         bool m_flag{ false };
     };
 
-    struct BatchTiming
-    {
-        float m_copyTime{ -1 };    // from before ReadFile() to after gpu copy complete
-        float m_mappingTime{ -1 }; // time for mapping these tiles
-        float m_totalTime{ -1 };   // from just before starting to stream from disk to after mapping has completed
-
-        float m_cpuTime{ -1 };
-        float m_gpuTime{ -1 };
-        UINT m_numTilesCopied{ 0 };
-        UINT m_numTilesUnMapped{ 0 };
-    };
-    using BatchTimes = std::vector<BatchTiming>;
-
     //==================================================
     // unused
     //==================================================

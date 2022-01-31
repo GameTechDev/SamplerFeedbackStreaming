@@ -253,7 +253,7 @@
     <CopyFileToFolders Include="..\scripts\demo-hubble.bat">
       <FileType>Document</FileType>
     </CopyFileToFolders>
-    <CopyFileToFolders Include="..\config\nvidia.json">
+    <CopyFileToFolders Include="..\config\fragmentationWA.json">
       <FileType>Document</FileType>
     </CopyFileToFolders>
   </ItemGroup>

@@ -31,11 +31,6 @@
 #include "FileStreamerReference.h"
 #include "StreamingHeap.h"
 
-// per-batch timing disabled
-// design change resulted in start vs. complete timestamps on different threads
-// batch start, when copying, is actually in a 3rd thread
-#define ENABLE_PER_BATCH_TIMING 0
-
 //=============================================================================
 // Internal class that uploads texture data into a reserved resource
 // Takes a streamer. creates a HeapAllocator sized to match texture atlas
@@ -45,15 +40,13 @@ Streaming::DataUploader::DataUploader(
     UINT in_maxCopyBatches,                 // maximum number of batches
     UINT in_maxTileCopiesPerBatch,          // batch size. a small number, like 32
     UINT in_maxTileCopiesInFlight,          // upload buffer size. 1024 would become a 64MB upload buffer
-    UINT in_maxTileMappingUpdatesPerApiCall,// some HW/drivers seem to have a limit
-    UINT in_timingNumBatchesToCapture       // number of UpdateList timings to save
+    UINT in_maxTileMappingUpdatesPerApiCall // some HW/drivers seem to have a limit
 ) :
     m_updateLists(in_maxCopyBatches)
     , m_maxTileCopiesInFlight(in_maxTileCopiesInFlight)
     , m_maxBatchSize(in_maxTileCopiesPerBatch)
     , m_updateListFreeCount(in_maxCopyBatches)
     , m_gpuTimer(in_pDevice, in_maxCopyBatches, D3D12GpuTimer::TimerType::Copy)
-    , m_streamingTimes(in_timingNumBatchesToCapture)
     , m_mappingUpdater(in_maxTileMappingUpdatesPerApiCall)
     , m_device(in_pDevice)
 {
@@ -342,17 +335,7 @@ void Streaming::DataUploader::FenceMonitorThread()
 
             // The UpdateList is complete
             // notify all tiles, evictions, and packed mips
-#if ENABLE_PER_BATCH_TIMING
-            auto& timings = m_streamingTimes[m_streamingTimeIndex];
-            m_streamingTimeIndex = (m_streamingTimeIndex + 1) % m_streamingTimes.size();
 
-            // record total time time since sumbission
-            timings.m_totalTime = m_cpuTimer.GetSecondsSince(updateList.m_startTime);
-            timings.m_mappingTime = updateList.m_mappingTime;
-            timings.m_numTilesUnMapped = updateList.GetNumEvictions();
-            timings.m_copyTime = 0;
-            timings.m_numTilesCopied = (UINT)updateList.GetNumStandardUpdates();
-#endif
             // notify evictions
             if (updateList.GetNumEvictions())
             {
@@ -364,9 +347,6 @@ void Streaming::DataUploader::FenceMonitorThread()
             // notify regular tiles
             if (updateList.GetNumStandardUpdates())
             {
-#if ENABLE_PER_BATCH_TIMING
-                timings.m_copyTime = updateList.m_copyTime;
-#endif
                 // a gpu copy has completed, so we can update the corresponding timer
                 //timings.m_gpuTime = m_gpuTimer.MapReadBack(in_updateList.m_streamingTimeIndex);
                 m_numTotalUploads.fetch_add(updateList.GetNumStandardUpdates(), std::memory_order_relaxed);
@@ -425,10 +405,7 @@ void Streaming::DataUploader::SubmitThread()
 
             // WARNING: UpdateTileMappings performance is an issue on some hardware
             // throughput will degrade if UpdateTileMappings isn't ~free
-#if ENABLE_PER_BATCH_TIMING
-            // record initial discovery time
-            updateList.m_startTime = m_cpuTimer.GetTime();
-#endif
+
             // unmap tiles that are being evicted
             if (updateList.GetNumEvictions())
             {
@@ -456,11 +433,6 @@ void Streaming::DataUploader::SubmitThread()
                 // special state for packed mips: mapping must happen before copying
                 updateList.m_executionState = UpdateList::State::STATE_PACKED_MAPPING;
             }
-
-            // note: packed tile mapping has previously been submitted, but mapping may not be complete
-#if ENABLE_PER_BATCH_TIMING
-            updateList.m_mappingTime = m_cpuTimer.GetSecondsSince(updateList.m_startTime);
-#endif
         }
         break; // end STATE_SUBMITTED
 

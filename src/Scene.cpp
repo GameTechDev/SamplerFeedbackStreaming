@@ -1240,35 +1240,6 @@ void Scene::ScreenShot(std::wstring& in_fileName) const
 }
 
 //-------------------------------------------------------------------------
-// write internal batch timings
-//-------------------------------------------------------------------------
-void Scene::WriteBatchTimes(std::wstring& in_fileName) const
-{
-    WriteCSV csvFile(in_fileName);
-
-    csvFile << GetCommandLineW();
-
-    csvFile << "\n\nStreaming (ms)\n"
-        << "-----------------------------------------------------------------------------------------------------------\n"
-        << "cpu_copy gpu_copy total_copy_time mapping total_time tiles_copied tiles_unmapped\n"
-        << "-----------------------------------------------------------------------------------------------------------\n";
-
-    auto& streamingTimes = m_pTileUpdateManager->GetBatchTimes();
-    for (const auto& b : streamingTimes)
-    {
-        csvFile
-            << b.m_cpuTime * 1000.f << " "
-            << b.m_gpuTime * 1000.f << " "
-            << b.m_copyTime * 1000.f << " "
-            << b.m_mappingTime * 1000.f << " "
-            << b.m_totalTime * 1000.f << " "
-            << b.m_numTilesCopied << " "
-            << b.m_numTilesUnMapped
-            << std::endl;
-    }
-}
-
-//-------------------------------------------------------------------------
 //-------------------------------------------------------------------------
 void Scene::GatherStatistics(float in_cpuProcessFeedbackTime, float in_gpuProcessFeedbackTime)
 {

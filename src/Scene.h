@@ -78,7 +78,6 @@ public:
     RECT GetGuiRect();
 
     void ScreenShot(std::wstring& in_fileName) const;
-    void WriteBatchTimes(std::wstring& in_fileName) const;
 
 private:
     Scene(const Scene&) = delete;
