@@ -142,7 +142,7 @@ void Streaming::TileUpdateManagerBase::StartThreads()
                     }
                     if (m_havePackedMipsToLoad)
                     {
-                        continue;
+                        continue; // still working on loading packed mips. don't move on to other streaming tasks yet.
                     }
                 }
 
@@ -166,7 +166,6 @@ void Streaming::TileUpdateManagerBase::StartThreads()
                             break;
                         }
 
-                        p->NextFrame();
                         p->ProcessFeedback(frameFenceValue);
                         if (p->IsStale() && !pending[j])
                         {

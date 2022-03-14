@@ -136,8 +136,10 @@ Streaming::InternalResources::InternalResources(
         const auto resolvedHeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_READBACK);
 
 #if RESOLVE_TO_TEXTURE
-        // CopyTextureRegion requires minimum pitch of 256
-        rd.Width = std::max((UINT)GetNumTilesWidth(), (UINT)256) * GetNumTilesHeight(); 
+        // CopyTextureRegion requires pitch multiple of D3D12_TEXTURE_DATA_PITCH_ALIGNMENT = 256
+        UINT pitch = GetNumTilesWidth();
+        pitch = (pitch + 0x0ff) & ~0x0ff;
+        rd.Width = pitch * GetNumTilesHeight();
 #endif
 
         m_resolvedReadback.resize(in_swapChainBufferCount);
@@ -216,7 +218,7 @@ void Streaming::InternalResources::ReadbackFeedback(ID3D12GraphicsCommandList* o
     auto srcDesc = m_resolvedResource->GetDesc();
     D3D12_PLACED_SUBRESOURCE_FOOTPRINT layout{ 0,
         {srcDesc.Format, (UINT)srcDesc.Width, srcDesc.Height, 1, (UINT)srcDesc.Width } };
-    layout.Footprint.RowPitch = std::max(UINT(layout.Footprint.RowPitch), (UINT)256);
+    layout.Footprint.RowPitch = (layout.Footprint.RowPitch + 0x0ff) & ~0x0ff;
 
     D3D12_TEXTURE_COPY_LOCATION srcLocation = CD3DX12_TEXTURE_COPY_LOCATION(m_resolvedResource.Get(), 0);
     D3D12_TEXTURE_COPY_LOCATION dstLocation = CD3DX12_TEXTURE_COPY_LOCATION(pResolvedReadback, layout);

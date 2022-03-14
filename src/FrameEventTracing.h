@@ -29,6 +29,8 @@
 #include "TimeTracing.h"
 #include "Timer.h"
 
+#include "CommandLineArgs.h"
+
 enum class RenderEvents
 {
     FrameBegin,
@@ -70,7 +72,7 @@ public:
             in_cpuProcessFeedbackTime, in_gpuProcessFeedbackTime, in_numFeedbackResolves });
     }
 
-    void WriteEvents(HWND in_hWnd);
+    void WriteEvents(HWND in_hWnd, const CommandLineArgs& in_args);
 private:
     Timer m_timer;
 
@@ -92,7 +94,9 @@ private:
 
 //=============================================================================
 //=============================================================================
-inline FrameEventTracing::FrameEventTracing(const std::wstring& in_fileName, const std::wstring& in_adapterDescription) :
+inline FrameEventTracing::FrameEventTracing(
+    const std::wstring& in_fileName,
+    const std::wstring& in_adapterDescription) :
     WriteCSV(in_fileName), m_adapterDescription(in_adapterDescription)
 {
     // reserve a bunch of space
@@ -101,22 +105,26 @@ inline FrameEventTracing::FrameEventTracing(const std::wstring& in_fileName, con
     m_timer.Start();
 }
 
-inline void FrameEventTracing::WriteEvents(HWND in_hWnd)
+inline void FrameEventTracing::WriteEvents(HWND in_hWnd, const CommandLineArgs& in_args)
 {
     double totalTime = m_timer.Stop();
 
     RECT windowRect;
-    GetWindowRect(in_hWnd, &windowRect);
+    GetClientRect(in_hWnd, &windowRect);
 
-    *this << GetCommandLineW()
-        << "\nWindowWidth/Height: "
-        << windowRect.right - windowRect.left
-        << " "
-        << windowRect.bottom - windowRect.top;
+    *this
+        << "\n" << GetCommandLineW() << "\n\n"
+        << "WindowWidth/Height: " << windowRect.right - windowRect.left << " " << windowRect.bottom - windowRect.top << "\n"
+        << "Adapter: " << m_adapterDescription << "\n"
+        << "DS enabled: " << in_args.m_useDirectStorage << "\n"
+        << "heap size: " << in_args.m_streamingHeapSize << "\n"
+        << "num heaps: " << in_args.m_numHeaps << "\n"
+        << "paintmixer: " << in_args.m_cameraPaintMixer << "\n"
+        << "lod bias: " << in_args.m_lodBias << "\n"
+        << "aliasing barriers: " << in_args.m_addAliasingBarriers << "\n"
+        << "media dir: " << in_args.m_mediaDir << "\n";
 
-    *this << "\nAdapter: " << m_adapterDescription;
-
-    *this << "\n\nTimers (ms)\n"
+    *this << "\nTimers (ms)\n"
         << "-----------------------------------------------------------------------------------------------------------\n"
         << "cpu_draw TUM::EndFrame exec_cmd_list wait_present total_frame_time evictions copies cpu_feedback feedback_resolve num_resolves\n"
         << "-----------------------------------------------------------------------------------------------------------\n";

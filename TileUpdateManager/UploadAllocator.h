@@ -67,7 +67,7 @@ namespace Streaming
     };
 
     //==================================================
-    // StagingAllocator tracks tiles in a gpu-side staging buffer
+    // BufferAllocator tracks tiles in a gpu-side staging buffer
     //==================================================
     class BufferAllocator : public SimpleAllocator
     {

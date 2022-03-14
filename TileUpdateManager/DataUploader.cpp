@@ -29,6 +29,7 @@
 #include "DataUploader.h"
 #include "StreamingResourceDU.h"
 #include "FileStreamerReference.h"
+#include "FileStreamerDS.h"
 #include "StreamingHeap.h"
 
 //=============================================================================
@@ -50,11 +51,6 @@ Streaming::DataUploader::DataUploader(
     , m_mappingUpdater(in_maxTileMappingUpdatesPerApiCall)
     , m_device(in_pDevice)
 {
-    for (auto& u : m_updateLists)
-    {
-        u.Init(in_maxTileCopiesPerBatch);
-    }
-
     // copy queue just for UpdateTileMappings() on reserved resources
     {
         D3D12_COMMAND_QUEUE_DESC queueDesc = {};
@@ -76,7 +72,6 @@ Streaming::DataUploader::DataUploader(
 Streaming::DataUploader::~DataUploader()
 {
     // stop updating. all StreamingResources must have been destroyed already, presumably.
-    // don't risk trying to notify anyone.
 
     FlushCommands();
     StopThreads();
@@ -107,7 +102,7 @@ Streaming::FileStreamer* Streaming::DataUploader::SetStreamer(StreamerType in_st
     }
     else
     {
-        //m_pFileStreamer = std::make_unique<Streaming::FileStreamerDS>(device.Get());
+        m_pFileStreamer = std::make_unique<Streaming::FileStreamerDS>(device.Get());
     }
 
     StartThreads();
@@ -188,6 +183,7 @@ void Streaming::DataUploader::FlushCommands()
     {
         _mm_pause();
     }
+    // if this loop doesn't exit, then a race condition occurred while allocating/freeing updatelists
 
 #ifdef _DEBUG
     for (auto& u : m_updateLists)
@@ -212,10 +208,8 @@ Streaming::UpdateList* Streaming::DataUploader::AllocateUpdateList(Streaming::St
         // there is definitely at least one updatelist that is STATE_FREE
         m_updateListFreeCount.fetch_sub(1);
 
-        // Idea: consider allocating in order, that is index 0, then 1, etc.
-        //       eventually will loop around. the most likely available index after the last index is index 0.
-        //       that is, the next index is likely available because has had the longest time to execute
-        //       in testing, rarely needed a few more iterations
+        // treat the array as a ring buffer
+        // the next index is the most-likely to be available because it has had the most time to complete
         UINT numLists = (UINT)m_updateLists.size();
         for (UINT i = 0; i < numLists; i++)
         {

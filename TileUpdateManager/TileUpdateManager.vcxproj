@@ -91,6 +91,7 @@
   <ItemGroup>
     <ClCompile Include="DataUploader.cpp" />
     <ClCompile Include="FileStreamer.cpp" />
+    <ClCompile Include="FileStreamerDS.cpp" />
     <ClCompile Include="FileStreamerReference.cpp" />
     <ClCompile Include="StreamingResourceExt.cpp" />
     <ClCompile Include="StreamingHeap.cpp" />
@@ -111,6 +112,7 @@
   <ItemGroup>
     <ClInclude Include="DataUploader.h" />
     <ClInclude Include="FileStreamer.h" />
+    <ClInclude Include="FileStreamerDS.h" />
     <ClInclude Include="FileStreamerReference.h" />
     <ClInclude Include="SamplerFeedbackStreaming.h" />
     <ClInclude Include="StreamingResourceDU.h" />
@@ -127,7 +129,17 @@
     <ClInclude Include="UpdateList.h" />
     <ClInclude Include="UploadAllocator.h" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="packages.config" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
+    <Import Project="..\packages\Microsoft.Direct3D.DirectStorage.1.0.0\build\Microsoft.Direct3D.DirectStorage.targets" Condition="Exists('..\packages\Microsoft.Direct3D.DirectStorage.1.0.0\build\Microsoft.Direct3D.DirectStorage.targets')" />
   </ImportGroup>
+  <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
+    <PropertyGroup>
+      <ErrorText>This project references NuGet package(s) that are missing on this computer. Use NuGet Package Restore to download them.  For more information, see http://go.microsoft.com/fwlink/?LinkID=322105. The missing file is {0}.</ErrorText>
+    </PropertyGroup>
+    <Error Condition="!Exists('..\packages\Microsoft.Direct3D.DirectStorage.1.0.0\build\Microsoft.Direct3D.DirectStorage.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\Microsoft.Direct3D.DirectStorage.1.0.0\build\Microsoft.Direct3D.DirectStorage.targets'))" />
+  </Target>
 </Project>

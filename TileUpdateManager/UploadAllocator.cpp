@@ -117,5 +117,5 @@ Streaming::BufferAllocator::BufferAllocator(ID3D12Device* in_pDevice, UINT in_ma
         nullptr,
         IID_PPV_ARGS(&m_buffer));
 
-    m_buffer->SetName(L"StagingAllocator::m_buffer");
+    m_buffer->SetName(L"BufferAllocator::m_buffer");
 }

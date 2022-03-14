@@ -142,12 +142,6 @@ void TileUpdateManager::QueueFeedback(StreamingResource* in_pResource, D3D12_GPU
     // after resolving, transition the opaque resources back to UAV. Transition the resolve destination to copy source for read back on cpu
     m_barrierResolveSrcToUav.push_back(CD3DX12_RESOURCE_BARRIER::Transition(pResource->GetOpaqueFeedback(), D3D12_RESOURCE_STATE_RESOLVE_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS));
 
-    // aliasing barriers to assist analysis tools, not functionally required
-    if (m_addAliasingBarriers)
-    {
-        m_aliasingBarriers.push_back(CD3DX12_RESOURCE_BARRIER::Aliasing(nullptr, pResource->GetTiledResource()));
-    }
-
 #if RESOLVE_TO_TEXTURE
     // resolve to texture incurs a subsequent copy to linear buffer
     m_barrierUavToResolveSrc.push_back(CD3DX12_RESOURCE_BARRIER::Transition(pResource->GetResolvedFeedback(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_RESOLVE_DEST));
@@ -262,10 +256,16 @@ TileUpdateManager::CommandLists TileUpdateManager::EndFrame()
         * Note it is also theoretically possible for tiles to be re-assigned while a draw command is executing
         * However, performance analysis tools like to know about changes to resources
         */
-        if ((m_addAliasingBarriers) && (m_aliasingBarriers.size()))
+        if ((m_addAliasingBarriers) && (m_streamingResources.size()))
         {
+            m_aliasingBarriers.reserve(m_streamingResources.size());
+            m_aliasingBarriers.resize(0);
+            for (auto pResource : m_streamingResources)
+            {
+                m_aliasingBarriers.push_back(CD3DX12_RESOURCE_BARRIER::Aliasing(nullptr, pResource->GetTiledResource()));
+            }
+
             pCommandList->ResourceBarrier((UINT)m_aliasingBarriers.size(), m_aliasingBarriers.data());
-            m_aliasingBarriers.clear();
         }
 
         // get any packed mip transition barriers accumulated by DataUploader

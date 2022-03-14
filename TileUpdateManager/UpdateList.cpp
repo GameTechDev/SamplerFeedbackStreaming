@@ -29,15 +29,6 @@
 #include "UpdateList.h"
 
 //-----------------------------------------------------------------------------
-// params: device to create command allocator, index into allocation heap, max # updates per UpdateList (global value)
-//-----------------------------------------------------------------------------
-void Streaming::UpdateList::Init(UINT in_maxNumUpdates)
-{
-    ASSERT(0 != in_maxNumUpdates);
-    m_heapIndices.reserve(in_maxNumUpdates);
-};
-
-//-----------------------------------------------------------------------------
 // called when the state changes FREE->ALLOCATED
 //-----------------------------------------------------------------------------
 void Streaming::UpdateList::Reset(Streaming::StreamingResourceDU* in_pStreamingResource)

@@ -60,6 +60,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="SamplerFeedbackStreaming.h" />
+    <ClInclude Include="FileStreamerDS.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="TileUpdateManager.cpp">
@@ -110,5 +113,11 @@
     <ClCompile Include="TileUpdateManagerExt.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="FileStreamerDS.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="packages.config" />
   </ItemGroup>
 </Project>

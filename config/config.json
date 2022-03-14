@@ -7,6 +7,8 @@
   "lodBias": 0, // sampler bias. positive is blurrier
   "anisotropy": 4, // sampler anisotropy
 
+  "directStorage": true, // use directstorage vs. dedicated thread with ReadFile() and CopyTiles()
+
   "adapter": "", // in a multi-adapter system, searches description for substring ignoring case e.g. "intel"
 
   "animationrate": 0, // rotation of individual objects

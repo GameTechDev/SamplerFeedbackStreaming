@@ -156,7 +156,7 @@ public:
         std::string m_name;
         std::string m_data;
         std::vector<KVP> m_values;
-        bool m_isString{ false }; // data was assigned as a string. when written to file, add quotes
+        bool m_isString{ false }; // only used when writing a file: remember if data was initally assigned as a string, will add quotes to output
 
         // used by ConfigurationParser::Write()
         static constexpr uint32_t m_tabSize{ 2 };

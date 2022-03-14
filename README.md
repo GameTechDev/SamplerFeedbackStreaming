@@ -6,7 +6,9 @@ This repository contains an [MIT licensed](LICENSE) demo of _DirectX12 Sampler F
 
 The demo requires ***Windows 10 20H1 (aka May 2020 Update, build 19041)*** or later and a GPU with Sampler Feedback Support, such as Intel Iris Xe Graphics as found in 11th Generation Intel&reg; Core&trade; processors and discrete GPUs (driver version **[30.0.100.9667](https://downloadcenter.intel.com/product/80939/Graphics) or later**).
 
-This repository will be updated when DirectStorage for Windows&reg; becomes available.
+This repository has been updated with DirectStorage 1.0.0 for Windows&reg; from https://www.nuget.org/packages/Microsoft.Direct3D.DirectStorage/
+- Note the legacy streaming code using ReadFile() had sector alignment constraints for the file internals that are not required by DirectStorage for Windows.
+- Documentation for accessing nuget packages may be added in the future, but there are many online resources. 
 
 See also:
 

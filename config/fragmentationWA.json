@@ -7,6 +7,8 @@
   "lodBias": 0, // sampler bias. positive is blurrier
   "anisotropy": 4, // sampler anisotropy
 
+  "directStorage": true, // use directstorage vs. dedicated thread with ReadFile() and CopyTiles()
+
   "adapter": "", // in a multi-adapter system, searches description for substring ignoring case e.g. "intel"
 
   "animationrate": 0, // rotation of individual objects
@@ -17,6 +19,7 @@
   "texture": "", // setting this overrides all textures, invalidates mediadir
   "skyTexture": "", // add a sky sphere. path relative to mediadir
   "earthTexture": "", // when this texture is encountered, treat it as spherically projected (no uv mirror)
+  "terrainTexture": "4kTiles.xet", // use this texture only for the terrain, no planets
   "maxNumObjects": 985, // maximum total number of objects in the scene
   "numSpheres": 0, // number of objects besides the terrain
   "lightFromView": false, // light direction is look direction
@@ -63,6 +66,8 @@
   "maxTilesInFlight": 512,
 
   "waitForAssetLoad": false,
+
+  "addAliasingBarriers": false, //// adds a barrier for each streaming resource: alias(nullptr, pResource)
 
   "timingStart": 0, // start recording statistics this frame
   "timingStop": 0, // stop recording statistics this frame

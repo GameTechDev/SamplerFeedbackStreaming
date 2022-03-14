@@ -201,6 +201,9 @@ void ParseCommandLine(CommandLineArgs& out_args)
     argParser.AddArg(L"-waitForAssetLoad", L"stall animation & statistics until assets have minimally loaded", out_args.m_waitForAssetLoad);
     argParser.AddArg(L"-adapter", L"find an adapter containing this string in the description, ignoring case", out_args.m_adapterDescription);
 
+    argParser.AddArg(L"-directStorage", L"force enable DirectStorage", [&](std::wstring) { out_args.m_useDirectStorage = true; });
+    argParser.AddArg(L"-directStorageOff", L"force disable DirectStorage", [&](std::wstring) { out_args.m_useDirectStorage = false; });
+
     argParser.Parse();
 }
 
@@ -455,6 +458,8 @@ void LoadConfigFile(CommandLineArgs& out_args)
                 if (root.isMember("sampleCount")) out_args.m_sampleCount = root["sampleCount"].asUInt();
                 if (root.isMember("lodBias")) out_args.m_lodBias = root["lodBias"].asFloat();
                 if (root.isMember("anisotropy")) out_args.m_anisotropy = root["anisotropy"].asUInt();
+
+                if (root.isMember("directStorage")) out_args.m_useDirectStorage = root["directStorage"].asBool();
 
                 if (root.isMember("animationrate")) out_args.m_animationRate = root["animationrate"].asFloat();
                 if (root.isMember("cameraRate")) out_args.m_cameraAnimationRate = root["cameraRate"].asFloat();

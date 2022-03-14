@@ -151,12 +151,9 @@ void Streaming::StreamingResourceBase::SetMinMip(UINT8 in_current, UINT in_x, UI
     }
 
     // decref mips we don't need
+    // DecRef()s are ordered from top mip to bottom (evict lower resolution tiles after all higher resolution ones)
     while (s < in_s)
     {
-        // every mip less than the requested mip can potentially be evicted
-        // work top-down. don't want to succeed removing mip n, then fail for mip n-1
-
-        // all decrefs succeed
         DecTileRef(in_x >> s, in_y >> s, s);
         s++;
     }
@@ -306,6 +303,7 @@ void Streaming::StreamingResourceBase::SetResidencyChanged()
 }
 
 //-----------------------------------------------------------------------------
+// called once per frame
 // adds virtual memory updates to command queue
 // queues memory content updates to copy thread
 // Algorithm: evict then load tiles
@@ -314,6 +312,9 @@ void Streaming::StreamingResourceBase::SetResidencyChanged()
 //-----------------------------------------------------------------------------
 void Streaming::StreamingResourceBase::ProcessFeedback(UINT64 in_frameFenceCompletedValue)
 {
+    // handle (some) pending evictions
+    m_pendingEvictions.NextFrame();
+
     bool changed = false;
     const UINT width = GetNumTilesWidth();
     const UINT height = GetNumTilesHeight();
@@ -343,8 +344,11 @@ void Streaming::StreamingResourceBase::ProcessFeedback(UINT64 in_frameFenceCompl
         memset(m_tileReferences.data(), m_maxMip, m_tileReferences.size());
 
         // queue all resident tiles for eviction
-        for (UINT s = 0; s < m_maxMip; s++)
+        for (UINT flipS = 0; flipS < m_maxMip; flipS++)
         {
+            UINT s = (m_maxMip - 1) - flipS; // traverse bottom up. ok because everything will be evicted
+            bool noTiles = true; // if no tiles on this mip layer, won't be any tiles on higher-res mip layers
+
             for (UINT y = 0; y < m_tileMappingState.GetHeight(s); y++)
             {
                 for (UINT x = 0; x < m_tileMappingState.GetWidth(s); x++)
@@ -352,20 +356,24 @@ void Streaming::StreamingResourceBase::ProcessFeedback(UINT64 in_frameFenceCompl
                     auto& refCount = m_tileMappingState.GetRefCount(x, y, s);
                     if (refCount)
                     {
+                        noTiles = false;
                         changed = true;
                         refCount = 0;
                         m_pendingEvictions.Append(D3D12_TILED_RESOURCE_COORDINATE{ x, y, 0, s });
                     }
                 }
             }
-        }    
+            if (noTiles)
+            {
+                break; // if refcount of all tiles on this layer = 0, early out
+            }
+        }
 
         // abandon all pending loads - all refcounts are 0
         m_pendingTileLoads.clear();
     }
     else
     {
-        // will set to (index + 1) when valid
         UINT feedbackIndex = 0;
 
         //------------------------------------------------------------------
@@ -373,6 +381,7 @@ void Streaming::StreamingResourceBase::ProcessFeedback(UINT64 in_frameFenceCompl
         // if there is more than one feedback ready to process (unlikely), only use the most recent one
         //------------------------------------------------------------------
         {
+            bool feedbackFound = false;
             UINT64 latestFeedbackFenceValue = 0;
             for (UINT i = 0; i < (UINT)m_queuedFeedback.size(); i++)
             {
@@ -380,9 +389,10 @@ void Streaming::StreamingResourceBase::ProcessFeedback(UINT64 in_frameFenceCompl
                 {
                     UINT64 feedbackFenceValue = m_queuedFeedback[i].m_renderFenceForFeedback;
                     if ((in_frameFenceCompletedValue >= feedbackFenceValue) &&
-                        ((!feedbackIndex) || (latestFeedbackFenceValue <= feedbackFenceValue)))
+                        ((!feedbackFound) || (latestFeedbackFenceValue <= feedbackFenceValue)))
                     {
-                        feedbackIndex = i + 1;
+                        feedbackFound = true;
+                        feedbackIndex = i;
                         latestFeedbackFenceValue = feedbackFenceValue;
 
                         // this feedback will either be used or skipped. either way it is "consumed"
@@ -392,7 +402,7 @@ void Streaming::StreamingResourceBase::ProcessFeedback(UINT64 in_frameFenceCompl
             }
 
             // no new feedback?
-            if (!feedbackIndex)
+            if (!feedbackFound)
             {
                 return;
             }
@@ -404,7 +414,7 @@ void Streaming::StreamingResourceBase::ProcessFeedback(UINT64 in_frameFenceCompl
         {
             // mapped host feedback buffer
             UINT8* pResolvedData = nullptr;
-            ID3D12Resource* pResolvedResource = m_resources->GetResolvedReadback(feedbackIndex - 1);
+            ID3D12Resource* pResolvedResource = m_resources->GetResolvedReadback(feedbackIndex);
             pResolvedResource->Map(0, nullptr, (void**)&pResolvedData);
 
             TileReference* pTileRow = m_tileReferences.data();
@@ -420,8 +430,9 @@ void Streaming::StreamingResourceBase::ProcessFeedback(UINT64 in_frameFenceCompl
                     pTileRow[x] = desired;
                 } // end loop over x
                 pTileRow += width;
+
 #if RESOLVE_TO_TEXTURE
-                pResolvedData += std::max((UINT)256, width);
+                pResolvedData += (width + 0x0ff) & ~0x0ff;
 #else
                 pResolvedData += width;
 #endif
@@ -439,7 +450,7 @@ void Streaming::StreamingResourceBase::ProcessFeedback(UINT64 in_frameFenceCompl
         }
 
         // abandon pending loads that are no longer relevant
-        AbandonPending();
+        AbandonPendingLoads();
 
         // clear pending evictions that are no longer relevant
         m_pendingEvictions.Rescue(m_tileMappingState);
@@ -456,7 +467,7 @@ void Streaming::StreamingResourceBase::ProcessFeedback(UINT64 in_frameFenceCompl
 //-----------------------------------------------------------------------------
 // drop pending loads that are no longer relevant
 //-----------------------------------------------------------------------------
-void Streaming::StreamingResourceBase::AbandonPending()
+void Streaming::StreamingResourceBase::AbandonPendingLoads()
 {
     UINT numPending = (UINT)m_pendingTileLoads.size();
     for (UINT i = 0; i < numPending;)
@@ -464,10 +475,11 @@ void Streaming::StreamingResourceBase::AbandonPending()
         auto& c = m_pendingTileLoads[i];
         if (m_tileMappingState.GetRefCount(c))
         {
-            i++;
+            i++; // refcount still non-0, still want to load this tile
         }
         // on abandon, swap a later tile in and re-try the check
-        // this re-orders the queue, but we can tolerate that for some performance
+        // this re-orders the queue, but we can tolerate that
+        // because the residency map is built bottom-up
         else
         {
             numPending--;
@@ -802,26 +814,28 @@ void Streaming::StreamingResourceBase::EvictionDelay::Clear()
 //-----------------------------------------------------------------------------
 void Streaming::StreamingResourceBase::EvictionDelay::Rescue(const Streaming::StreamingResourceBase::TileMappingState& in_tileMappingState)
 {
-    UINT numBuffers = (UINT)m_mappings.size();
-
     // note: it is possible even for the most recent evictions to have refcount > 0
     // because a tile can be evicted then loaded again within a single ProcessFeedback() call
-    for (UINT i = 0; i < numBuffers; i++)
+    for (auto& evictions : m_mappings)
     {
-        auto& evictions = m_mappings[i];
-        UINT skippedIndex = 0;
-        for (auto& c : evictions)
+        UINT numPending = (UINT)evictions.size();
+        for (UINT i = 0; i < numPending;)
         {
+            auto& c = evictions[i];
+            // on rescue, swap a later tile in and re-try the check
+            // this re-orders the queue, but we can tolerate that
+            // because the residency map is built bottom-up
             if (in_tileMappingState.GetRefCount(c))
             {
-                c = evictions[skippedIndex];
-                skippedIndex++;
+                numPending--;
+                c = evictions[numPending];
+            }
+            else // refcount still 0, this tile may still be evicted
+            {
+                i++;
             }
         }
-        if (skippedIndex)
-        {
-            evictions.erase(evictions.begin(), evictions.begin() + skippedIndex);
-        }
+        evictions.resize(numPending);
     }
 }
 

@@ -78,8 +78,6 @@ namespace Streaming
         // packed mips:
         UINT m_numPackedMips = 0;
 
-        void Init(UINT in_maxNumUpdates);
-
         UINT GetNumStandardUpdates() const { return (UINT)m_coords.size(); }
         UINT GetNumPackedUpdates() const { return m_numPackedMips; }
         UINT GetNumEvictions() const { return (UINT)m_evictCoords.size(); }

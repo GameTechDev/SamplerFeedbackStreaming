@@ -104,7 +104,7 @@ struct CommandLineArgs
     bool m_cameraUpLock{ true };       // navigation locks "up" to be y=1
     UINT m_numStreamingBatches{ 128 }; // # UpdateLists
     UINT m_streamingBatchSize{ 32 };   // max tile copies per updatelist
-    UINT m_maxTilesInFlight{ 512 };    // size of upload buffer (in tiles)
+    UINT m_maxTilesInFlight{ 512 };    // size of upload buffer (in tiles), does not apply to DS
 
     // planet parameters
     UINT m_sphereLong{ 128 }; // # steps vertically. must be even

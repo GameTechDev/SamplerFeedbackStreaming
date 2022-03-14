@@ -114,10 +114,7 @@ namespace Streaming
         // called by TUM::ProcessFeedbackThread
         //-------------------------------------
 
-        // indicate the render frame has advanced
-        // Useful in particular for preventing evictions of in-flight data
-        void NextFrame() { m_pendingEvictions.NextFrame(); }
-
+        // call once per frame (as indicated e.g. by advancement of frame fence)
         // if a feedback buffer is ready, process it to generate lists of tiles to load/evict
         void ProcessFeedback(UINT64 in_frameFenceCompletedValue);
 
@@ -228,8 +225,8 @@ namespace Streaming
             // remove all mappings from a heap. useful when removing an object from a scene
             void FreeHeapAllocations(Streaming::Heap* in_pHeap);
 
-            UINT GetWidth(UINT in_s) { return (UINT)m_resident[in_s][0].size(); }
-            UINT GetHeight(UINT in_s) { return (UINT)m_resident[in_s].size(); }
+            UINT GetWidth(UINT in_s) const { return (UINT)m_resident[in_s][0].size(); }
+            UINT GetHeight(UINT in_s) const { return (UINT)m_resident[in_s].size(); }
         private:
             template<typename T> using TileRow = std::vector<T>;
             template<typename T> using TileY = std::vector<TileRow<T>>;
@@ -294,7 +291,7 @@ namespace Streaming
         std::atomic<bool> m_tileResidencyChanged{ false };
 
         // drop pending loads that are no longer relevant
-        void AbandonPending();
+        void AbandonPendingLoads();
 
         // index to next min-mip feedback resolve target
         UINT m_readbackIndex;

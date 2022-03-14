@@ -313,10 +313,8 @@ void Gui::Draw(ID3D12GraphicsCommandList* in_pCommandList,
     ImGui::Checkbox("Lock \"Up\" Dir", &in_args.m_cameraUpLock);
     ImGui::SliderInt("Num Objects", &in_args.m_numSpheres, 0, (int)in_args.m_maxNumObjects);
 
-#if 0
     // FIXME: turn this on when DirectStorage is public
     ImGui::Checkbox("DirectStorage", &in_args.m_useDirectStorage);
-#endif
 
     ImGui::Separator();
     if (ImGui::Button("Reset Settings")) { in_args = m_initialArgs; }

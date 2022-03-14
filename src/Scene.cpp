@@ -1275,7 +1275,7 @@ void Scene::GatherStatistics(float in_cpuProcessFeedbackTime, float in_gpuProces
 
             DebugPrint(L"Gathering final statistics before exiting\n");
 
-            m_csvFile->WriteEvents(m_hwnd);
+            m_csvFile->WriteEvents(m_hwnd, m_args);
             *m_csvFile << measuredNumUploads << " " << measuredTime << " " << mbps << " uploads|seconds|bandwidth\n";
             m_csvFile->close();
             m_csvFile = nullptr;

@@ -101,7 +101,7 @@ void Streaming::XeTexture::WritePackedBits(void* out_pBits, UINT in_mip, UINT64 
 }
 
 //-----------------------------------------------------------------------------
-    // compute linear tile index from subresource info
+// compute linear tile index from subresource info
 //-----------------------------------------------------------------------------
 UINT Streaming::XeTexture::GetLinearIndex(const D3D12_TILED_RESOURCE_COORDINATE& in_coord) const
 {
