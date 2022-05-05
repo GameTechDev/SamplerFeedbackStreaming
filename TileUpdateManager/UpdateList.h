@@ -51,11 +51,13 @@ namespace Streaming
 
             // statistics are gathered on a common thread
             STATE_SUBMITTED,             // start file i/o (DS) if necessary. if mapping only, go directly to notify
-            STATE_PACKED_MAPPING,
-            STATE_UPLOADING,             // Start loading from file (ownership transitioned to FileStreamer)
+
+            STATE_UPLOADING,             // make sure the copy fence is valid, since copying and mapping can be concurrent
             STATE_COPY_PENDING,          // check for gpu complete (copy fence value is valid)
 
-            STATE_NOTIFY_COMPLETE        // the update is complete, notify.
+            STATE_PACKED_MAPPING,        // wait for packed mips to be mapped before uploading
+            STATE_PACKED_COPY_PENDING    // wait for upload of packed mips to complete
+
         };
 
         // initialize to ready

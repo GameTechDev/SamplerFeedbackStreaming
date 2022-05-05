@@ -27,7 +27,7 @@
 #include "pch.h"
 
 #include "TextureViewer.h"
-#include "DXSampleHelper.h"
+#include "DebugHelper.h"
 
 using namespace DirectX;
 using Microsoft::WRL::ComPtr;
@@ -51,14 +51,17 @@ struct ConstantBuffer
 };
 
 //-----------------------------------------------------------------------------
+
+
+// expect hlsl files to be next to the exe
 //-----------------------------------------------------------------------------
 inline std::wstring GetAssetFullPath(const std::wstring in_filename)
 {
-    constexpr size_t PATHBUFFERSIZE = MAX_PATH * 4;
-    TCHAR buffer[PATHBUFFERSIZE];
-    GetCurrentDirectory(_countof(buffer), buffer);
-    std::wstring directory = buffer;
-    return directory + L"\\\\" + in_filename;
+    WCHAR buffer[MAX_PATH];
+    GetModuleFileName(nullptr, buffer, MAX_PATH);
+    std::wstring exePath(buffer);
+    exePath.resize(exePath.rfind('\\') + 1);
+    return (exePath + in_filename);
 }
 
 //-----------------------------------------------------------------------------

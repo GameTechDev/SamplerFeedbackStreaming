@@ -38,9 +38,7 @@ public:
         const DXGI_FORMAT in_swapChainFormat,
         const DXGI_FORMAT in_depthFormat,
         UINT in_sampleCount,
-        std::function<void(ID3D12Resource* out_pBuffer,
-            const void* in_pBytes, size_t in_numBytes,
-            D3D12_RESOURCE_STATES in_finalState)> in_initializeBuffer);
+        class AssetUploader& in_assetUploader);
 
     void Draw(ID3D12GraphicsCommandList* in_pCL,
         const DirectX::XMMATRIX& in_combinedTransform,

@@ -129,7 +129,7 @@ void Streaming::TileUpdateManagerBase::StartThreads()
             UINT64 previousFrameFenceValue = m_frameFenceValue;
             while (m_threadsRunning)
             {
-                // if there are packed mips waiting to load, prioritize that over everything
+                // prioritize loading packed mips, as objects shouldn't be displayed until packed mips load
                 bool expected = true;
                 if (m_havePackedMipsToLoad.compare_exchange_weak(expected, false))
                 {
@@ -178,6 +178,7 @@ void Streaming::TileUpdateManagerBase::StartThreads()
                 }
 
                 // continuously push uploads and evictions
+                bool uploadRequested = false;
                 for (UINT i = 0; i < staleResources.size(); i++)
                 {
                     if (!m_threadsRunning)
@@ -187,7 +188,7 @@ void Streaming::TileUpdateManagerBase::StartThreads()
 
                     UINT resourceIndex = staleResources[i];
                     auto p = m_streamingResources[resourceIndex];
-                    p->QueueTiles();
+                    uploadRequested = (uploadRequested || p->QueueTiles());
 
                     // if all loads/evictions handled, remove from staleResource list
                     if (!p->IsStale())
@@ -197,6 +198,12 @@ void Streaming::TileUpdateManagerBase::StartThreads()
                         staleResources[i] = staleResources.back();
                         staleResources.resize(staleResources.size() - 1);
                     }
+                }
+
+                // if uploads were queued, tell the file streamer to signal the corresponding fence
+                if (uploadRequested)
+                {
+                    m_pDataUploader->SignalFileStreamer();
                 }
 
                 // nothing to do? wait for next frame

@@ -49,7 +49,6 @@ Streaming::DataUploader::DataUploader(
     , m_updateListFreeCount(in_maxCopyBatches)
     , m_gpuTimer(in_pDevice, in_maxCopyBatches, D3D12GpuTimer::TimerType::Copy)
     , m_mappingUpdater(in_maxTileMappingUpdatesPerApiCall)
-    , m_device(in_pDevice)
 {
     // copy queue just for UpdateTileMappings() on reserved resources
     {
@@ -65,6 +64,8 @@ Streaming::DataUploader::DataUploader(
         m_mappingFenceValue++;
     }
 
+    InitDirectStorage(in_pDevice);
+
     //NOTE: TileUpdateManager must call SetStreamer() to start streaming
     //SetStreamer(StreamerType::Reference);
 }
@@ -75,6 +76,63 @@ Streaming::DataUploader::~DataUploader()
 
     FlushCommands();
     StopThreads();
+}
+
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+void Streaming::DataUploader::InitDirectStorage(ID3D12Device* in_pDevice)
+{
+    // initialize to default values
+    DSTORAGE_CONFIGURATION dsConfig{};
+    DStorageSetConfiguration(&dsConfig);
+
+    ThrowIfFailed(DStorageGetFactory(IID_PPV_ARGS(&m_dsFactory)));
+
+    DSTORAGE_DEBUG debugFlags = DSTORAGE_DEBUG_NONE;
+#ifdef _DEBUG
+    debugFlags = DSTORAGE_DEBUG_SHOW_ERRORS;
+#endif
+    m_dsFactory->SetDebugFlags(debugFlags);
+
+    m_dsFactory->SetStagingBufferSize(DSTORAGE_STAGING_BUFFER_SIZE_32MB);
+
+    DSTORAGE_QUEUE_DESC queueDesc{};
+    queueDesc.Capacity = DSTORAGE_MAX_QUEUE_CAPACITY;
+    queueDesc.Priority = DSTORAGE_PRIORITY_NORMAL;
+    queueDesc.SourceType = DSTORAGE_REQUEST_SOURCE_MEMORY;
+    queueDesc.Device = in_pDevice;
+    ThrowIfFailed(m_dsFactory->CreateQueue(&queueDesc, IID_PPV_ARGS(&m_memoryQueue)));
+
+    ThrowIfFailed(in_pDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_memoryFence)));
+}
+
+//-----------------------------------------------------------------------------
+// handle request to load a texture from cpu memory
+// used for packed mips, which don't participate in fine-grained streaming
+//-----------------------------------------------------------------------------
+UINT64 Streaming::DataUploader::LoadTexture(ID3D12Resource* in_pResource,
+    const std::vector<BYTE>& in_paddedData, UINT in_firstSubresource)
+{
+    DSTORAGE_REQUEST request = {};
+    request.Options.SourceType = DSTORAGE_REQUEST_SOURCE_MEMORY;
+    request.Options.DestinationType = DSTORAGE_REQUEST_DESTINATION_MULTIPLE_SUBRESOURCES;
+    request.Source.Memory.Source = in_paddedData.data();
+    request.Source.Memory.Size = (UINT32)in_paddedData.size();
+    request.UncompressedSize = (UINT32)in_paddedData.size();
+    request.Destination.MultipleSubresources.Resource = in_pResource;
+    request.Destination.MultipleSubresources.FirstSubresource = in_firstSubresource;
+
+    m_memoryQueue->EnqueueRequest(&request);
+    return m_memoryFenceValue;
+}
+
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+void Streaming::DataUploader::SubmitTextureLoads()
+{
+    m_memoryQueue->EnqueueSignal(m_memoryFence.Get(), m_memoryFenceValue);
+    m_memoryQueue->Submit();
+    m_memoryFenceValue++;
 }
 
 //-----------------------------------------------------------------------------
@@ -102,7 +160,7 @@ Streaming::FileStreamer* Streaming::DataUploader::SetStreamer(StreamerType in_st
     }
     else
     {
-        m_pFileStreamer = std::make_unique<Streaming::FileStreamerDS>(device.Get());
+        m_pFileStreamer = std::make_unique<Streaming::FileStreamerDS>(device.Get(), m_dsFactory.Get());
     }
 
     StartThreads();
@@ -274,7 +332,7 @@ void Streaming::DataUploader::SubmitUpdateList(Streaming::UpdateList& in_updateL
 //-----------------------------------------------------------------------------
 void Streaming::DataUploader::FenceMonitorThread()
 {
-    bool signalUpload = false;
+    bool loadTextures = false;
     for (auto& updateList : m_updateLists)
     {
         switch (updateList.m_executionState)
@@ -285,21 +343,40 @@ void Streaming::DataUploader::FenceMonitorThread()
             // wait for mapping complete before streaming packed tiles
             if (updateList.m_mappingFenceValue <= m_mappingFence->GetCompletedValue())
             {
-                updateList.m_executionState = UpdateList::State::STATE_UPLOADING;
-                m_pFileStreamer->StreamPackedMips(updateList);
+                updateList.m_copyFenceValue = LoadTexture(updateList.m_pStreamingResource->GetTiledResource(),
+                    updateList.m_pStreamingResource->GetPaddedPackedMips(),
+                    updateList.m_pStreamingResource->GetPackedMipInfo().NumStandardMips);
+                updateList.m_executionState = UpdateList::State::STATE_PACKED_COPY_PENDING;
+
+                loadTextures = true;
+            }
+            break;
+
+        case UpdateList::State::STATE_PACKED_COPY_PENDING:
+            ASSERT(0 == updateList.GetNumStandardUpdates());
+            ASSERT(0 == updateList.GetNumEvictions());
+            ASSERT(updateList.GetNumPackedUpdates());
+
+            if (m_memoryFence->GetCompletedValue() >= updateList.m_copyFenceValue)
+            {
+                updateList.m_pStreamingResource->NotifyPackedMips();
+                FreeUpdateList(updateList);
             }
             break;
 
         case UpdateList::State::STATE_UPLOADING:
+            // there can be a race where mapping completes before the CPU has written the copy fence
+            // if the copy fence has been set, there may be a pending copy, so signal the FileStreamer.
             if (updateList.m_copyFenceValid)
             {
-                signalUpload = true;
                 updateList.m_executionState = UpdateList::State::STATE_COPY_PENDING;
             }
             break;
 
         case UpdateList::State::STATE_COPY_PENDING:
         {
+            ASSERT(0 == updateList.GetNumPackedUpdates());
+
             // standard updates? check if copy complete
             if (updateList.GetNumStandardUpdates())
             {
@@ -311,24 +388,10 @@ void Streaming::DataUploader::FenceMonitorThread()
             }
 
             // standard updates or mapping only? check if mapping complete
-            if (0 == updateList.GetNumPackedUpdates())
+            if (updateList.m_mappingFenceValue > m_mappingFence->GetCompletedValue())
             {
-                // when there are copies, if copies are complete mapping is almost certainly complete
-                if (updateList.m_mappingFenceValue > m_mappingFence->GetCompletedValue())
-                {
-                    break;
-                }
+                break;
             }
-            else // packed updates? check if copy complete
-            {
-                if (!m_pFileStreamer->GetCompleted(updateList))
-                {
-                    break;
-                }
-            }
-
-            // The UpdateList is complete
-            // notify all tiles, evictions, and packed mips
 
             // notify evictions
             if (updateList.GetNumEvictions())
@@ -348,14 +411,7 @@ void Streaming::DataUploader::FenceMonitorThread()
                 updateList.m_pStreamingResource->NotifyCopyComplete(updateList.m_coords);
             }
 
-            // notify packed mips
-            if (updateList.GetNumPackedUpdates())
-            {
-                ASSERT(0 == updateList.GetNumStandardUpdates());
-                ASSERT(0 == updateList.GetNumEvictions());
-
-                updateList.m_pStreamingResource->NotifyPackedMips();
-            }
+            // UpdateList complete
             FreeUpdateList(updateList);
         }
         break;
@@ -365,19 +421,18 @@ void Streaming::DataUploader::FenceMonitorThread()
         }
     } // end loop over updatelists
 
-    // signal filestreamer that it should submit work (if it hasn't already)
-    if (signalUpload)
+    if (loadTextures)
     {
-        m_pFileStreamer->Signal();
+        SubmitTextureLoads();
     }
 }
 
 //-----------------------------------------------------------------------------
 // Submit Thread
 // On submission, all updatelists need mapping
-// then set state as appropriate depending on the task
-// FIXME: QueryPerformanceCounter() needs to be called from the same CPU for values to be compared (deltas)
-// capture start time here
+// set next state depending on the task
+// Note: QueryPerformanceCounter() needs to be called from the same CPU for values to be compared,
+//       but this thread starts work while a different thread handles completion
 //-----------------------------------------------------------------------------
 void Streaming::DataUploader::SubmitThread()
 {
@@ -387,10 +442,6 @@ void Streaming::DataUploader::SubmitThread()
     {
         switch (updateList.m_executionState)
         {
-            //----------------------------------------
-            // STATE_SUBMITTED
-            // statistics: get start time
-            //----------------------------------------
         case UpdateList::State::STATE_SUBMITTED:
         {
             // all UpdateLists require mapping

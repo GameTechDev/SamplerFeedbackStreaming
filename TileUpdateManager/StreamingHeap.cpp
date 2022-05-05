@@ -27,7 +27,6 @@
 #include "pch.h"
 
 #include "StreamingHeap.h"
-#include "DXSampleHelper.h"
 
 //-----------------------------------------------------------------------------
 // create an "atlas" texture that covers the entire heap

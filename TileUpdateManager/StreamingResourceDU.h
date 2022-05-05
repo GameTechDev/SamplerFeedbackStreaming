@@ -27,6 +27,7 @@
 #pragma once
 
 #include "StreamingResource.h"
+#include "XeTexture.h"
 
 //-----------------------------------------------------------------
 // custom StreamingResource interface for DataUploader
@@ -36,7 +37,7 @@ namespace Streaming
     class StreamingResourceDU : private StreamingResourceBase
     {
     public:
-        XeTexture* GetTextureStreamer() const { return m_pTextureStreamer.get(); }
+        XeTexture* GetTextureFileInfo() const { return m_pTextureFileInfo.get(); }
         Streaming::Heap* GetHeap() const { return m_pHeap; }
 
         // just for packed mips
@@ -50,7 +51,7 @@ namespace Streaming
 
         const FileHandle* GetFileHandle() const { return m_pFileHandle.get(); }
 
-        const BYTE* GetPaddedPackedMips(UINT& out_numBytes) const { out_numBytes = (UINT)m_paddedPackedMips.size(); return m_paddedPackedMips.data(); }
+        std::vector<BYTE>& GetPaddedPackedMips() { return m_packedMips; }
 
         // packed mips are treated differently from regular tiles: they aren't tracked by the data structure, and share heap indices
         void MapPackedMips(ID3D12CommandQueue* in_pCommandQueue);

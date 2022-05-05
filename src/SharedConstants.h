@@ -30,21 +30,6 @@ class SharedConstants
 {
 public:
 
-#ifdef _DEBUG
-
-    // Enable better shader debugging with the graphics debugging tools.
-    static const UINT COMPILE_FLAGS = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
-
-#define ENABLE_DEBUG_LAYER 1
-#define DebugPrint(...) OutputDebugString(Streaming::AutoString::Concat(__VA_ARGS__).c_str());
-
-#else
-    static const UINT COMPILE_FLAGS = 0;
-
-#define ENABLE_DEBUG_LAYER 0
-#define DebugPrint(...)
-#endif
-
     // rendering properties
     static const DXGI_FORMAT SWAP_CHAIN_FORMAT = DXGI_FORMAT_R8G8B8A8_UNORM;
     static const DXGI_FORMAT DEPTH_FORMAT = DXGI_FORMAT_D32_FLOAT;

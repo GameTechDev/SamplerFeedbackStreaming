@@ -114,6 +114,16 @@ void AdjustArguments(CommandLineArgs& out_args)
             out_args.m_mediaDir += L'\\';
         }
 
+        // if the desired media path doesn't exist, try looking relative to the current directory
+        if (!std::filesystem::exists(out_args.m_mediaDir))
+        {
+            WCHAR buffer[MAX_PATH];
+            GetModuleFileName(nullptr, buffer, MAX_PATH);
+            std::wstring exePath(buffer);
+            exePath.resize(exePath.rfind('\\') + 1);
+            out_args.m_mediaDir = exePath + out_args.m_mediaDir;
+        }
+
         if (std::filesystem::exists(out_args.m_mediaDir))
         {
             for (const auto& filename : std::filesystem::directory_iterator(out_args.m_mediaDir))

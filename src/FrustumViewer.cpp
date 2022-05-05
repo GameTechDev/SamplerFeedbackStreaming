@@ -25,8 +25,9 @@
 //*********************************************************
 
 #include "pch.h"
-#include "DXSampleHelper.h"
 #include "FrustumViewer.h"
+#include "DebugHelper.h"
+#include "AssetUploader.h"
 
 using namespace DirectX;
 
@@ -36,9 +37,7 @@ FrustumViewer::FrustumViewer(ID3D12Device* in_pDevice,
     const DXGI_FORMAT in_swapChainFormat,
     const DXGI_FORMAT in_depthFormat,
     UINT in_sampleCount,
-    std::function<void(ID3D12Resource* out_pBuffer,
-        const void* in_pBytes, size_t in_numBytes,
-        D3D12_RESOURCE_STATES in_finalState)> in_initializeBuffer) :
+    AssetUploader& in_assetUploader) :
     m_world(XMMatrixIdentity())
     , m_frustumConstants{}
     , m_numIndices(0)
@@ -77,7 +76,9 @@ FrustumViewer::FrustumViewer(ID3D12Device* in_pDevice,
             nullptr,
             IID_PPV_ARGS(&m_vertexBuffer)));
 
-        in_initializeBuffer(m_vertexBuffer.Get(), vertices, vertexBufferSize, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+        auto pRequest = new AssetUploader::Request(m_vertexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+        memcpy(pRequest->GetBuffer().data(), vertices, vertexBufferSize);
+        in_assetUploader.SubmitRequest(pRequest);
 
         m_vertexBufferView.SizeInBytes = vertexBufferSize;
         m_vertexBufferView.StrideInBytes = sizeof(Vertex);
@@ -109,7 +110,9 @@ FrustumViewer::FrustumViewer(ID3D12Device* in_pDevice,
             nullptr,
             IID_PPV_ARGS(&m_indexBuffer)));
 
-        in_initializeBuffer(m_indexBuffer.Get(), indices, indexBufferSize, D3D12_RESOURCE_STATE_INDEX_BUFFER);
+        auto pRequest = new AssetUploader::Request(m_indexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER);
+        memcpy(pRequest->GetBuffer().data(), indices, indexBufferSize);
+        in_assetUploader.SubmitRequest(pRequest);
 
         m_indexBufferView.SizeInBytes = indexBufferSize;
         m_indexBufferView.Format = DXGI_FORMAT_R16_UINT;

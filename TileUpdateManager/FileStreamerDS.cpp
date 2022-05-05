@@ -3,7 +3,6 @@
 #include "pch.h"
 
 #include "FileStreamerDS.h"
-#include "DXSampleHelper.h"
 #include "StreamingResourceDU.h"
 
 #include "XeTexture.h"
@@ -19,33 +18,24 @@ Streaming::FileStreamerDS::FileHandleDS::FileHandleDS(IDStorageFactory* in_pFact
 
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
-Streaming::FileStreamerDS::FileStreamerDS(ID3D12Device* in_pDevice) :
+Streaming::FileStreamerDS::FileStreamerDS(ID3D12Device* in_pDevice, IDStorageFactory* in_pDSfactory) :
+    m_pFactory(in_pDSfactory),
     Streaming::FileStreamer(in_pDevice)
 {
-    ThrowIfFailed(DStorageGetFactory(IID_PPV_ARGS(&m_factory)));
-
-#ifdef _DEBUG
-    m_factory->SetDebugFlags(DSTORAGE_DEBUG_SHOW_ERRORS);
-#endif
-
     DSTORAGE_QUEUE_DESC queueDesc{};
     queueDesc.Capacity = DSTORAGE_MAX_QUEUE_CAPACITY;
     queueDesc.Priority = DSTORAGE_PRIORITY_NORMAL;
     queueDesc.SourceType = DSTORAGE_REQUEST_SOURCE_FILE;
     queueDesc.Device = in_pDevice;
 
-    ThrowIfFailed(m_factory->CreateQueue(&queueDesc, IID_PPV_ARGS(&m_fileQueue)));
+    ThrowIfFailed(in_pDSfactory->CreateQueue(&queueDesc, IID_PPV_ARGS(&m_fileQueue)));
 
     queueDesc.SourceType = DSTORAGE_REQUEST_SOURCE_MEMORY;
-    ThrowIfFailed(m_factory->CreateQueue(&queueDesc, IID_PPV_ARGS(&m_memoryQueue)));
-    m_memoryFenceEvent = ::CreateEvent(nullptr, FALSE, FALSE, nullptr);
-
-    ThrowIfFailed(in_pDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_memoryFence)));
+    ThrowIfFailed(in_pDSfactory->CreateQueue(&queueDesc, IID_PPV_ARGS(&m_memoryQueue)));
 }
 
 Streaming::FileStreamerDS::~FileStreamerDS()
 {
-    ::CloseHandle(m_memoryFenceEvent);
 }
 
 //-----------------------------------------------------------------------------
@@ -59,36 +49,7 @@ IDStorageFile* Streaming::FileStreamerDS::GetFileHandle(const Streaming::FileHan
 //-----------------------------------------------------------------------------
 Streaming::FileHandle* Streaming::FileStreamerDS::OpenFile(const std::wstring& in_path)
 {
-    return new FileHandleDS(m_factory.Get(), in_path);
-}
-
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-void Streaming::FileStreamerDS::StreamPackedMips(Streaming::UpdateList& in_updateList)
-{
-    ASSERT(in_updateList.GetNumPackedUpdates());
-    ASSERT(0 == in_updateList.GetNumStandardUpdates());
-
-    ID3D12Resource* pDstResource = in_updateList.m_pStreamingResource->GetTiledResource();
-
-    UINT firstSubresource = in_updateList.m_pStreamingResource->GetPackedMipInfo().NumStandardMips;
-
-    UINT numBytes = 0;
-    void* pBytes = (void*)in_updateList.m_pStreamingResource->GetPaddedPackedMips(numBytes);
-
-    DSTORAGE_REQUEST request = {};
-    request.UncompressedSize = numBytes;
-    request.Options.SourceType = DSTORAGE_REQUEST_SOURCE_MEMORY;
-    request.Options.DestinationType = DSTORAGE_REQUEST_DESTINATION_MULTIPLE_SUBRESOURCES;
-    request.Source.Memory.Source = pBytes;
-    request.Source.Memory.Size = numBytes;
-    request.Destination.MultipleSubresources.Resource = pDstResource;
-    request.Destination.MultipleSubresources.FirstSubresource = firstSubresource;
-
-    m_memoryQueue->EnqueueRequest(&request);
-    in_updateList.m_copyFenceValue = m_copyFenceValue;
-    m_haveMemoryRequests = true;
-    in_updateList.m_copyFenceValid = true;
+    return new FileHandleDS(m_pFactory, in_path);
 }
 
 //-----------------------------------------------------------------------------
@@ -98,8 +59,9 @@ void Streaming::FileStreamerDS::StreamTexture(Streaming::UpdateList& in_updateLi
     ASSERT(0 == in_updateList.GetNumPackedUpdates());
     ASSERT(in_updateList.GetNumStandardUpdates());
 
-    auto pTextureStreamer = in_updateList.m_pStreamingResource->GetTextureStreamer();
-    DXGI_FORMAT textureFormat = pTextureStreamer->GetFormat();
+    auto pTextureFileInfo = in_updateList.m_pStreamingResource->GetTextureFileInfo();
+    DXGI_FORMAT textureFormat = pTextureFileInfo->GetFormat();
+    auto pDstHeap = in_updateList.m_pStreamingResource->GetHeap();
 
     DSTORAGE_REQUEST request = {};
     request.Options.DestinationType = DSTORAGE_REQUEST_DESTINATION_TILES;
@@ -115,10 +77,11 @@ void Streaming::FileStreamerDS::StreamTexture(Streaming::UpdateList& in_updateLi
         UINT numCoords = (UINT)in_updateList.m_coords.size();
         for (UINT i = 0; i < numCoords; i++)
         {
-            D3D12_TILED_RESOURCE_COORDINATE coord;
-            ID3D12Resource* pAtlas = in_updateList.m_pStreamingResource->GetHeap()->ComputeCoordFromTileIndex(coord, in_updateList.m_heapIndices[i], textureFormat);
+            request.Source.File.Offset = pTextureFileInfo->GetFileOffset(in_updateList.m_coords[i]);
 
-            request.Source.File.Offset = pTextureStreamer->GetFileOffset(in_updateList.m_coords[i]);
+            D3D12_TILED_RESOURCE_COORDINATE coord;
+            ID3D12Resource* pAtlas = pDstHeap->ComputeCoordFromTileIndex(coord, in_updateList.m_heapIndices[i], textureFormat);
+
             request.Destination.Tiles.Resource = pAtlas;
             request.Destination.Tiles.TiledRegionStartCoordinate = coord;
 
@@ -137,13 +100,12 @@ void Streaming::FileStreamerDS::StreamTexture(Streaming::UpdateList& in_updateLi
             request.Source.Memory.Source = GetVisualizationData(in_updateList.m_coords[i], textureFormat);
 
             D3D12_TILED_RESOURCE_COORDINATE coord;
-            ID3D12Resource* pAtlas = in_updateList.m_pStreamingResource->GetHeap()->ComputeCoordFromTileIndex(coord, in_updateList.m_heapIndices[i], textureFormat);
+            ID3D12Resource* pAtlas = pDstHeap->ComputeCoordFromTileIndex(coord, in_updateList.m_heapIndices[i], textureFormat);
 
             request.Destination.Tiles.Resource = pAtlas;
             request.Destination.Tiles.TiledRegionStartCoordinate = coord;
 
             m_memoryQueue->EnqueueRequest(&request);
-            m_haveMemoryRequests = true;
         }
     }
 
@@ -155,16 +117,9 @@ void Streaming::FileStreamerDS::StreamTexture(Streaming::UpdateList& in_updateLi
 //-----------------------------------------------------------------------------
 inline bool Streaming::FileStreamerDS::GetCompleted(const Streaming::UpdateList& in_updateList) const
 {
-    bool completed = false;
-    if ((VisualizationMode::DATA_VIZ_NONE == m_visualizationMode) && (0 == in_updateList.GetNumPackedUpdates()))
-    {
-        completed = in_updateList.m_copyFenceValue <= m_copyFence->GetCompletedValue();
-    }
-    else
-    {
-        completed = in_updateList.m_copyFenceValue <= m_memoryFence->GetCompletedValue();
-    }
-    return completed;
+    ASSERT(0 == in_updateList.GetNumPackedUpdates());
+
+    return in_updateList.m_copyFenceValue <= m_copyFence->GetCompletedValue();;
 }
 
 //-----------------------------------------------------------------------------
@@ -173,16 +128,16 @@ inline bool Streaming::FileStreamerDS::GetCompleted(const Streaming::UpdateList&
 //-----------------------------------------------------------------------------
 void Streaming::FileStreamerDS::Signal()
 {
-    // might end up signaling two fences, but, we can live with that.
-    if (m_haveMemoryRequests)
+    if (VisualizationMode::DATA_VIZ_NONE == m_visualizationMode)
     {
-        m_haveMemoryRequests = false;
-
-        m_memoryQueue->EnqueueSignal(m_memoryFence.Get(), m_copyFenceValue);
+        m_fileQueue->EnqueueSignal(m_copyFence.Get(), m_copyFenceValue);
+        m_fileQueue->Submit();
+    }
+    else
+    {
+        m_memoryQueue->EnqueueSignal(m_copyFence.Get(), m_copyFenceValue);
         m_memoryQueue->Submit();
     }
 
-    m_fileQueue->EnqueueSignal(m_copyFence.Get(), m_copyFenceValue);
-    m_fileQueue->Submit();
     m_copyFenceValue++;
 }

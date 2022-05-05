@@ -46,7 +46,6 @@ namespace Streaming
         virtual FileHandle* OpenFile(const std::wstring& in_path) override;
 
         virtual void StreamTexture(Streaming::UpdateList& in_updateList) override;
-        virtual void StreamPackedMips(Streaming::UpdateList& in_updateList) override;
 
         virtual void Signal() override {} // reference auto-submits
 
@@ -79,7 +78,6 @@ namespace Streaming
             {
                 FREE = 0,
                 ALLOCATED,
-                LOAD_PACKEDMIPS,
                 LOAD_TILES,
                 COPY_TILES,
                 WAIT_COMPLETE,
@@ -134,6 +132,5 @@ namespace Streaming
         void LoadTexture(CopyBatch& in_copyBatch);
         void CopyTiles(ID3D12GraphicsCommandList* out_pCopyCmdList, ID3D12Resource* in_pSrcResource,
             const UpdateList* in_pUpdateList, const std::vector<UINT>& in_indices);
-        void InitPackedMips(ID3D12GraphicsCommandList* out_pCmdList, const CopyBatch& in_copyBatch);
     };
 }

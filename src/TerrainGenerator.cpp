@@ -129,7 +129,7 @@ void TerrainGenerator::GenerateVertices()
 
     const float frac = 1.0f / static_cast<float>(m_args.m_terrainSideSize - 1);
 
-    concurrency::parallel_for(UINT(0), m_args.m_terrainSideSize, [&](UINT y)
+    for (UINT y = 0; y < m_args.m_terrainSideSize; y++)
     {
         for (UINT x = 0; x < m_args.m_terrainSideSize; x++)
         {
@@ -165,7 +165,7 @@ void TerrainGenerator::GenerateVertices()
             // FIXME? the terrain is shown upside down!
             vtx.tex.x = 1.f - vtx.tex.x;
         }
-    });
+    }
 
     //
     // Compute normals
@@ -179,7 +179,7 @@ void TerrainGenerator::GenerateVertices()
         m_args.m_terrainSideSize * m_args.m_terrainSideSize,
         XMVectorSet(0.f, 0.f, 0.f, 0.f));
 
-    concurrency::parallel_for(UINT(0), m_args.m_terrainSideSize - 1, [&](UINT y)
+    for (UINT y = 0; y < m_args.m_terrainSideSize - 1; y++)
     {
         for (UINT x = 0; x < m_args.m_terrainSideSize - 1; x++)
         {
@@ -205,7 +205,7 @@ void TerrainGenerator::GenerateVertices()
                 normals[vtx2] += n;
             }
         }
-    });
+    }
 
     for (size_t i = 0; i < normals.size(); i++)
     {

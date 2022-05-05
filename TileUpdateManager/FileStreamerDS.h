@@ -10,12 +10,11 @@ namespace Streaming
     class FileStreamerDS : public FileStreamer
     {
     public:
-        FileStreamerDS(ID3D12Device* in_pDevice);
+        FileStreamerDS(ID3D12Device* in_pDevice, IDStorageFactory* in_pFactory);
         virtual ~FileStreamerDS();
 
         virtual FileHandle* OpenFile(const std::wstring& in_path) override;
         virtual void StreamTexture(Streaming::UpdateList& in_updateList) override;
-        virtual void StreamPackedMips(Streaming::UpdateList& in_updateList) override;
 
         static IDStorageFile* GetFileHandle(const FileHandle* in_pHandle);
 
@@ -36,15 +35,11 @@ namespace Streaming
         private:
             ComPtr<IDStorageFile> m_file;
         };
-        ComPtr<IDStorageFactory> m_factory;
+        IDStorageFactory* m_pFactory{ nullptr };
 
         ComPtr<IDStorageQueue> m_fileQueue;
 
-        // separate memory queue means needing a second fence - can't wait across DS queues
+        // memory queue when for visualization modes, which copy from cpu memory
         ComPtr<IDStorageQueue> m_memoryQueue;
-        ComPtr<ID3D12Fence> m_memoryFence;
-        HANDLE m_memoryFenceEvent{ nullptr };
-        UINT64 m_memoryFenceValue{ 1 };
-        bool m_haveMemoryRequests{ false };
     };
 };

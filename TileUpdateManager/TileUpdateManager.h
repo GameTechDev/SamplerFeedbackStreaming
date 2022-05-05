@@ -46,6 +46,7 @@ Draw loop:
 #include <d3d12.h>
 #include <vector>
 #include <memory>
+#include <thread>
 
 #include "D3D12GpuTimer.h"
 #include "Timer.h"

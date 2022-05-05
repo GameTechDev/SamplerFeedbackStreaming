@@ -60,44 +60,20 @@ Streaming::XeTexture::XeTexture(const std::wstring& in_fileName)
     if (!inFile.good()) { Error(in_fileName + L"Unexpected Error"); }
 
     inFile.seekg(0, std::ios::end);
-    size_t fileSize = inFile.tellg();
-
-    // file offset to first packed mip
-    size_t packedOffset = m_fileHeader.m_subresourceInfo[m_fileHeader.m_mipInfo.m_numStandardMips].m_packedMipInfo.m_fileOffset;
-    size_t packedNumBytes = fileSize - packedOffset;
-
-    size_t alignment = D3D12_TEXTURE_DATA_PITCH_ALIGNMENT - 1;
-    packedNumBytes = (packedNumBytes + alignment) & (~alignment);
-
-    m_packedMips.resize(packedNumBytes);
-
-    inFile.seekg(packedOffset);
-    inFile.read((char*)m_packedMips.data(), packedNumBytes);
+    m_fileSize = inFile.tellg();
     inFile.close();
 }
 
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
-void Streaming::XeTexture::WritePackedBits(void* out_pBits, UINT in_mip, UINT64 in_dstStrideBytes)
+UINT Streaming::XeTexture::GetPackedMipFileOffset(UINT* out_pNumBytesTotal)
 {
-    UINT h = std::max<UINT>(1, GetImageHeight() >> in_mip);
-
-    // XeT is strictly intended for BCn formats that are multiples of 4 rows
-    UINT numRows = std::max<UINT>(1, (h + 3) / 4);
-
-    BYTE* pDst = (BYTE*)out_pBits;
-
-    UINT fileOffsetBase = m_fileHeader.m_subresourceInfo[m_fileHeader.m_mipInfo.m_numStandardMips].m_packedMipInfo.m_fileOffset;
-    UINT byteOffset = m_fileHeader.m_subresourceInfo[in_mip].m_packedMipInfo.m_fileOffset - fileOffsetBase;
-    UINT rowPitch = m_fileHeader.m_subresourceInfo[in_mip].m_packedMipInfo.m_rowPitch;
-
-    for (UINT i = 0; i < numRows; i++)
+    UINT packedOffset = m_fileHeader.m_subresourceInfo[m_fileHeader.m_mipInfo.m_numStandardMips].m_packedMipInfo.m_fileOffset;
+    if (out_pNumBytesTotal)
     {
-        memcpy(pDst, &m_packedMips[byteOffset], rowPitch);
-
-        pDst += in_dstStrideBytes;
-        byteOffset += rowPitch;
+        *out_pNumBytesTotal = UINT(m_fileSize - packedOffset);
     }
+    return packedOffset;
 }
 
 //-----------------------------------------------------------------------------

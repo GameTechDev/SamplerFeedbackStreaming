@@ -32,6 +32,8 @@
 #include <synchapi.h>
 #pragma comment(lib, "Synchronization.lib")
 
+#include "DebugHelper.h"
+
 namespace Streaming
 {
     template<typename T> using ComPtr = Microsoft::WRL::ComPtr<T>;
@@ -74,28 +76,6 @@ namespace Streaming
         void deallocate(T* p, std::size_t n) { _aligned_free(p); }
     private:
         const UINT m_alignment;
-    };
-
-    //==================================================
-    // auto t = AutoString::Concat("test: ", 3, "*", 2.75f, "\n");
-    //==================================================
-    class AutoString
-    {
-    public:
-        template <typename...Ts> static std::wstring Concat(Ts...ts)
-        {
-            std::wstringstream w;
-            Expander(w, ts...);
-            return w.str();
-        }
-    private:
-        static void Expander(std::wstringstream&) { }
-
-        template <typename T, typename...Ts> static void Expander(std::wstringstream& in_w, const T& t, Ts...ts)
-        {
-            in_w << t;
-            Expander(in_w, ts...);
-        }
     };
 
     //==================================================

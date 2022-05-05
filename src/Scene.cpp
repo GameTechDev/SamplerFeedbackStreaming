@@ -34,7 +34,7 @@
 #include "TextureViewer.h"
 #include "BufferViewer.h"
 #include "FrustumViewer.h"
-
+#include "DebugHelper.h"
 #include "WindowCapture.h"
 
 #pragma comment(lib, "d3d12.lib")
@@ -95,18 +95,18 @@ Scene::Scene(const CommandLineArgs& in_args, HWND in_hwnd) :
     , m_pGpuTimer(nullptr)
 {
     m_windowInfo.cbSize = sizeof(WINDOWINFO);
-#if ENABLE_DEBUG_LAYER
+
+    UINT factoryFlags = 0;
+
+#ifdef _DEBUG
+    factoryFlags |= DXGI_CREATE_FACTORY_DEBUG;
     InitDebugLayer();
 #endif
 
-    UINT flags = 0;
-#ifdef _DEBUG
-    flags |= DXGI_CREATE_FACTORY_DEBUG;
-#endif
-    if (FAILED(CreateDXGIFactory2(flags, IID_PPV_ARGS(&m_factory))))
+    if (FAILED(CreateDXGIFactory2(factoryFlags, IID_PPV_ARGS(&m_factory))))
     {
-        flags &= ~DXGI_CREATE_FACTORY_DEBUG;
-        ThrowIfFailed(CreateDXGIFactory2(flags, IID_PPV_ARGS(&m_factory)));
+        factoryFlags &= ~DXGI_CREATE_FACTORY_DEBUG;
+        ThrowIfFailed(CreateDXGIFactory2(factoryFlags, IID_PPV_ARGS(&m_factory)));
     }
 
     ComPtr<IDXGIAdapter1> adapter;
@@ -195,14 +195,13 @@ Scene::Scene(const CommandLineArgs& in_args, HWND in_hwnd) :
 
     m_pGui = new Gui(m_hwnd, m_device.Get(), m_srvHeap.Get(), (UINT)DescriptorHeapOffsets::GUI, m_swapBufferCount, SharedConstants::SWAP_CHAIN_FORMAT, adapterDescription, m_args);
 
+    m_assetUploader.Init(m_device.Get());
+
     m_pFrustumViewer = new FrustumViewer(m_device.Get(),
         SharedConstants::SWAP_CHAIN_FORMAT,
         SharedConstants::DEPTH_FORMAT,
         m_args.m_sampleCount,
-        [&](ID3D12Resource* out_pBuffer, const void* in_pBytes, size_t in_numBytes, D3D12_RESOURCE_STATES in_finalState)
-        {
-            SceneObjects::InitializeBuffer(out_pBuffer, in_pBytes, in_numBytes, in_finalState);
-        });
+        m_assetUploader);
 
     // statistics gathering
     if (m_args.m_timingFrameFileName.size() && (m_args.m_timingStopFrame >= m_args.m_timingStartFrame))
@@ -478,7 +477,7 @@ void Scene::CreateDescriptorHeaps()
     srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     ThrowIfFailed(m_device->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&m_srvHeap)));
-    NAME_D3D12_OBJECT(m_srvHeap);
+    m_srvHeap->SetName(L"m_srvHeap");
 
     // render target view heap
     // NOTE: we have an MSAA target plus a swap chain, so m_swapBufferCount + 1
@@ -486,13 +485,14 @@ void Scene::CreateDescriptorHeaps()
     rtvHeapDesc.NumDescriptors = m_swapBufferCount + 1;
     rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
     ThrowIfFailed(m_device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&m_rtvHeap)));
+    m_srvHeap->SetName(L"m_rtvHeap");
 
     // depth buffer view heap
     D3D12_DESCRIPTOR_HEAP_DESC dsvHeapDesc = {};
     dsvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
     dsvHeapDesc.NumDescriptors = 1;
     ThrowIfFailed(m_device->CreateDescriptorHeap(&dsvHeapDesc, IID_PPV_ARGS(&m_dsvHeap)));
-    NAME_D3D12_OBJECT(m_dsvHeap);
+    m_srvHeap->SetName(L"m_dsvHeap");
 }
 
 //-----------------------------------------------------------------------------
@@ -804,13 +804,13 @@ void Scene::LoadSpheres()
             if ((nullptr == m_pSky) && (m_args.m_skyTexture.size())) // only 1 sky
             {
                 auto tf = m_args.m_mediaDir + L"\\\\" + m_args.m_skyTexture;
-                m_pSky = new SceneObjects::Sky(tf, m_pTileUpdateManager.get(), pHeap, m_device.Get(), m_args.m_sampleCount, descCPU);
+                m_pSky = new SceneObjects::Sky(tf, m_pTileUpdateManager.get(), pHeap, m_device.Get(), m_assetUploader, m_args.m_sampleCount, descCPU);
                 o = m_pSky;
             }
 
             else if (nullptr == m_pTerrainSceneObject)
             {
-                m_pTerrainSceneObject = new SceneObjects::Terrain(m_args.m_terrainTexture, m_pTileUpdateManager.get(), pHeap, m_device.Get(), m_args.m_sampleCount, descCPU, m_args);
+                m_pTerrainSceneObject = new SceneObjects::Terrain(m_args.m_terrainTexture, m_pTileUpdateManager.get(), pHeap, m_device.Get(), m_args.m_sampleCount, descCPU, m_args, m_assetUploader);
                 m_terrainObjectIndex = objectIndex;
                 o = m_pTerrainSceneObject;
             }
@@ -821,7 +821,7 @@ void Scene::LoadSpheres()
                 if (nullptr == m_pEarth)
                 {
                     sphereProperties.m_mirrorU = false;
-                    o = new SceneObjects::Planet(textureFilename, m_pTileUpdateManager.get(), pHeap, m_device.Get(), m_args.m_sampleCount, descCPU, sphereProperties);
+                    o = new SceneObjects::Planet(textureFilename, m_pTileUpdateManager.get(), pHeap, m_device.Get(), m_assetUploader, m_args.m_sampleCount, descCPU, sphereProperties);
                     m_pEarth = o;
                 }
                 else
@@ -844,7 +844,7 @@ void Scene::LoadSpheres()
                 if (nullptr == m_pFirstSphere)
                 {
                     sphereProperties.m_mirrorU = true;
-                    o = new SceneObjects::Planet(textureFilename, m_pTileUpdateManager.get(), pHeap, m_device.Get(), m_args.m_sampleCount, descCPU, sphereProperties);
+                    o = new SceneObjects::Planet(textureFilename, m_pTileUpdateManager.get(), pHeap, m_device.Get(), m_assetUploader, m_args.m_sampleCount, descCPU, sphereProperties);
                     m_pFirstSphere = o;
                 }
                 else
@@ -898,6 +898,9 @@ void Scene::LoadSpheres()
             m_numSpheresLoaded--;
         }
     }
+
+    // check the non-streaming uploader to see if anything needs to be uploaded or any memory can be freed
+    m_assetUploader.WaitForUploads(m_commandQueue.Get(), m_commandList.Get());
 }
 
 //-----------------------------------------------------------------------------
@@ -1619,6 +1622,10 @@ bool Scene::Draw()
 
     DrainTiles();
 
+    // prepare for new commands (need an open command list for LoadSpheres)
+    m_commandAllocators[m_frameIndex]->Reset();
+    m_commandList->Reset((ID3D12CommandAllocator*)m_commandAllocators[m_frameIndex].Get(), nullptr);
+
     // load more spheres?
     // SceneResource destruction/creation must be done outside of BeginFrame/EndFrame
     LoadSpheres();
@@ -1672,8 +1679,6 @@ bool Scene::Draw()
     //-------------------------------------------
     // draw everything
     //-------------------------------------------
-    m_commandAllocators[m_frameIndex]->Reset();
-    m_commandList->Reset((ID3D12CommandAllocator*)m_commandAllocators[m_frameIndex].Get(), nullptr);
     {
         GpuScopeTimer gpuScopeTimer(m_pGpuTimer, m_commandList.Get(), "GPU Frame Time");
 

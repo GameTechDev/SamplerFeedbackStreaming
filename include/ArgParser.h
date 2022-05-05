@@ -67,6 +67,7 @@ after running, m_float=20.27 and m_flipGravity=true
 #include <functional>
 #include <shellapi.h>
 #include <sstream>
+#include <iostream>
 
 //-----------------------------------------------------------------------------
 // parse command line
@@ -135,7 +136,7 @@ void ArgParser::AddArg(std::wstring token, ArgFunction f)
 inline void ArgParser::AddArg(std::wstring s, std::wstring description, ArgParser::ArgFunction f)
 {
     m_args.push_back(ArgPair(s, f));
-    m_help << s << description << std::endl;
+    m_help << s << ": " << description << std::endl;
 }
 
 //-----------------------------------------------------------------------------
@@ -147,7 +148,21 @@ inline void ArgParser::Parse()
 
     if ((2 == numArgs) && (std::wstring(L"?") == cmdLine[1]))
     {
-        MessageBox(0, m_help.str().c_str(), L"Command Line Args", MB_OK);
+        BOOL allocConsole = AllocConsole(); // returns false for console applications
+        if (allocConsole)
+        {
+            FILE* pOutStream;
+            ::freopen_s(&pOutStream, "CONOUT$", "w", stdout);
+            std::wcout.clear();
+        }
+
+        std::wcout << m_help.str();
+
+        if (allocConsole)
+        {
+            ::system("pause");
+        }
+
         exit(0);
     }
 

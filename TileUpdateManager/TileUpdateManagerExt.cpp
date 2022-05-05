@@ -174,7 +174,11 @@ float TileUpdateManager::GetGpuStreamingTime() const { return m_pDataUploader->G
 float TileUpdateManager::GetGpuTime() const { return m_gpuTimerResolve.GetTimes()[m_renderFrameIndex].first; }
 UINT TileUpdateManager::GetTotalNumUploads() const { return m_pDataUploader->GetTotalNumUploads(); }
 UINT TileUpdateManager::GetTotalNumEvictions() const { return m_pDataUploader->GetTotalNumEvictions(); }
-void TileUpdateManager::SetVisualizationMode(UINT in_mode) { m_pDataUploader->SetVisualizationMode(in_mode); }
+void TileUpdateManager::SetVisualizationMode(UINT in_mode)
+{
+    Finish();
+    m_pDataUploader->SetVisualizationMode(in_mode);
+}
 
 //-----------------------------------------------------------------------------
 // Call this method once for each TileUpdateManager that shares heap/upload buffers

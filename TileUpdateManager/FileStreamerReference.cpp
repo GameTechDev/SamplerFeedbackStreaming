@@ -30,7 +30,6 @@
 #include "UpdateList.h"
 #include "XeTexture.h"
 #include "StreamingResourceDU.h"
-#include "DXSampleHelper.h"
 #include "StreamingHeap.h"
 
 //-----------------------------------------------------------------------------
@@ -199,64 +198,12 @@ void Streaming::FileStreamerReference::AllocateCopyBatch(Streaming::UpdateList& 
 
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
-void Streaming::FileStreamerReference::StreamPackedMips(Streaming::UpdateList& in_updateList)
-{
-    ASSERT(in_updateList.GetNumPackedUpdates());
-    ASSERT(0 == in_updateList.GetNumStandardUpdates());
-
-    AllocateCopyBatch(in_updateList, CopyBatch::State::LOAD_PACKEDMIPS);
-}
-
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
 void Streaming::FileStreamerReference::StreamTexture(Streaming::UpdateList& in_updateList)
 {
     ASSERT(0 == in_updateList.GetNumPackedUpdates());
     ASSERT(in_updateList.GetNumStandardUpdates());
 
     AllocateCopyBatch(in_updateList, CopyBatch::State::LOAD_TILES);
-}
-
-//-----------------------------------------------------------------------------
-// stream and copy a packed mip
-//-----------------------------------------------------------------------------
-void Streaming::FileStreamerReference::InitPackedMips(ID3D12GraphicsCommandList* out_pCmdList, const CopyBatch& in_copyBatch)
-{
-    UpdateList* pUpdateList = in_copyBatch.m_pUpdateList;
-    ID3D12Resource* pDstResource = pUpdateList->m_pStreamingResource->GetTiledResource();
-
-    const UINT firstSubresource = pUpdateList->m_pStreamingResource->GetPackedMipInfo().NumStandardMips;
-    const UINT numSubresources = pUpdateList->m_pStreamingResource->GetPackedMipInfo().NumPackedMips;
-
-    D3D12_RESOURCE_DESC desc = pDstResource->GetDesc();
-
-    std::vector<D3D12_PLACED_SUBRESOURCE_FOOTPRINT> srcLayout(numSubresources);
-
-    ComPtr<ID3D12Device> device;
-    m_copyCommandQueue->GetDevice(IID_PPV_ARGS(&device));
-
-    device->GetCopyableFootprints(&desc, firstSubresource, numSubresources,
-        0, // NOTE: the offset will be replaced; each mip has its own tile-sized upload location
-        srcLayout.data(),
-        //&numRows, &rowSizeBytes, &totalBytes);
-        nullptr, nullptr, nullptr);
-
-    BYTE* pDst = (BYTE*)m_uploadAllocator.GetBuffer().m_pData;
-
-    for (UINT i = 0; i < numSubresources; i++)
-    {
-        // each mip has its own tile-sized upload location
-        // this way, we don't have to have consecutive upload buffer destinations
-        srcLayout[i].Offset = in_copyBatch.m_uploadIndices[i] * D3D12_TILED_RESOURCE_TILE_SIZE_IN_BYTES;
-
-        pUpdateList->m_pStreamingResource->GetTextureStreamer()->WritePackedBits(
-            &pDst[srcLayout[i].Offset],
-            firstSubresource + i, srcLayout[i].Footprint.RowPitch);
-
-        D3D12_TEXTURE_COPY_LOCATION srcLocation = CD3DX12_TEXTURE_COPY_LOCATION(m_uploadAllocator.GetBuffer().m_resource.Get(), srcLayout[i]);
-        D3D12_TEXTURE_COPY_LOCATION dstLocation = CD3DX12_TEXTURE_COPY_LOCATION(pUpdateList->m_pStreamingResource->GetTiledResource(), firstSubresource + i);
-        out_pCmdList->CopyTextureRegion(&dstLocation, 0, 0, 0, &srcLocation, nullptr);
-    }
 }
 
 //-----------------------------------------------------------------------------
@@ -274,12 +221,12 @@ void Streaming::FileStreamerReference::LoadTexture(Streaming::FileStreamerRefere
 
     if (VisualizationMode::DATA_VIZ_NONE == m_visualizationMode)
     {
-        auto pTextureStreamer = pUpdateList->m_pStreamingResource->GetTextureStreamer();
+        auto pTextureFileInfo = pUpdateList->m_pStreamingResource->GetTextureFileInfo();
         auto pFileHandle = FileStreamerReference::GetFileHandle(pUpdateList->m_pStreamingResource->GetFileHandle());
         for (UINT i = 0; i < numReads; i++)
         {
             // get file offset to tile
-            UINT fileOffset = pTextureStreamer->GetFileOffset(pUpdateList->m_coords[i]);
+            UINT fileOffset = pTextureFileInfo->GetFileOffset(pUpdateList->m_coords[i]);
 
             // convert tile index into byte offset
             UINT byteOffset = D3D12_TILED_RESOURCE_TILE_SIZE_IN_BYTES * in_copyBatch.m_uploadIndices[i];
@@ -299,7 +246,7 @@ void Streaming::FileStreamerReference::LoadTexture(Streaming::FileStreamerRefere
 
             // add to base address of upload buffer
             BYTE* pDst = pStagingBaseAddress + byteOffset;
-            void* pSrc = GetVisualizationData(pUpdateList->m_coords[i], in_copyBatch.m_pUpdateList->m_pStreamingResource->GetTextureStreamer()->GetFormat());
+            void* pSrc = GetVisualizationData(pUpdateList->m_coords[i], in_copyBatch.m_pUpdateList->m_pStreamingResource->GetTextureFileInfo()->GetFormat());
             memcpy(pDst, pSrc, D3D12_TILED_RESOURCE_TILE_SIZE_IN_BYTES);
         }
     }
@@ -313,7 +260,7 @@ void Streaming::FileStreamerReference::CopyTiles(ID3D12GraphicsCommandList* out_
 {
     // generate copy command list
     D3D12_TILE_REGION_SIZE tileRegionSize{ 1, FALSE, 0, 0, 0 };
-    DXGI_FORMAT textureFormat = in_pUpdateList->m_pStreamingResource->GetTextureStreamer()->GetFormat();
+    DXGI_FORMAT textureFormat = in_pUpdateList->m_pStreamingResource->GetTextureFileInfo()->GetFormat();
     UINT numTiles = (UINT)in_indices.size();
     for (UINT i = 0; i < numTiles; i++)
     {
@@ -358,26 +305,6 @@ void Streaming::FileStreamerReference::CopyThread()
     {
         switch (c.m_state)
         {
-        case CopyBatch::State::LOAD_PACKEDMIPS:
-            ASSERT(0 == c.m_pUpdateList->GetNumStandardUpdates());
-            ASSERT(c.m_pUpdateList->GetNumPackedUpdates());
-            if (m_uploadAllocator.Allocate(c.m_uploadIndices, c.m_pUpdateList->GetNumPackedUpdates()))
-            {
-                c.m_copyFenceValue = m_copyFenceValue;
-
-                if (!submitCopyCommands)
-                {
-                    submitCopyCommands = true;
-                    m_copyCommandList->Reset(c.GetCommandAllocator(), nullptr);
-                }
-                InitPackedMips(m_copyCommandList.Get(), c);
-
-                c.m_pUpdateList->m_copyFenceValue = c.m_copyFenceValue;
-                c.m_pUpdateList->m_copyFenceValid = true;
-                c.m_state = CopyBatch::State::WAIT_COMPLETE;
-            }
-            break;
-
         case CopyBatch::State::LOAD_TILES:
             ASSERT(c.m_pUpdateList->GetNumStandardUpdates());
             ASSERT(0 == c.m_pUpdateList->GetNumPackedUpdates());

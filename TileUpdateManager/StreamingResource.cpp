@@ -63,8 +63,8 @@ Streaming::StreamingResourceBase::StreamingResourceBase(
     , m_pFileHandle(in_pFileHandle)
     , m_filename(in_filename)
 {
-    m_pTextureStreamer = std::make_unique<Streaming::XeTexture>(in_filename);
-    m_resources = std::make_unique<Streaming::InternalResources>(in_pTileUpdateManager->GetDevice(), m_pTextureStreamer.get(), in_pTileUpdateManager->GetNumSwapBuffers());
+    m_pTextureFileInfo = std::make_unique<Streaming::XeTexture>(in_filename);
+    m_resources = std::make_unique<Streaming::InternalResources>(in_pTileUpdateManager->GetDevice(), m_pTextureFileInfo.get(), in_pTileUpdateManager->GetNumSwapBuffers());
     m_tileMappingState.Init(m_resources->GetPackedMipInfo().NumStandardMips, m_resources->GetTiling());
 
     // no packed mips. odd, but possible. no need to check/update this variable again.
@@ -86,10 +86,10 @@ Streaming::StreamingResourceBase::StreamingResourceBase(
     m_minMipMap.resize(m_tileReferences.size(), m_maxMip);
 
     // make sure my heap has an atlas corresponding to my format
-    m_pHeap->AllocateAtlas(in_pTileUpdateManager->GetMappingQueue(), m_pTextureStreamer->GetFormat());
+    m_pHeap->AllocateAtlas(in_pTileUpdateManager->GetMappingQueue(), m_pTextureFileInfo->GetFormat());
 
-    // For easy upload, pad the packed mips
-    PadPackedMips(in_pTileUpdateManager->GetDevice());
+    // Load packed mips. packed mips are not streamed or evicted.
+    LoadPackedMips();
 }
 
 //-----------------------------------------------------------------------------
@@ -494,8 +494,10 @@ void Streaming::StreamingResourceBase::AbandonPendingLoads()
 //
 // note: queues as many new tiles as possible
 //-----------------------------------------------------------------------------
-void Streaming::StreamingResourceBase::QueueTiles()
+bool Streaming::StreamingResourceBase::QueueTiles()
 {
+    bool uploadRequested = false;
+
     UINT numEvictions = (UINT)m_pendingEvictions.GetReadyToEvict().size();
     UINT numLoads = (UINT)m_pendingTileLoads.size();
 
@@ -515,6 +517,7 @@ void Streaming::StreamingResourceBase::QueueTiles()
             // queue as many new tiles as possible
             if (numLoads && m_pHeap->GetAllocator().GetNumFree())
             {
+                uploadRequested = true;
                 QueuePendingTileLoads(pUpdateList);
                 numLoads = (UINT)m_pendingTileLoads.size();
             }
@@ -541,6 +544,7 @@ void Streaming::StreamingResourceBase::QueueTiles()
             break;
         }
     }
+    return uploadRequested;
 }
 
 /*-----------------------------------------------------------------------------
@@ -725,7 +729,7 @@ void Streaming::StreamingResourceBase::UpdateMinMipMap()
         // a simple optimization that's especially effective for large textures
         // and harmless for smaller ones:
         // find the minimum fully-resident mip
-        UINT8 minResidentMip = m_tileMappingState.GetMinResidentMip();
+        const UINT8 minResidentMip = m_tileMappingState.GetMinResidentMip();
 #endif
         // Search bottom up for best mip
         // tiles that have refcounts may still have pending copies, so we have to check residency (can't just memcpy m_tileReferences)
@@ -842,7 +846,7 @@ void Streaming::StreamingResourceBase::EvictionDelay::Rescue(const Streaming::St
 //-----------------------------------------------------------------------------
 // pad packed mips according to copyable footprint requirements
 //-----------------------------------------------------------------------------
-void Streaming::StreamingResourceBase::PadPackedMips(ID3D12Device* in_pDevice)
+void Streaming::StreamingResourceBase::PadPackedMips()
 {
     UINT firstSubresource = m_resources->GetPackedMipInfo().NumStandardMips;
     UINT numSubresources = m_resources->GetPackedMipInfo().NumPackedMips;
@@ -853,14 +857,13 @@ void Streaming::StreamingResourceBase::PadPackedMips(ID3D12Device* in_pDevice)
     std::vector<UINT> numRows(numSubresources);
     std::vector<UINT64> rowSizeBytes(numSubresources);
 
-    in_pDevice->GetCopyableFootprints(&desc, firstSubresource, numSubresources,
+    m_pTileUpdateManager->GetDevice()->GetCopyableFootprints(&desc, firstSubresource, numSubresources,
         0, srcLayout.data(), numRows.data(), rowSizeBytes.data(), &totalBytes);
 
-    m_paddedPackedMips.resize(totalBytes);
+    std::vector<BYTE> paddedPackedMips(totalBytes);
 
-    BYTE* pDst = m_paddedPackedMips.data();
-    UINT numBytes = 0;
-    const BYTE* pSrc = m_pTextureStreamer->GetPackedBits(numBytes);
+    BYTE* pDst = paddedPackedMips.data();
+    BYTE* pSrc = m_packedMips.data();
 
     for (UINT i = 0; i < numSubresources; i++)
     {
@@ -871,6 +874,23 @@ void Streaming::StreamingResourceBase::PadPackedMips(ID3D12Device* in_pDevice)
             pSrc += rowSizeBytes[i];
         }
     }
+    m_packedMips.swap(paddedPackedMips);
+}
+
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+void Streaming::StreamingResourceBase::LoadPackedMips()
+{
+    // FIXME: future file format should contain padded packed mips to allow DS to load directly from disk to GPU
+
+    UINT numBytes = 0;
+    UINT offset = m_pTextureFileInfo->GetPackedMipFileOffset(&numBytes);
+    m_packedMips.resize(numBytes);
+    std::ifstream inFile(m_filename.c_str(), std::ios::binary);
+    inFile.seekg(offset);
+    inFile.read((char*)m_packedMips.data(), numBytes);
+    inFile.close();
+    PadPackedMips();
 }
 
 //-----------------------------------------------------------------------------

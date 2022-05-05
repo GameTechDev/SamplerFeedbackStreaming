@@ -48,7 +48,6 @@ namespace Streaming
         virtual FileHandle* OpenFile(const std::wstring& in_path) = 0;
 
         virtual void StreamTexture(Streaming::UpdateList& in_updateList) = 0;
-        virtual void StreamPackedMips(Streaming::UpdateList& in_updateList) = 0;
 
         virtual void Signal() = 0;
 

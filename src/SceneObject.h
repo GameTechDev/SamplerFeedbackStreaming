@@ -31,6 +31,8 @@
 #include "SamplerFeedbackStreaming.h"
 #include "CreateSphere.h"
 
+class AssetUploader;
+
 namespace SceneObjects
 {
     enum class Descriptors
@@ -171,38 +173,39 @@ namespace SceneObjects
         UINT m_srvUavCbvDescriptorSize;
     };
 
-    void InitializeBuffer(ID3D12Resource* out_pBuffer, const void* in_pBytes, size_t in_numBytes, D3D12_RESOURCE_STATES in_finalState);
-    void InitializeTexture(ID3D12Resource* pTexture, size_t in_numSubResources, const D3D12_SUBRESOURCE_DATA* in_pSubresources, D3D12_RESOURCE_STATES in_finalState);
-
     void CreateSphere(SceneObjects::BaseObject* out_pObject,
-        ID3D12Device* in_pDevice, const SphereGen::Properties& in_sphereProperties, UINT in_numLods = 1);
+        ID3D12Device* in_pDevice, AssetUploader& in_assetUploader,
+        const SphereGen::Properties& in_sphereProperties, UINT in_numLods = 1);
+
     void CreateSphereResources(ID3D12Resource** out_ppVertexBuffer, ID3D12Resource** out_ppIndexBuffer,
-        ID3D12Device* in_pDevice, const SphereGen::Properties& in_sphereProperties);
+        ID3D12Device* in_pDevice, const SphereGen::Properties& in_sphereProperties,
+        AssetUploader& in_assetUploader);
 
     class Terrain : public BaseObject
     {
     public:
-        Terrain(const std::wstring& in_filename, // this class takes ownership and deletes in destructor
+        Terrain(const std::wstring& in_filename,
             TileUpdateManager* in_pTileUpdateManager,
             StreamingHeap* in_pStreamingHeap,
             ID3D12Device* in_pDevice,
             UINT in_sampleCount,
             D3D12_CPU_DESCRIPTOR_HANDLE in_srvBaseCPU,
-            const CommandLineArgs& in_args);
+            const CommandLineArgs& in_args,
+            AssetUploader& in_assetUploader);
     };
 
     class Planet : public BaseObject
     {
     public:
-        Planet(const std::wstring& in_filename, // this class takes ownership and deletes in destructor
+        Planet(const std::wstring& in_filename,
             TileUpdateManager* in_pTileUpdateManager,
             StreamingHeap* in_pStreamingHeap,
-            ID3D12Device* in_pDevice,
+            ID3D12Device* in_pDevice, AssetUploader& in_assetUploader,
             UINT in_sampleCount,
             D3D12_CPU_DESCRIPTOR_HANDLE in_srvBaseCPU,
             const SphereGen::Properties& in_properties);
 
-        Planet(const std::wstring& in_filename, // this class takes ownership and deletes in destructor
+        Planet(const std::wstring& in_filename,
             TileUpdateManager* in_pTileUpdateManager,
             StreamingHeap* in_pStreamingHeap,
             ID3D12Device* in_pDevice,
@@ -215,10 +218,10 @@ namespace SceneObjects
     class Sky : public BaseObject
     {
     public:
-        Sky(const std::wstring& in_filename, // this class takes ownership and deletes in destructor
+        Sky(const std::wstring& in_filename,
             TileUpdateManager* in_pTileUpdateManager,
             StreamingHeap* in_pStreamingHeap,
-            ID3D12Device* in_pDevice,
+            ID3D12Device* in_pDevice, AssetUploader& in_assetUploader,
             UINT in_sampleCount,
             D3D12_CPU_DESCRIPTOR_HANDLE in_srvBaseCPU);
 

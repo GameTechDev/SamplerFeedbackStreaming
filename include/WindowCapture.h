@@ -33,7 +33,6 @@
 #include <wrl/client.h>
 #include <vector>
 #include "d3dx12.h"
-#include "DXSampleHelper.h"
 
 #pragma warning(push, 0)
 #include <gdiplus.h>

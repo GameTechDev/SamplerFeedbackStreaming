@@ -39,35 +39,20 @@
 #include <DirectXMath.h>
 #include <DirectXPackedVector.h>
 
-#include <dxcapi.h>         // Be sure to link with dxcompiler.lib.
-#include <d3d12shader.h>    // Shader reflection.
-
 #include <string>
 #include <vector>
 #include <list>
 #include <wrl.h>
 #include <shellapi.h>
-#include <stdexcept>
 #include <sstream>
 #include <crtdbg.h>
-#include <ppl.h>
 #include <random>
 #include <fstream>
 #include <functional>
 #include <algorithm>
 #include <memory>
 
-#ifdef _DEBUG
-#include <assert.h>
-#define ASSERT(X) assert(X)
-#else
-#define ASSERT(X)
-#endif
-
 // DirectXTK12
-#include <wincodec.h>
-#include <array>
-#include <map>
 #include "d3dx12.h"
 
 // Imgui

@@ -104,5 +104,5 @@ void Streaming::StreamingResourceDU::NotifyPackedMips()
 
     // don't need to hold on to packed mips any longer.
     std::vector<BYTE> empty;
-    m_paddedPackedMips.swap(empty);
+    GetPaddedPackedMips().swap(empty);
 }

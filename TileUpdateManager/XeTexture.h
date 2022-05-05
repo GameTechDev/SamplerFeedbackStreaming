@@ -47,14 +47,10 @@ namespace Streaming
         UINT GetImageHeight() const { return m_fileHeader.m_ddsHeader.height; }
         UINT GetMipCount() const { return m_fileHeader.m_ddsHeader.mipMapCount; }
 
-        const BYTE* GetPackedBits(UINT& out_numBytes) const { out_numBytes = (UINT)m_packedMips.size(); return m_packedMips.data(); }
-
-        // WritePackedBits() is for the packed portion of the mip map, populated at startup.
-        // The pointer will be to a footprint for copying, with destination stride likely larger than mip contents.
-        void WritePackedBits(void* out_pBits, UINT in_mip, UINT64 in_dstStrideBytes);
-
         // return value is # bytes. out_offset is byte offset into file
         UINT GetFileOffset(const D3D12_TILED_RESOURCE_COORDINATE& in_coord) const;
+
+        UINT GetPackedMipFileOffset(UINT* out_pNumBytesTotal = nullptr);
 
         XeTexture(const std::wstring& in_filename);
     protected:
@@ -66,15 +62,11 @@ namespace Streaming
         static const UINT MIN_STRIDE_BYTES{ 256 };
         static const UINT NUM_BYTES_PER_TILE{ D3D12_TILED_RESOURCE_TILE_SIZE_IN_BYTES }; // tiles are always 64KB in size
 
-        Timer m_cpuTimer;
-
         XetFileHeader m_fileHeader;
+        size_t m_fileSize{ 0 };
 
         std::vector<XetFileHeader::TileData> m_tileOffsets;
         std::vector<XetFileHeader::MetaData> m_metadataOffsets;
-
-        // bytes for packed mip are read at creation time
-        std::vector<BYTE> m_packedMips;
 
         UINT GetLinearIndex(const D3D12_TILED_RESOURCE_COORDINATE& in_coord) const;
     };

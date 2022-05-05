@@ -35,7 +35,7 @@
 #include <map>
 
 #include "d3dx12.h"
-#include "DXSampleHelper.h"
+#include "DebugHelper.h"
 
 class D3D12GpuTimer
 {

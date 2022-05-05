@@ -27,7 +27,6 @@
 #include "pch.h"
 
 #include "HeapAllocator.h"
-#include "DXSampleHelper.h"
 
 //=============================================================================
 // Internal class that allocates tiles from a heap

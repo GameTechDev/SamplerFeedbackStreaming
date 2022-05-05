@@ -26,6 +26,8 @@
 
 #pragma once
 
+#include <dstorage.h> // single creation point for factory. internal q for packed mips.
+
 #include "UpdateList.h"
 #include "MappingUpdater.h"
 #include "FileStreamer.h"
@@ -64,7 +66,11 @@ namespace Streaming
         // may return null. called by StreamingResource.
         UpdateList* AllocateUpdateList(StreamingResourceBase* in_pStreamingResource);
 
+        // StreamingResource requests tiles to be uploaded
         void SubmitUpdateList(Streaming::UpdateList& in_updateList);
+
+        // TUM requests file streamer to signal its fence after StreamingResources have queued tile uploads
+        void SignalFileStreamer() { m_pFileStreamer->Signal(); }
 
         // free updatelist after processing
         // Streaming resource may call this (via TUM) if it allocates but doesn't use an updatelist
@@ -91,7 +97,6 @@ namespace Streaming
         const UINT m_maxTileCopiesInFlight{ 0 };
         const UINT m_maxBatchSize{ 0 };
 
-        ComPtr<ID3D12Device> m_device;
         D3D12GpuTimer m_gpuTimer;
         RawCpuTimer m_cpuTimer;
 
@@ -133,6 +138,16 @@ namespace Streaming
         void StartThreads();
         void StopThreads();
         std::atomic<bool> m_threadsRunning{ false };
+
+        // DS memory queue used just for loading packed mips when the file doesn't include padding
+        // separate memory queue means needing a second fence - can't wait across DS queues
+        void InitDirectStorage(ID3D12Device* in_pDevice);
+        ComPtr<IDStorageFactory> m_dsFactory;
+        ComPtr<IDStorageQueue> m_memoryQueue;
+        ComPtr<ID3D12Fence> m_memoryFence;
+        UINT64 m_memoryFenceValue{ 1 };
+        UINT64 LoadTexture(ID3D12Resource* in_pResource, const std::vector<BYTE>& in_paddedData, UINT in_firstSubresource);
+        void SubmitTextureLoads();
 
         //-------------------------------------------
         // statistics

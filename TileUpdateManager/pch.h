@@ -32,12 +32,8 @@
 
 #include <d3d12.h>
 #include <dxgi1_6.h>
-#include <D3Dcompiler.h>
 #include <DirectXMath.h>
 #include <DirectXPackedVector.h>
-
-#include <dxcapi.h>         // Be sure to link with dxcompiler.lib.
-#include <d3d12shader.h>    // Shader reflection.
 
 #include <string>
 #include <vector>
@@ -45,22 +41,10 @@
 #include <list>
 #include <wrl.h>
 #include <shellapi.h>
-#include <stdexcept>
 #include <sstream>
 #include <crtdbg.h>
-#include <ppl.h>
-#include <random>
 #include <fstream>
-#include <functional>
 #include <algorithm>
-#include <memory>
-#include "d3dx12.h"
+#include <thread>
 
-#ifdef _DEBUG
-#include <assert.h>
-#define ASSERT(X) assert(X)
-#define DebugPrint(...) OutputDebugString(Streaming::AutoString::Concat(__VA_ARGS__).c_str());
-#else
-#define ASSERT(X)
-#define DebugPrint(...)
-#endif
+#include "d3dx12.h"

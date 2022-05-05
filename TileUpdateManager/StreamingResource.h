@@ -26,10 +26,7 @@
 
 
 /*=============================================================================
-Usage:
-
-After creating a TileUpdateManager, a TextureStreamer, and a Streaming::Heap,
-use TileUpdateManager::CreateStreamingResource()
+Base class for StreamingResource
 =============================================================================*/
 
 #pragma once
@@ -119,7 +116,8 @@ namespace Streaming
         void ProcessFeedback(UINT64 in_frameFenceCompletedValue);
 
         // try to load/evict tiles. only queue evictions once per frame.
-        void QueueTiles();
+        // return true if tile upload requested
+        bool QueueTiles();
 
         bool IsStale()
         {
@@ -136,7 +134,7 @@ namespace Streaming
 
     protected:
         // object that streams data from a file
-        std::unique_ptr<Streaming::XeTexture> m_pTextureStreamer;
+        std::unique_ptr<Streaming::XeTexture> m_pTextureFileInfo;
         std::unique_ptr<Streaming::InternalResources> m_resources;
         std::unique_ptr<Streaming::FileHandle> m_pFileHandle;
         const std::wstring m_filename;
@@ -265,8 +263,6 @@ namespace Streaming
 
         std::vector<D3D12_TILED_RESOURCE_COORDINATE> m_pendingTileLoads;
 
-        std::vector<BYTE> m_paddedPackedMips;
-
         //--------------------------------------------------------
         // for public interface
         //--------------------------------------------------------
@@ -286,6 +282,8 @@ namespace Streaming
         UINT8 m_maxMip;
         std::vector<BYTE, Streaming::AlignedAllocator<BYTE>> m_minMipMap; // local version of min mip map, rectified in UpdateMinMipMap()
 
+        // bytes for packed mips
+        std::vector<BYTE> m_packedMips;
     private:
         // non-packed mip copy complete notification
         std::atomic<bool> m_tileResidencyChanged{ false };
@@ -319,7 +317,8 @@ namespace Streaming
 
         void QueuePendingTileLoads(Streaming::UpdateList* out_pUpdateList); // returns # tiles queued
 
-        void PadPackedMips(ID3D12Device* in_pDevice);
+        void LoadPackedMips();
+        void PadPackedMips();
 
         // used by QueueEviction()
         bool m_refCountsZero{ true };

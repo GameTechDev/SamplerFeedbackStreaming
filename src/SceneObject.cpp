@@ -38,8 +38,8 @@
 #include "SceneObject.h"
 #include "SharedConstants.h"
 #include "Scene.h"
-
 #include "TerrainGenerator.h"
+#include "AssetUploader.h"
 
 //-------------------------------------------------------------------------
 // constructor
@@ -234,11 +234,12 @@ void SceneObjects::BaseObject::CreatePipelineState(
 //-------------------------------------------------------------------------
 std::wstring SceneObjects::BaseObject::GetAssetFullPath(const std::wstring& in_filename)
 {
-    constexpr size_t PATHBUFFERSIZE = MAX_PATH * 4;
-    TCHAR buffer[PATHBUFFERSIZE];
-    GetAssetsPath(buffer, PATHBUFFERSIZE);
-    std::wstring directory = buffer;
-    return directory + in_filename;
+    WCHAR buffer[MAX_PATH];
+    GetModuleFileName(nullptr, buffer, MAX_PATH);
+    std::wstring exePath(buffer);
+    exePath.resize(exePath.rfind('\\') + 1);
+    std::wstring path = exePath + in_filename;
+    return path;
 }
 
 //-------------------------------------------------------------------------
@@ -430,39 +431,12 @@ private:
     D3D12_RESOURCE_STATES m_finalState;
 };
 
-
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-void SceneObjects::InitializeBuffer(ID3D12Resource* out_pBuffer,
-    const void* in_pBytes, size_t in_numBytes, D3D12_RESOURCE_STATES in_finalState)
-{
-    D3D12_RESOURCE_DESC desc = out_pBuffer->GetDesc();
-
-    Staging staging(out_pBuffer, desc, in_finalState);
-
-    D3D12_SUBRESOURCE_DATA data{ in_pBytes, LONG_PTR(in_numBytes), LONG_PTR(in_numBytes) };
-
-    UpdateSubresources<1>(staging.GetCommandList(), out_pBuffer, staging.GetResource(), 0, 0, 1, &data);
-}
-
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-void SceneObjects::InitializeTexture(ID3D12Resource* out_pTexture,
-    size_t in_numSubResources, const D3D12_SUBRESOURCE_DATA* in_pSubresources, D3D12_RESOURCE_STATES in_finalState)
-{
-    UINT64 nStageSize = GetRequiredIntermediateSize(out_pTexture, 0, static_cast<UINT>(in_numSubResources));
-    D3D12_RESOURCE_DESC desc = CD3DX12_RESOURCE_DESC::Buffer(nStageSize);
-
-    Staging staging(out_pTexture, desc, in_finalState);
-
-    UpdateSubresources(staging.GetCommandList(), out_pTexture, staging.GetResource(), 0, 0, static_cast<UINT>(in_numSubResources), in_pSubresources);
-}
-
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 void SceneObjects::CreateSphereResources(
     ID3D12Resource** out_ppVertexBuffer, ID3D12Resource** out_ppIndexBuffer,
-    ID3D12Device* in_pDevice, const SphereGen::Properties& in_sphereProperties)
+    ID3D12Device* in_pDevice, const SphereGen::Properties& in_sphereProperties,
+    AssetUploader& in_assetUploader)
 {
     std::vector<SphereGen::Vertex> sphereVerts;
     std::vector<UINT32> sphereIndices;
@@ -483,8 +457,9 @@ void SceneObjects::CreateSphereResources(
             nullptr,
             IID_PPV_ARGS(out_ppVertexBuffer)));
 
-        InitializeBuffer(*out_ppVertexBuffer, sphereVerts.data(),
-            vertexBufferSize, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+        auto* pRequest = new AssetUploader::Request(*out_ppVertexBuffer, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+        memcpy(pRequest->GetBuffer().data(), sphereVerts.data(), vertexBufferSize);
+        in_assetUploader.SubmitRequest(pRequest);
     }
 
     // build index buffer
@@ -501,15 +476,16 @@ void SceneObjects::CreateSphereResources(
             nullptr,
             IID_PPV_ARGS(out_ppIndexBuffer)));
 
-        InitializeBuffer(*out_ppIndexBuffer, sphereIndices.data(),
-            indexBufferSize, D3D12_RESOURCE_STATE_INDEX_BUFFER);
+        auto* pRequest = new AssetUploader::Request(*out_ppIndexBuffer, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER);
+        memcpy(pRequest->GetBuffer().data(), sphereIndices.data(), indexBufferSize);
+        in_assetUploader.SubmitRequest(pRequest);
     }
 }
 
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 void SceneObjects::CreateSphere(SceneObjects::BaseObject* out_pObject,
-    ID3D12Device* in_pDevice,
+    ID3D12Device* in_pDevice, AssetUploader& in_assetUploader,
     const SphereGen::Properties& in_sphereProperties,
     UINT in_numLods)
 {
@@ -530,7 +506,7 @@ void SceneObjects::CreateSphere(SceneObjects::BaseObject* out_pObject,
 
         ID3D12Resource* pVertexBuffer{ nullptr };
         ID3D12Resource* pIndexBuffer{ nullptr };
-        CreateSphereResources(&pVertexBuffer, &pIndexBuffer, in_pDevice, sphereProperties);
+        CreateSphereResources(&pVertexBuffer, &pIndexBuffer, in_pDevice, sphereProperties, in_assetUploader);
 
         out_pObject->SetGeometry(
             pVertexBuffer, (UINT)sphereVerts.size(), (UINT)sizeof(SphereGen::Vertex),
@@ -546,7 +522,8 @@ SceneObjects::Terrain::Terrain(const std::wstring& in_filename,
     ID3D12Device* in_pDevice,
     UINT in_sampleCount,
     D3D12_CPU_DESCRIPTOR_HANDLE in_srvBaseCPU,
-    const CommandLineArgs& in_args) :
+    const CommandLineArgs& in_args,
+    AssetUploader& in_assetUploader) :
     BaseObject(in_filename, in_pTileUpdateManager, in_pStreamingHeap,
         in_pDevice, in_srvBaseCPU, nullptr)
 {
@@ -581,14 +558,15 @@ SceneObjects::Terrain::Terrain(const std::wstring& in_filename,
             nullptr,
             IID_PPV_ARGS(&pVertexBuffer)));
 
-        InitializeBuffer(pVertexBuffer, vertices.data(), vertexBufferSize, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+        AssetUploader::Request* pRequest = new AssetUploader::Request(pVertexBuffer, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+        // mesh generator contains an array. would have been nice to swap, but it doesn't work that way
+        memcpy(pRequest->GetBuffer().data(), mesh.GetVertices().data(), vertexBufferSize);
+        in_assetUploader.SubmitRequest(pRequest);
     }
 
     // build index buffer
     {
-        std::vector<UINT> indices(numIndices);
-        mesh.GenerateIndices(&(indices[0]));
-        UINT indexBufferSize = numIndices * sizeof(indices[0]);
+        UINT indexBufferSize = numIndices * sizeof(UINT);
 
         const auto heapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
         const auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(indexBufferSize);
@@ -600,7 +578,9 @@ SceneObjects::Terrain::Terrain(const std::wstring& in_filename,
             nullptr,
             IID_PPV_ARGS(&pIndexBuffer)));
 
-        InitializeBuffer(pIndexBuffer, indices.data(), indexBufferSize, D3D12_RESOURCE_STATE_INDEX_BUFFER);
+        AssetUploader::Request* pRequest = new AssetUploader::Request(pIndexBuffer, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER);
+        mesh.GenerateIndices((UINT*)pRequest->GetBuffer().data());
+        in_assetUploader.SubmitRequest(pRequest);
     }
 
     SetGeometry(pVertexBuffer, (UINT)mesh.GetVertices().size(), (UINT)sizeof(TerrainGenerator::Vertex),
@@ -614,7 +594,7 @@ SceneObjects::Terrain::Terrain(const std::wstring& in_filename,
 SceneObjects::Planet::Planet(const std::wstring& in_filename,
     TileUpdateManager* in_pTileUpdateManager,
     StreamingHeap* in_pStreamingHeap,
-    ID3D12Device* in_pDevice,
+    ID3D12Device* in_pDevice, AssetUploader& in_assetUploader,
     UINT in_sampleCount,
     D3D12_CPU_DESCRIPTOR_HANDLE in_srvBaseCPU,
     const SphereGen::Properties& in_sphereProperties) :
@@ -626,7 +606,7 @@ SceneObjects::Planet::Planet(const std::wstring& in_filename,
     CreatePipelineState(L"terrainPS.cso", L"terrainPS-FB.cso", L"terrainVS.cso", in_pDevice, in_sampleCount, rasterizerDesc, depthStencilDesc);
 
     const UINT numLevelsOfDetail = SharedConstants::NUM_SPHERE_LEVELS_OF_DETAIL;
-    CreateSphere(this, in_pDevice, in_sphereProperties, numLevelsOfDetail);
+    CreateSphere(this, in_pDevice, in_assetUploader, in_sphereProperties, numLevelsOfDetail);
 
     float d = SharedConstants::SPHERE_SCALE * 200;
     GetModelMatrix() = DirectX::XMMatrixScaling(d, d, d);
@@ -655,7 +635,7 @@ SceneObjects::Planet::Planet(const std::wstring& in_filename,
 SceneObjects::Sky::Sky(const std::wstring& in_filename,
     TileUpdateManager* in_pTileUpdateManager,
     StreamingHeap* in_pStreamingHeap,
-    ID3D12Device* in_pDevice,
+    ID3D12Device* in_pDevice, AssetUploader& in_assetUploader,
     UINT in_sampleCount,
     D3D12_CPU_DESCRIPTOR_HANDLE in_srvBaseCPU) :
     BaseObject(in_filename, in_pTileUpdateManager, in_pStreamingHeap,
@@ -672,7 +652,7 @@ SceneObjects::Sky::Sky(const std::wstring& in_filename,
     sphereProperties.m_numLong = 80;
     sphereProperties.m_numLat = 81;
     sphereProperties.m_mirrorU = true;
-    CreateSphere(this, in_pDevice, sphereProperties);
+    CreateSphere(this, in_pDevice, in_assetUploader, sphereProperties);
     float d = SharedConstants::SPHERE_SCALE * 200;
     GetModelMatrix() = DirectX::XMMatrixScaling(d, d, d);
 }

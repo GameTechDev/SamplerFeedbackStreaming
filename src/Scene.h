@@ -27,11 +27,10 @@
 #pragma once
 
 #include "CommandLineArgs.h"
-#include "DXSampleHelper.h"
 #include "SharedConstants.h"
 #include "SceneObject.h"
-
 #include "FrameEventTracing.h"
+#include "AssetUploader.h"
 
 class Scene
 {
@@ -253,4 +252,6 @@ private:
 
     void StartScene();
     void DrawUI(float in_cpuProcessFeedbackTime);
+
+    AssetUploader m_assetUploader;
 };
