@@ -18,8 +18,6 @@ namespace Streaming
 
         static IDStorageFile* GetFileHandle(const FileHandle* in_pHandle);
 
-        virtual bool GetCompleted(const Streaming::UpdateList& in_updateList) const override;
-
         // for DS, we don't have a way to batch batches
         // this allows the calling thread to periodically request Submit() vs. every enqueue
         virtual void Signal() override;

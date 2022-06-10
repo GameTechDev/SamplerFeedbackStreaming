@@ -44,8 +44,8 @@ ArgParser argParser;
 argParser.AddArg(L"gravity", m_float);
 argParser.AddArg(L"upisdown", m_flipGravity); // inverts m_flipGravity
 argParser.AddArg(L"downisup", L"whoops!", m_flipGravity); // inverts current value, includes help message
-argParser.AddArg(L"dothing", [=](std::wstring) { DoTheThing(); } ); // call custom function to handle param
-argParser.AddArg(L"option", L"a function", [=](std::wstring) { DoOption(); } ); // custom function with help message
+argParser.AddArg(L"dothing", [&]() { DoTheThing(); } ); // call custom function to handle param
+argParser.AddArg(L"option", L"a function", [&]() { DoOption(GetNextArg()); } ); // custom function with help message that reads the next arg from the command line
 argParser.Parse();
 
 after running, m_float=20.27 and m_flipGravity=true
@@ -75,8 +75,10 @@ after running, m_float=20.27 and m_flipGravity=true
 class ArgParser
 {
 public:
-    // custom function to handle value passed to command line arg
-    typedef std::function<void(std::wstring)> ArgFunction;
+    // custom function to perform for a command line arg
+    // use GetNextArg() to read the subsequent command line argument(s) as needed
+    typedef std::function<void()> ArgFunction;
+    static std::wstring GetNextArg();
 
     void AddArg(std::wstring token, ArgFunction f);
     void AddArg(std::wstring token, std::wstring description, ArgFunction f);
@@ -89,46 +91,69 @@ private:
     class ArgPair
     {
     public:
-        ArgPair(std::wstring s, std::function<void(std::wstring)> f) : m_arg(s), m_func(f)
+        ArgPair(std::wstring s, ArgFunction f) : m_arg(s), m_func(f)
         {
             for (auto& c : m_arg) { c = ::towlower(c); }
         }
-        void TestEqual(std::wstring in_arg, const WCHAR* in_value)
+        void TestEqual(std::wstring in_arg)
         {
             for (auto& c : in_arg) { c = ::towlower(c); }
             if (m_arg == in_arg)
             {
-                m_func(in_value);
+                m_func();
+                m_arg.clear(); // this argument has been consumed
             }
         }
-        const std::wstring& Get() { return m_arg; }
     private:
         std::wstring m_arg;
-        std::function<void(std::wstring)> m_func;
+        ArgFunction m_func;
     };
 
-    std::vector < ArgPair > m_args;
+    std::vector<ArgPair> m_args;
     std::wstringstream m_help;
 
-    template<typename T> void AddArg(std::wstring s, std::wstring d, std::function<void(std::wstring)> f, T& value)
+    template<typename T> void AddArg(std::wstring s, std::wstring d, ArgFunction f, T& value)
     {
         std::wstringstream w;
         w << ": " << d << " (default: " << value << ") ";
         AddArg(s, w.str().c_str(), f);;
     }
 
-    template<> void AddArg(std::wstring s, std::wstring d, std::function<void(std::wstring)> f, bool& value)
+    template<> void AddArg(std::wstring s, std::wstring d, ArgFunction f, bool& value)
     {
         std::wstringstream w;
         std::string b = value ? "True" : "False";
         w << ": " << d << " (default: " << b.c_str() << ") ";
         AddArg(s, w.str().c_str(), f);;
     }
+
+    // function to hold the static command line arguments array
+    static std::vector<std::wstring>& GetCmdLine()
+    {
+        static std::vector<std::wstring> m_commandLineArgs;
+        return m_commandLineArgs;
+    }
 };
 
 //-----------------------------------------------------------------------------
+// from GetCommandLine(), reversed to make iteration easy
 //-----------------------------------------------------------------------------
-void ArgParser::AddArg(std::wstring token, ArgFunction f)
+inline std::wstring ArgParser::GetNextArg()
+{
+    auto& args = GetCmdLine();
+    if (0 == args.size())
+    {
+        std::wcerr << "Not enough command line arguments\n";
+        exit(0);
+    }
+    std::wstring t = args.back();
+    args.resize(args.size() - 1);
+    return t;
+}
+
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+inline void ArgParser::AddArg(std::wstring token, ArgFunction f)
 {
     AddArg(token, L"", f);
 }
@@ -145,6 +170,13 @@ inline void ArgParser::Parse()
 {
     int numArgs = 0;
     LPWSTR* cmdLine = CommandLineToArgvW(GetCommandLineW(), &numArgs);
+
+    auto& args = GetCmdLine();
+    args.resize(numArgs - 1); // don't need arg 0, that's just the exe path
+    for (int i = 1; i < numArgs; i++)
+    {
+        args[numArgs - i - 1] = cmdLine[i];
+    }
 
     if ((2 == numArgs) && (std::wstring(L"?") == cmdLine[1]))
     {
@@ -166,21 +198,22 @@ inline void ArgParser::Parse()
         exit(0);
     }
 
-    for (int i = 0; i < numArgs; i++)
+    while (args.size())
     {
+        std::wstring s = GetNextArg();
         for (auto& arg : m_args)
         {
-            arg.TestEqual(cmdLine[i], (i < numArgs - 1) ? cmdLine[i + 1] : L"");
+            arg.TestEqual(s);
         }
     }
 }
 
-template<> inline void ArgParser::AddArg(std::wstring arg, std::wstring desc, long& value) { AddArg(arg, desc, [&](std::wstring s) { value = std::stol(s); }, value); }
-template<> inline void ArgParser::AddArg(std::wstring arg, std::wstring desc, UINT& value) { AddArg(arg, desc, [&](std::wstring s) { value = std::stoul(s); }, value); }
-template<> inline void ArgParser::AddArg(std::wstring arg, std::wstring desc, int& value) { AddArg(arg, desc, [&](std::wstring s) { value = std::stoi(s); }, value); }
-template<> inline void ArgParser::AddArg(std::wstring arg, std::wstring desc, float& value) { AddArg(arg, desc, [&](std::wstring s) { value = std::stof(s); }, value); }
-template<> inline void ArgParser::AddArg(std::wstring arg, std::wstring desc, bool& value) { AddArg(arg, desc, [&](std::wstring s) { value = !value; }, value); }
-template<> inline void ArgParser::AddArg(std::wstring arg, std::wstring desc, std::wstring& value) { AddArg(arg, desc, [&](std::wstring s) { value = s; }, value); }
-template<> inline void ArgParser::AddArg(std::wstring arg, std::wstring desc, double& value) { AddArg(arg, desc, [&](std::wstring s) { value = std::stod(s); }, value); }
-template<> inline void ArgParser::AddArg(std::wstring arg, std::wstring desc, INT64& value) { AddArg(arg, desc, [&](std::wstring s) { value = std::stoll(s); }, value); }
-template<> inline void ArgParser::AddArg(std::wstring arg, std::wstring desc, UINT64& value) { AddArg(arg, desc, [&](std::wstring s) { value = std::stoull(s); }, value); }
+template<> inline void ArgParser::AddArg(std::wstring arg, std::wstring desc, long& value) { AddArg(arg, desc, [&]() { value = std::stol(GetNextArg()); }, value); }
+template<> inline void ArgParser::AddArg(std::wstring arg, std::wstring desc, UINT& value) { AddArg(arg, desc, [&]() { value = std::stoul(GetNextArg()); }, value); }
+template<> inline void ArgParser::AddArg(std::wstring arg, std::wstring desc, int& value) { AddArg(arg, desc, [&]() { value = std::stoi(GetNextArg()); }, value); }
+template<> inline void ArgParser::AddArg(std::wstring arg, std::wstring desc, float& value) { AddArg(arg, desc, [&]() { value = std::stof(GetNextArg()); }, value); }
+template<> inline void ArgParser::AddArg(std::wstring arg, std::wstring desc, bool& value) { AddArg(arg, desc, [&]() { value = !value; }, value); }
+template<> inline void ArgParser::AddArg(std::wstring arg, std::wstring desc, std::wstring& value) { AddArg(arg, desc, [&]() { value = GetNextArg(); }, value); }
+template<> inline void ArgParser::AddArg(std::wstring arg, std::wstring desc, double& value) { AddArg(arg, desc, [&]() { value = std::stod(GetNextArg()); }, value); }
+template<> inline void ArgParser::AddArg(std::wstring arg, std::wstring desc, INT64& value) { AddArg(arg, desc, [&]() { value = std::stoll(GetNextArg()); }, value); }
+template<> inline void ArgParser::AddArg(std::wstring arg, std::wstring desc, UINT64& value) { AddArg(arg, desc, [&]() { value = std::stoull(GetNextArg()); }, value); }

@@ -122,14 +122,15 @@ namespace WindowCapture
         in_pQ->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
 
         HANDLE renderFenceEvent = ::CreateEvent(nullptr, FALSE, FALSE, nullptr);
-        if (renderFenceEvent == nullptr)
+        if (NULL == renderFenceEvent)
         {
             ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
+            exit(-1);
         }
 
         ThrowIfFailed(in_pQ->Signal(renderFence.Get(), 1));
         ThrowIfFailed(renderFence->SetEventOnCompletion(1, renderFenceEvent));
-        WaitForSingleObject(renderFenceEvent, INFINITE);
+        ::WaitForSingleObject(renderFenceEvent, INFINITE);
         ::CloseHandle(renderFenceEvent);
 
         BYTE* pData = nullptr;

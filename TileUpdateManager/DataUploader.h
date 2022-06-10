@@ -50,8 +50,7 @@ namespace Streaming
         DataUploader(
             ID3D12Device* in_pDevice,
             UINT in_maxCopyBatches,                     // maximum number of batches
-            UINT in_maxTileCopiesPerBatch,              // batch size. a small number, like 32
-            UINT in_maxTileCopiesInFlight,              // upload buffer size. 1024 would become a 64MB upload buffer
+            UINT in_stagingBufferSizeMB,                // upload buffer size
             UINT in_maxTileMappingUpdatesPerApiCall     // some HW/drivers seem to have a limit
         );
         ~DataUploader();
@@ -90,12 +89,12 @@ namespace Streaming
 
         UINT GetTotalNumUploads() const { return m_numTotalUploads; }
         UINT GetTotalNumEvictions() const { return m_numTotalEvictions; }
+        float GetApproximateTileCopyLatency() const { return m_pFenceThreadTimer->GetSecondsFromDelta(m_totalTileCopyLatency); } // sum of per-tile latencies so far
 
         void SetVisualizationMode(UINT in_mode) { m_pFileStreamer->SetVisualizationMode(in_mode); }
     private:
-        // affects upload buffer size. 1024 would become a 64MB upload buffer
-        const UINT m_maxTileCopiesInFlight{ 0 };
-        const UINT m_maxBatchSize{ 0 };
+        // upload buffer size
+        const UINT m_stagingBufferSizeMB{ 0 };
 
         D3D12GpuTimer m_gpuTimer;
         RawCpuTimer m_cpuTimer;
@@ -134,6 +133,7 @@ namespace Streaming
         void FenceMonitorThread();
         std::thread m_fenceMonitorThread;
         Streaming::SynchronizationFlag m_monitorFenceFlag;
+        RawCpuTimer* m_pFenceThreadTimer{ nullptr }; // init timer on the thread that uses it. can't really worry about thread migration.
 
         void StartThreads();
         void StopThreads();
@@ -146,7 +146,8 @@ namespace Streaming
         ComPtr<IDStorageQueue> m_memoryQueue;
         ComPtr<ID3D12Fence> m_memoryFence;
         UINT64 m_memoryFenceValue{ 1 };
-        UINT64 LoadTexture(ID3D12Resource* in_pResource, const std::vector<BYTE>& in_paddedData, UINT in_firstSubresource);
+        UINT64 LoadTexture(ID3D12Resource* in_pResource, UINT in_firstSubresource,
+            const std::vector<BYTE>& in_paddedData, UINT in_uncompressedSize, UINT32 in_compressionFormat);
         void SubmitTextureLoads();
 
         //-------------------------------------------
@@ -155,5 +156,6 @@ namespace Streaming
         std::atomic<UINT> m_numTotalEvictions{ 0 };
         std::atomic<UINT> m_numTotalUploads{ 0 };
         std::atomic<UINT> m_numTotalUpdateListsProcessed{ 0 };
+        std::atomic<INT64> m_totalTileCopyLatency{ 0 }; // total approximate latency for all copies. divide by m_numTotalUploads then get the time with m_cpuTimer.GetSecondsFromDelta() 
     };
 }

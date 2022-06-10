@@ -530,7 +530,6 @@ bool Streaming::StreamingResourceBase::QueueTiles()
             else
             {
                 ASSERT(0 == pUpdateList->GetNumStandardUpdates());
-                ASSERT(0 == pUpdateList->GetNumPackedUpdates());
                 ASSERT(0 == pUpdateList->m_evictCoords.size());
 
                 m_pTileUpdateManager->FreeEmptyUpdateList(*pUpdateList);
@@ -592,10 +591,10 @@ void Streaming::StreamingResourceBase::QueuePendingTileEvictions(Streaming::Upda
     ASSERT(out_pUpdateList);
     ASSERT(m_pendingEvictions.GetReadyToEvict().size());
 
-    std::vector<D3D12_TILED_RESOURCE_COORDINATE>& evictions = m_pendingEvictions.GetReadyToEvict();
+    auto& pendingEvictions = m_pendingEvictions.GetReadyToEvict();
 
     UINT numDelayed = 0;
-    for (auto& coord : m_pendingEvictions.GetReadyToEvict())
+    for (auto& coord : pendingEvictions)
     {
         // if the heap index is valid, but the tile is not resident, there's a /pending load/
         // a pending load might be streaming OR it might be in the pending list
@@ -606,7 +605,7 @@ void Streaming::StreamingResourceBase::QueuePendingTileEvictions(Streaming::Upda
         // Hence, ProcessFeedback() must be called before this function
         ASSERT(0 == m_tileMappingState.GetRefCount(coord));
 
-       auto residency = m_tileMappingState.GetResidency(coord);
+        auto residency = m_tileMappingState.GetResidency(coord);
         if (TileMappingState::Residency::Resident == residency)
         {
             m_tileMappingState.SetEvicting(coord);
@@ -619,7 +618,7 @@ void Streaming::StreamingResourceBase::QueuePendingTileEvictions(Streaming::Upda
         // try again later
         else if (TileMappingState::Residency::Loading == residency)
         {
-            evictions[numDelayed] = coord;
+            pendingEvictions[numDelayed] = coord;
             numDelayed++;
         }
         // if evicting or not resident, drop
@@ -628,7 +627,7 @@ void Streaming::StreamingResourceBase::QueuePendingTileEvictions(Streaming::Upda
     }
 
     // replace the ready evictions with just the delayed evictions.
-    evictions.resize(numDelayed);
+    pendingEvictions.resize(numDelayed);
 }
 
 //-----------------------------------------------------------------------------
@@ -641,11 +640,8 @@ void Streaming::StreamingResourceBase::QueuePendingTileLoads(Streaming::UpdateLi
     ASSERT(out_pUpdateList);
     ASSERT(m_pHeap->GetAllocator().GetNumFree());
 
-    // clamp to maximum allowed in a batch
-    UINT maxCopies = std::min((UINT)m_pendingTileLoads.size(), m_pTileUpdateManager->GetMaxTileCopiesPerBatch());
-
     // clamp to heap availability
-    maxCopies = std::min(maxCopies, m_pHeap->GetAllocator().GetNumFree());
+    UINT maxCopies = std::min((UINT)m_pendingTileLoads.size(), m_pHeap->GetAllocator().GetNumFree());
 
     UINT skippedIndex = 0;
     UINT numConsumed = 0;
@@ -666,10 +662,13 @@ void Streaming::StreamingResourceBase::QueuePendingTileLoads(Streaming::UpdateLi
         // only load if definitely not resident
         if (TileMappingState::Residency::NotResident == residency)
         {
+            UINT heapIndex = m_pHeap->GetAllocator().Allocate();
+
             m_tileMappingState.SetLoading(coord);
-            UINT& heapIndex = m_tileMappingState.GetHeapIndex(coord);
-            heapIndex = m_pHeap->GetAllocator().Allocate();
-            out_pUpdateList->AddUpdate(coord, heapIndex);
+            m_tileMappingState.GetHeapIndex(coord) = heapIndex;
+
+            out_pUpdateList->m_coords.push_back(coord);
+            out_pUpdateList->m_heapIndices.push_back(heapIndex);
 
             // limit # of copies in a single updatelist
             maxCopies--;
@@ -844,53 +843,18 @@ void Streaming::StreamingResourceBase::EvictionDelay::Rescue(const Streaming::St
 }
 
 //-----------------------------------------------------------------------------
-// pad packed mips according to copyable footprint requirements
-//-----------------------------------------------------------------------------
-void Streaming::StreamingResourceBase::PadPackedMips()
-{
-    UINT firstSubresource = m_resources->GetPackedMipInfo().NumStandardMips;
-    UINT numSubresources = m_resources->GetPackedMipInfo().NumPackedMips;
-    D3D12_RESOURCE_DESC desc = m_resources->GetTiledResource()->GetDesc();
-    UINT64 totalBytes = 0;
-
-    std::vector<D3D12_PLACED_SUBRESOURCE_FOOTPRINT> srcLayout(numSubresources);
-    std::vector<UINT> numRows(numSubresources);
-    std::vector<UINT64> rowSizeBytes(numSubresources);
-
-    m_pTileUpdateManager->GetDevice()->GetCopyableFootprints(&desc, firstSubresource, numSubresources,
-        0, srcLayout.data(), numRows.data(), rowSizeBytes.data(), &totalBytes);
-
-    std::vector<BYTE> paddedPackedMips(totalBytes);
-
-    BYTE* pDst = paddedPackedMips.data();
-    BYTE* pSrc = m_packedMips.data();
-
-    for (UINT i = 0; i < numSubresources; i++)
-    {
-        for (UINT r = 0; r < numRows[i]; r++)
-        {
-            memcpy(pDst, pSrc, rowSizeBytes[i]);
-            pDst += srcLayout[i].Footprint.RowPitch;
-            pSrc += rowSizeBytes[i];
-        }
-    }
-    m_packedMips.swap(paddedPackedMips);
-}
-
-//-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 void Streaming::StreamingResourceBase::LoadPackedMips()
 {
     // FIXME: future file format should contain padded packed mips to allow DS to load directly from disk to GPU
 
     UINT numBytes = 0;
-    UINT offset = m_pTextureFileInfo->GetPackedMipFileOffset(&numBytes);
+    UINT offset = m_pTextureFileInfo->GetPackedMipFileOffset(&numBytes, &m_packedMipsUncompressedSize);
     m_packedMips.resize(numBytes);
     std::ifstream inFile(m_filename.c_str(), std::ios::binary);
     inFile.seekg(offset);
     inFile.read((char*)m_packedMips.data(), numBytes);
     inFile.close();
-    PadPackedMips();
 }
 
 //-----------------------------------------------------------------------------
@@ -942,7 +906,6 @@ bool Streaming::StreamingResourceBase::InitPackedMips()
 
     if (pUpdateList)
     {
-        pUpdateList->AddPackedMipRequest(m_resources->GetPackedMipInfo().NumPackedMips);
         pUpdateList->m_heapIndices = m_packedMipHeapIndices;
         m_pTileUpdateManager->SubmitUpdateList(*pUpdateList);
 

@@ -8,6 +8,9 @@
   "anisotropy": 4, // sampler anisotropy
 
   "directStorage": true, // use directstorage vs. dedicated thread with ReadFile() and CopyTiles()
+  "stagingSizeMB": 256, // size of the staging buffer for DirectStorage or reference streaming code
+
+  "addAliasingBarriers": false, //// adds a barrier for each streaming resource: alias(nullptr, pResource)
 
   "adapter": "", // in a multi-adapter system, searches description for substring ignoring case e.g. "intel"
 
@@ -23,17 +26,6 @@
   "maxNumObjects": 985, // maximum total number of objects in the scene
   "numSpheres": 0, // number of objects besides the terrain
   "lightFromView": false, // light direction is look direction
-
-  // sphere geometry
-  "sphereLong": 64, // # steps vertically. must be even
-  "sphereLat": 65, // # steps around. must be odd
-
-  // terrain (heightmap) geometry
-  "terrainSideSize": 128, // resolution of terrain vertex buffer, e.g. 256x256 grid
-  "heightScale": 50,
-  "noiseScale": 25,
-  "octaves": 8,
-  "mountainSize": 4000,
 
   "maxFeedbackTime": 5.0, // maximum milliseconds for GPU to resolve feedback
 
@@ -52,11 +44,7 @@
   // note a command list can only target a single resource
   // based on guidance around maximum outstanding SSD read requests: drives aren't expected to benefit from lots of queueing
   // more queueing is counter-productive, as copies might arrive after the target is no longer visible
-  "numStreamingBatches": 128,
-
-  // the maximum number of tile copies in a single command list
-  // a larger value allows the system to absorb a big change with a single UpdateList
-  "streamingBatchSize": 64,
+  "numStreamingBatches": 64,
 
   // affects size of gpu upload buffer, that is, staging between file read and gpu copy
   // uploads should move fast, so it should be hard to hit even a small value.
@@ -67,10 +55,19 @@
 
   "waitForAssetLoad": false,
 
-  "addAliasingBarriers": false, //// adds a barrier for each streaming resource: alias(nullptr, pResource)
-
   "timingStart": 0, // start recording statistics this frame
   "timingStop": 0, // stop recording statistics this frame
   "timingFileFrames": "", // file name for per-frame statistics. no statistics unless set. ".csv" will be appended
-  "exitImageFile": "" // if set, outputs final image on exit. extension (e.g. .png) will be appended
+  "exitImageFile": "", // if set, outputs final image on exit. extension (e.g. .png) will be appended
+
+  // sphere geometry
+  "sphereLong": 64, // # steps vertically. must be even
+  "sphereLat": 65, // # steps around. must be odd
+
+  // terrain (heightmap) geometry
+  "terrainSideSize": 128, // resolution of terrain vertex buffer, e.g. 256x256 grid
+  "heightScale": 50,
+  "noiseScale": 25,
+  "octaves": 8,
+  "mountainSize": 4000
 }

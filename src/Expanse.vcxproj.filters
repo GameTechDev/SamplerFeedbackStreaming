@@ -15,9 +15,6 @@
     <Filter Include="include">
       <UniqueIdentifier>{bcb9e86a-bb53-4591-9f4d-4b4750c97c11}</UniqueIdentifier>
     </Filter>
-    <Filter Include="media">
-      <UniqueIdentifier>{95fee67b-a66c-49dd-a19f-43e22f6ef6fb}</UniqueIdentifier>
-    </Filter>
     <Filter Include="scripts">
       <UniqueIdentifier>{62863df4-8463-4043-82e4-00ee2fa92921}</UniqueIdentifier>
     </Filter>
@@ -32,34 +29,30 @@
     <CopyFileToFolders Include="..\config\config.json">
       <Filter>config</Filter>
     </CopyFileToFolders>
-    <CopyFileToFolders Include="..\media\4ktiles.xet">
-      <Filter>media</Filter>
-    </CopyFileToFolders>
-    <CopyFileToFolders Include="..\scripts\convert.bat">
-      <Filter>scripts</Filter>
-    </CopyFileToFolders>
     <CopyFileToFolders Include="shaders\BufferViewer.hlsl">
       <Filter>shaders</Filter>
     </CopyFileToFolders>
     <CopyFileToFolders Include="shaders\GetLodVisualizationColor.h">
       <Filter>shaders</Filter>
     </CopyFileToFolders>
-    <CopyFileToFolders Include="..\config\fragmentationWA.json" />
-    <CopyFileToFolders Include="..\media\heic0707a-4k.xet" />
-    <CopyFileToFolders Include="..\media\potw2039a-4k.xet" />
-    <CopyFileToFolders Include="..\scripts\demo-hubble.bat">
-      <Filter>Source Files</Filter>
+    <CopyFileToFolders Include="..\config\fragmentationWA.json">
+      <Filter>config</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="shaders\TextureViewer.hlsl">
+      <Filter>shaders</Filter>
     </CopyFileToFolders>
     <CopyFileToFolders Include="..\scripts\demo.bat">
-      <Filter>Source Files</Filter>
+      <Filter>scripts</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="..\scripts\demo-hubble.bat">
+      <Filter>scripts</Filter>
     </CopyFileToFolders>
     <CopyFileToFolders Include="..\scripts\profile.bat">
-      <Filter>Source Files</Filter>
+      <Filter>scripts</Filter>
     </CopyFileToFolders>
     <CopyFileToFolders Include="..\scripts\stress.bat">
-      <Filter>Source Files</Filter>
+      <Filter>scripts</Filter>
     </CopyFileToFolders>
-    <CopyFileToFolders Include="shaders\TextureViewer.hlsl" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="BufferViewer.cpp">
@@ -159,6 +152,9 @@
     </ClInclude>
     <ClInclude Include="..\include\WindowCapture.h">
       <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="AssetUploader.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

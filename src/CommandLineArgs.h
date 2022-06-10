@@ -81,6 +81,7 @@ struct CommandLineArgs
     std::wstring m_adapterDescription;  // e.g. "intel", will pick the GPU with this substring in the adapter description (not case sensitive)
 
     bool m_useDirectStorage{ false };
+    UINT m_stagingSizeMB{ 64 };         // size of the staging buffer for DirectStorage or reference streaming code
 
     //-------------------------------------------------------
     // state that is not settable from command line:
@@ -102,9 +103,7 @@ struct CommandLineArgs
     bool m_showFeedbackViewer{ true }; // toggle just the raw feedback view in the feedback viewer
     UINT m_statisticsNumFrames{ 30 };
     bool m_cameraUpLock{ true };       // navigation locks "up" to be y=1
-    UINT m_numStreamingBatches{ 128 }; // # UpdateLists
-    UINT m_streamingBatchSize{ 32 };   // max tile copies per updatelist
-    UINT m_maxTilesInFlight{ 512 };    // size of upload buffer (in tiles), does not apply to DS
+    UINT m_numStreamingBatches{ 128 }; // number of in-flight batches of updates (UpdateLists)
 
     // planet parameters
     UINT m_sphereLong{ 128 }; // # steps vertically. must be even

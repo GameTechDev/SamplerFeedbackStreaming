@@ -32,55 +32,58 @@
 File Layout:
 
 - Header
-- Array of Per-tile info: file offset, # bytes, index into metadata array
-- Array of Per-metadata blob info: file offset, size of metadata blob
-- Metadata blobs, each blob is aligned
-- Texture Data, each tile is aligned
-- packed mips, treat as not aligned
+- Array of Per-tile info: file offset, # bytes.
+    note all uncompressed tiles are 64KB. if the number of bytes = 64KB, then the tile is assumed uncompressed
+- Texture Data. tiles are not aligned
+- packed mips. the data is unaligned, but the contents have been pre-padded
 
 -----------------------------------------------------------------------------*/
 struct XetFileHeader
 {
     static UINT GetMagic() { return 0x20544558; }
-    static UINT GetAlignment() { return 4096; }
-    static UINT GetTileSize() { return 65536; }
-    static UINT GetVersion() { return 2; }
+    static UINT GetTileSize() { return 65536; } // uncompressed size
+    static UINT GetVersion() { return 3; }
 
     UINT m_magic{ GetMagic() };
     UINT m_version{ GetVersion() };
     DirectX::DDS_HEADER m_ddsHeader;
     DirectX::DDS_HEADER_DXT10 m_extensionHeader;
 
-    UINT m_numMetadataBlobs;
+    UINT32 m_compressionFormat{ 0 }; // 0 is no compression
 
     struct MipInfo
     {
-        UINT m_numStandardMips;
-        UINT m_numPackedMips;
-        UINT m_numTilesForPackedMips;
-        UINT m_numTilesForStandardMips; // the number of TileData[] entries after the header
+        UINT32 m_numStandardMips;
+        UINT32 m_numTilesForStandardMips; // the TileData[] array has # entries = (m_numTilesForStandardMips + 1)
+        UINT32 m_numPackedMips;
+        UINT32 m_numTilesForPackedMips;   // only 1 entry for all packed mips at TileData[m_numTilesForStandardMips]
+        UINT32 m_numUncompressedBytesForPackedMips; // if this equals the size at TileData[m_numTilesForStandardMips], then not compressed
     };
     MipInfo m_mipInfo;
 
     // use subresource tile dimensions to generate linear tile index
     struct StandardMipInfo
     {
-        UINT m_widthTiles;
-        UINT m_heightTiles;
-        UINT m_depthTiles;
+        UINT32 m_widthTiles;
+        UINT32 m_heightTiles;
+        UINT32 m_depthTiles;
 
         // convenience value, can be computed from sum of previous subresource dimensions
-        UINT m_subresourceTileIndex;
+        UINT32 m_subresourceTileIndex;
     };
 
-    // if required, compute dimensions by shifting mip 0 dimensions by mip level
+    // properties of the uncompressed packed mips
+    // all packed mips are padded and treated as a single entity
     struct PackedMipInfo
     {
-        UINT m_rowPitch;
-        UINT m_slicePitch;
-        UINT m_fileOffset;
+        UINT32 m_rowPitch;   // before padding
+        UINT32 m_slicePitch; // before padding
+
+        UINT32 m_rowPitchPadded;   // after padding, from footprint
+        UINT32 m_slicePitchPadded; // after padding, from footprint
     };
 
+    // array SubresourceInfo[m_ddsHeader.mipMapCount]
     struct SubresourceInfo
     {
         union
@@ -90,26 +93,15 @@ struct XetFileHeader
         };
     };
 
-    // indices < m_numStandardMips are standard mips, >= are packed mips
-    SubresourceInfo m_subresourceInfo[16];
-
-    // array TileData[m_numTilesForStandardMips] for each tile
+    // array TileData[m_numTilesForStandardMips + 1], 1 entry for each tile plus a final entry for packed mips
     struct TileData
     {
-        UINT m_offset;          // file offset to tile data
-        UINT m_numBytes;        // # bytes for the tile
-        UINT m_metadataIndex;   // index of metadata to use
+        UINT32 m_offset;          // file offset to tile data
+        UINT32 m_numBytes;        // # bytes for the tile
     };
 
-    // array of MetaData[m_numMetadataBlobs] (may be size 0)
-    struct MetaData
-    {
-        UINT m_offset;          // file offset to metadata blob
-        UINT m_numBytes;        // size of the metadata blob
-    };
-
-    // metadata here (aligned)
-    // tile data here (aligned)
-
-    // packed mip data from m_packedMipInfo.m_fileOffset until EOF
+    // arrays for file lookup start after sizeof(XetFileHeader)
+    // 1st: array SubresourceInfo[m_ddsHeader.mipMapCount]
+    // 2nd: array TileData[m_numTilesForStandardMips + 1]
+    // 3rd: packed mip data can be found at TileData[m_numTilesForStandardMips].m_offset TileData[m_numTilesForStandardMips].m_numBytes
 };

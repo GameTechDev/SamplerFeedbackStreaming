@@ -46,5 +46,6 @@
 #include <fstream>
 #include <algorithm>
 #include <thread>
+#include <filesystem>
 
 #include "d3dx12.h"

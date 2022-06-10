@@ -134,21 +134,14 @@ struct TileUpdateManagerDesc
     // maximum number of in-flight batches
     UINT m_maxNumCopyBatches{ 128 };
 
-    // limit the number of tile uploads per batch. Multiple batches can be submitted per frame
-    UINT m_maxTileCopiesPerBatch{ 32 };
-
-    // affects size of gpu upload buffer, that is, staging between file read and gpu copy
-    // uploads should move fast, so it should be hard to hit even a small value.
-    // 1024 would become a 64MB upload buffer
-    UINT m_maxTileCopiesInFlight{ 512 };
+    // size of the staging buffer for DirectStorage or reference streaming code
+    UINT m_stagingBufferSizeMB{ 64 };
 
     // the following is product dependent (some HW/drivers seem to have a limit)
     UINT m_maxTileMappingUpdatesPerApiCall{ 512 };
 
     // need the swap chain count so we can create per-frame upload buffers
     UINT m_swapChainBufferCount{ 2 };
-
-    UINT m_timingNumBatchesToCapture{ 512 };
 
     // Aliasing barriers are unnecessary, as draw commands only access modified resources after a fence has signaled on the copy queue
     // Note it is also theoretically possible for tiles to be re-assigned while a draw command is executing
@@ -243,12 +236,14 @@ public:
     //--------------------------------------------
     // for visualization
     //--------------------------------------------
+    void SetVisualizationMode(UINT in_mode);
+
     float GetGpuStreamingTime() const;
     float GetCpuProcessFeedbackTime(); // returns time since last query. expected usage is once per frame.
 
     UINT GetTotalNumUploads() const;
     UINT GetTotalNumEvictions() const;
-    void SetVisualizationMode(UINT in_mode);
+    float GetTotalTileCopyLatency() const;
 private:
     TileUpdateManager(const TileUpdateManager&) = delete;
     TileUpdateManager(TileUpdateManager&&) = delete;

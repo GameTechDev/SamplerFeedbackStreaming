@@ -284,6 +284,7 @@ namespace Streaming
 
         // bytes for packed mips
         std::vector<BYTE> m_packedMips;
+        UINT m_packedMipsUncompressedSize{ 0 };
     private:
         // non-packed mip copy complete notification
         std::atomic<bool> m_tileResidencyChanged{ false };
@@ -318,7 +319,6 @@ namespace Streaming
         void QueuePendingTileLoads(Streaming::UpdateList* out_pUpdateList); // returns # tiles queued
 
         void LoadPackedMips();
-        void PadPackedMips();
 
         // used by QueueEviction()
         bool m_refCountsZero{ true };

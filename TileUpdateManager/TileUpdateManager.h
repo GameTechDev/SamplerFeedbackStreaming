@@ -72,7 +72,6 @@ namespace Streaming
         ID3D12Device8* GetDevice() const { return m_device.Get(); }
 
         UINT GetNumSwapBuffers() const { return m_numSwapBuffers; }
-        UINT GetMaxTileCopiesPerBatch() const { return m_maxTileCopiesPerBatch; }
 
         // stop tracking this StreamingResource. Called by its destructor
         void Remove(StreamingResourceBase* in_pResource)
@@ -202,7 +201,6 @@ namespace Streaming
         std::vector<CommandList> m_commandLists;
     private:
         const UINT m_maxTileMappingUpdatesPerApiCall;
-        const UINT m_maxTileCopiesPerBatch;
 
         ComPtr<ID3D12Device8> m_device;
 

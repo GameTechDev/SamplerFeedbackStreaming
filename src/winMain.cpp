@@ -81,7 +81,7 @@ struct MouseState
 {
     POINT pos{};
     POINT move{};
-    bool m_dragging{false};
+    bool m_dragging{ false };
 } g_mouseState;
 
 //-----------------------------------------------------------------------------
@@ -114,14 +114,17 @@ void AdjustArguments(CommandLineArgs& out_args)
             out_args.m_mediaDir += L'\\';
         }
 
-        // if the desired media path doesn't exist, try looking relative to the current directory
+        // if the desired media path doesn't exist, try looking relative to the executable
         if (!std::filesystem::exists(out_args.m_mediaDir))
         {
             WCHAR buffer[MAX_PATH];
             GetModuleFileName(nullptr, buffer, MAX_PATH);
-            std::wstring exePath(buffer);
-            exePath.resize(exePath.rfind('\\') + 1);
-            out_args.m_mediaDir = exePath + out_args.m_mediaDir;
+            std::filesystem::path exePath(buffer);
+            exePath.remove_filename().append(out_args.m_mediaDir);
+            if (std::filesystem::exists(exePath))
+            {
+                out_args.m_mediaDir = exePath;
+            }
         }
 
         if (std::filesystem::exists(out_args.m_mediaDir))
@@ -196,10 +199,10 @@ void ParseCommandLine(CommandLineArgs& out_args)
     argParser.AddArg(L"-rollerCoaster", out_args.m_cameraRollerCoaster);
     argParser.AddArg(L"-paintMixer", out_args.m_cameraPaintMixer);
 
-    argParser.AddArg(L"-visualizeMinMip", [&](std::wstring) { out_args.m_visualizeMinMip = true; });
+    argParser.AddArg(L"-visualizeMinMip", [&]() { out_args.m_visualizeMinMip = true; });
     argParser.AddArg(L"-hideFeedback", out_args.m_showFeedbackMaps);
-    argParser.AddArg(L"-hideUI", [&](std::wstring) { out_args.m_showUI = false; });
-    argParser.AddArg(L"-miniUI", [&](std::wstring) { out_args.m_uiModeMini = true; });
+    argParser.AddArg(L"-hideUI", [&]() { out_args.m_showUI = false; });
+    argParser.AddArg(L"-miniUI", [&]() { out_args.m_uiModeMini = true; });
     argParser.AddArg(L"-updateAll", out_args.m_updateEveryObjectEveryFrame);
     argParser.AddArg(L"-addAliasingBarriers", L"Add per-draw aliasing barriers to assist PIX analysis", out_args.m_addAliasingBarriers);
 
@@ -211,9 +214,9 @@ void ParseCommandLine(CommandLineArgs& out_args)
     argParser.AddArg(L"-waitForAssetLoad", L"stall animation & statistics until assets have minimally loaded", out_args.m_waitForAssetLoad);
     argParser.AddArg(L"-adapter", L"find an adapter containing this string in the description, ignoring case", out_args.m_adapterDescription);
 
-    argParser.AddArg(L"-directStorage", L"force enable DirectStorage", [&](std::wstring) { out_args.m_useDirectStorage = true; });
-    argParser.AddArg(L"-directStorageOff", L"force disable DirectStorage", [&](std::wstring) { out_args.m_useDirectStorage = false; });
-
+    argParser.AddArg(L"-directStorage", L"force enable DirectStorage", [&]() { out_args.m_useDirectStorage = true; });
+    argParser.AddArg(L"-directStorageOff", L"force disable DirectStorage", [&]() { out_args.m_useDirectStorage = false; });
+    argParser.AddArg(L"-stagingSizeMB", L"DirectStorage staging buffer size", out_args.m_stagingSizeMB);
     argParser.Parse();
 }
 
@@ -470,6 +473,7 @@ void LoadConfigFile(CommandLineArgs& out_args)
                 if (root.isMember("anisotropy")) out_args.m_anisotropy = root["anisotropy"].asUInt();
 
                 if (root.isMember("directStorage")) out_args.m_useDirectStorage = root["directStorage"].asBool();
+                if (root.isMember("stagingSizeMB")) out_args.m_stagingSizeMB = root["stagingSizeMB"].asUInt();
 
                 if (root.isMember("animationrate")) out_args.m_animationRate = root["animationrate"].asFloat();
                 if (root.isMember("cameraRate")) out_args.m_cameraAnimationRate = root["cameraRate"].asFloat();
@@ -497,10 +501,7 @@ void LoadConfigFile(CommandLineArgs& out_args)
                 if (root.isMember("heapSizeTiles")) out_args.m_streamingHeapSize = root["heapSizeTiles"].asUInt();
                 if (root.isMember("numHeaps")) out_args.m_numHeaps = root["numHeaps"].asUInt();
                 if (root.isMember("maxTileUpdatesPerApiCall")) out_args.m_maxTileUpdatesPerApiCall = root["maxTileUpdatesPerApiCall"].asUInt();
-
                 if (root.isMember("numStreamingBatches")) out_args.m_numStreamingBatches = root["numStreamingBatches"].asUInt();
-                if (root.isMember("streamingBatchSize")) out_args.m_streamingBatchSize = root["streamingBatchSize"].asUInt();
-                if (root.isMember("maxTilesInFlight")) out_args.m_maxTilesInFlight = root["maxTilesInFlight"].asUInt();
 
                 if (root.isMember("maxFeedbackTime")) out_args.m_maxGpuFeedbackTimeMs = root["maxFeedbackTime"].asFloat();
 

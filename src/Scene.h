@@ -248,6 +248,7 @@ private:
 
     void GatherStatistics(float in_cpuProcessFeedbackTime, float in_gpuProcessFeedbackTime);
     UINT m_startUploadCount{ 0 };
+    float m_totalTileLatency{ 0 }; // per-tile upload latency. NOT the same as per-UpdateList
     Timer m_cpuTimer;
 
     void StartScene();

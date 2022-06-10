@@ -169,6 +169,7 @@ float TileUpdateManager::GetCpuProcessFeedbackTime()
 // performance and visualization
 //-----------------------------------------------------------------------------
 float TileUpdateManager::GetGpuStreamingTime() const { return m_pDataUploader->GetGpuStreamingTime(); }
+float TileUpdateManager::GetTotalTileCopyLatency() const { return m_pDataUploader->GetApproximateTileCopyLatency(); }
 
 // the total time the GPU spent resolving feedback during the previous frame
 float TileUpdateManager::GetGpuTime() const { return m_gpuTimerResolve.GetTimes()[m_renderFrameIndex].first; }
@@ -304,7 +305,7 @@ TileUpdateManager::CommandLists TileUpdateManager::EndFrame()
         {
             m_gpuTimerResolve.BeginTimer(pCommandList, m_renderFrameIndex);
 
-            // transition all feeback resources UAV->RESOLVE_SOURCE
+            // transition all feedback resources UAV->RESOLVE_SOURCE
             // also transition the (non-opaque) resolved resources COPY_SOURCE->RESOLVE_DEST
             pCommandList->ResourceBarrier((UINT)m_barrierUavToResolveSrc.size(), m_barrierUavToResolveSrc.data());
             m_barrierUavToResolveSrc.clear();

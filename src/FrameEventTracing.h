@@ -59,6 +59,9 @@ public:
     FrameEventTracing(const std::wstring& in_fileName, const std::wstring& in_adapterDescription);
     virtual ~FrameEventTracing() {}
 
+    // pre-allocate the right amount of memory as an optimization when collecting statistics
+    void Reserve(UINT in_numExpectedEvents) { m_events.reserve(in_numExpectedEvents); }
+
     void Append(
         const RenderEventList& in_renderList,
         const UpdateEventList& in_updateList,
@@ -67,7 +70,8 @@ public:
         float in_cpuProcessFeedbackTime,
         float in_gpuProcessFeedbackTime)
     {
-        m_events.push_back({ in_renderList.GetLatest(), in_updateList.GetLatest(),
+        m_events.push_back({
+            in_renderList.GetLatest(), in_updateList.GetLatest(),
             in_numUploads, in_numEvictions,
             in_cpuProcessFeedbackTime, in_gpuProcessFeedbackTime, in_numFeedbackResolves });
     }

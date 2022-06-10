@@ -59,7 +59,7 @@ namespace Streaming
         };
         void SetVisualizationMode(UINT in_mode) { m_visualizationMode = (VisualizationMode)in_mode; }
 
-        virtual bool GetCompleted(const UpdateList& in_updateList) const = 0;
+        bool GetCompleted(const UpdateList& in_updateList) const;
     protected:
         // copy queue fence
         ComPtr<ID3D12Fence> m_copyFence;

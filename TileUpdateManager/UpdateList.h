@@ -77,16 +77,11 @@ namespace Streaming
         // tile evictions:
         std::vector<D3D12_TILED_RESOURCE_COORDINATE> m_evictCoords;
 
-        // packed mips:
-        UINT m_numPackedMips = 0;
-
         UINT GetNumStandardUpdates() const { return (UINT)m_coords.size(); }
-        UINT GetNumPackedUpdates() const { return m_numPackedMips; }
         UINT GetNumEvictions() const { return (UINT)m_evictCoords.size(); }
 
-        void AddPackedMipRequest(UINT in_numMips);
-        void AddUpdate(const D3D12_TILED_RESOURCE_COORDINATE& in_coord, UINT in_heapIndex);
-
         void Reset(Streaming::StreamingResourceDU* in_pStreamingResource);
+
+        INT64 m_copyLatencyTimer{ 0 }; // used only to get an approximate latency for tile copies
     };
 }

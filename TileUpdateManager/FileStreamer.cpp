@@ -27,6 +27,15 @@
 #include "pch.h"
 
 #include "FileStreamer.h"
+#include "UpdateList.h"
+
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+bool Streaming::FileStreamer::GetCompleted(const Streaming::UpdateList& in_updateList) const
+{
+    return in_updateList.m_copyFenceValue <= m_copyFence->GetCompletedValue();;
+}
+
 
 //-----------------------------------------------------------------------------
 // color lookup table

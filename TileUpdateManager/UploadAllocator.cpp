@@ -31,8 +31,8 @@
 //-----------------------------------------------------------------------------
 // allocates simply by increasing/decreasing an index into an array of available indices
 //-----------------------------------------------------------------------------
-Streaming::SimpleAllocator::SimpleAllocator(UINT in_maxNumTiles) :
-    m_index(0), m_heap(in_maxNumTiles)
+Streaming::SimpleAllocator::SimpleAllocator(UINT in_maxNumElements) :
+    m_index(0), m_heap(in_maxNumElements)
 {
     for (auto& i : m_heap)
     {
@@ -59,19 +59,29 @@ Streaming::SimpleAllocator::~SimpleAllocator()
 // input is array sized to receive tile indices
 // returns false and does no allocations if there wasn't space
 //-----------------------------------------------------------------------------
-bool Streaming::SimpleAllocator::Allocate(std::vector<UINT>& out_indices, UINT in_numTiles)
+bool Streaming::SimpleAllocator::Allocate(std::vector<UINT>& out_indices, UINT in_numIndices)
 {
     bool result = false;
 
-    if (m_index >= in_numTiles)
+    if (m_index >= in_numIndices)
     {
-        out_indices.resize(in_numTiles);
-        m_index -= in_numTiles;
-        memcpy(out_indices.data(), &m_heap[m_index], in_numTiles * sizeof(UINT));
+        out_indices.resize(in_numIndices);
+        m_index -= in_numIndices;
+        memcpy(out_indices.data(), &m_heap[m_index], in_numIndices * sizeof(UINT));
         result = true;
     }
 
     return result;
+}
+
+//-----------------------------------------------------------------------------
+// like above, but expects caller to have checked availability first and provided a safe destination
+//-----------------------------------------------------------------------------
+void Streaming::SimpleAllocator::Allocate(UINT* out_pIndices, UINT in_numIndices)
+{
+    ASSERT(m_index >= in_numIndices);
+    m_index -= in_numIndices;
+    memcpy(out_pIndices, &m_heap[m_index], in_numIndices * sizeof(UINT));
 }
 
 //-----------------------------------------------------------------------------
@@ -83,6 +93,16 @@ void Streaming::SimpleAllocator::Free(const std::vector<UINT>& in_indices)
     ASSERT((m_index + numIndices) <= (UINT)m_heap.size());
     memcpy(&m_heap[m_index], in_indices.data(), sizeof(UINT) * numIndices);
     m_index += numIndices;
+}
+
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+void Streaming::SimpleAllocator::Free(const UINT* in_pIndices, UINT in_numIndices)
+{
+    ASSERT(in_numIndices);
+    ASSERT((m_index + in_numIndices) <= (UINT)m_heap.size());
+    memcpy(&m_heap[m_index], in_pIndices, sizeof(UINT) * in_numIndices);
+    m_index += in_numIndices;
 }
 
 //-----------------------------------------------------------------------------

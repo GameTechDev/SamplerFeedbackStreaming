@@ -39,13 +39,11 @@
 Streaming::DataUploader::DataUploader(
     ID3D12Device* in_pDevice,
     UINT in_maxCopyBatches,                 // maximum number of batches
-    UINT in_maxTileCopiesPerBatch,          // batch size. a small number, like 32
-    UINT in_maxTileCopiesInFlight,          // upload buffer size. 1024 would become a 64MB upload buffer
+    UINT in_stagingBufferSizeMB,            // upload buffer size
     UINT in_maxTileMappingUpdatesPerApiCall // some HW/drivers seem to have a limit
 ) :
     m_updateLists(in_maxCopyBatches)
-    , m_maxTileCopiesInFlight(in_maxTileCopiesInFlight)
-    , m_maxBatchSize(in_maxTileCopiesPerBatch)
+    , m_stagingBufferSizeMB(in_stagingBufferSizeMB)
     , m_updateListFreeCount(in_maxCopyBatches)
     , m_gpuTimer(in_pDevice, in_maxCopyBatches, D3D12GpuTimer::TimerType::Copy)
     , m_mappingUpdater(in_maxTileMappingUpdatesPerApiCall)
@@ -94,7 +92,7 @@ void Streaming::DataUploader::InitDirectStorage(ID3D12Device* in_pDevice)
 #endif
     m_dsFactory->SetDebugFlags(debugFlags);
 
-    m_dsFactory->SetStagingBufferSize(DSTORAGE_STAGING_BUFFER_SIZE_32MB);
+    m_dsFactory->SetStagingBufferSize(m_stagingBufferSizeMB * 1024 * 1024);
 
     DSTORAGE_QUEUE_DESC queueDesc{};
     queueDesc.Capacity = DSTORAGE_MAX_QUEUE_CAPACITY;
@@ -110,17 +108,18 @@ void Streaming::DataUploader::InitDirectStorage(ID3D12Device* in_pDevice)
 // handle request to load a texture from cpu memory
 // used for packed mips, which don't participate in fine-grained streaming
 //-----------------------------------------------------------------------------
-UINT64 Streaming::DataUploader::LoadTexture(ID3D12Resource* in_pResource,
-    const std::vector<BYTE>& in_paddedData, UINT in_firstSubresource)
+UINT64 Streaming::DataUploader::LoadTexture(ID3D12Resource* in_pResource, UINT in_firstSubresource,
+    const std::vector<BYTE>& in_paddedData, UINT in_uncompressedSize, UINT32 in_compressionFormat)
 {
     DSTORAGE_REQUEST request = {};
     request.Options.SourceType = DSTORAGE_REQUEST_SOURCE_MEMORY;
     request.Options.DestinationType = DSTORAGE_REQUEST_DESTINATION_MULTIPLE_SUBRESOURCES;
     request.Source.Memory.Source = in_paddedData.data();
     request.Source.Memory.Size = (UINT32)in_paddedData.size();
-    request.UncompressedSize = (UINT32)in_paddedData.size();
+    request.UncompressedSize = in_uncompressedSize;
     request.Destination.MultipleSubresources.Resource = in_pResource;
     request.Destination.MultipleSubresources.FirstSubresource = in_firstSubresource;
+    request.Options.CompressionFormat = (DSTORAGE_COMPRESSION_FORMAT)in_compressionFormat;
 
     m_memoryQueue->EnqueueRequest(&request);
     return m_memoryFenceValue;
@@ -151,12 +150,11 @@ Streaming::FileStreamer* Streaming::DataUploader::SetStreamer(StreamerType in_st
 
     if (StreamerType::Reference == in_streamerType)
     {
-        // the streamer must support least one fully loaded updatelist, or a full updatelist will never be able to complete
-        // it's really a user error for max in flight to be less than the max number in 1 update list
-        UINT minNumUploads = std::max(m_maxTileCopiesInFlight, m_maxBatchSize);
+        // buffer size in megabytes * 1024 * 1024 bytes / (tile size = 64 * 1024 bytes)
+        UINT maxTileCopiesInFlight = m_stagingBufferSizeMB * (1024 / 64);
 
         m_pFileStreamer = std::make_unique<Streaming::FileStreamerReference>(device.Get(),
-            (UINT)m_updateLists.size(), m_maxBatchSize, minNumUploads);
+            (UINT)m_updateLists.size(), maxTileCopiesInFlight);
     }
     else
     {
@@ -190,6 +188,10 @@ void Streaming::DataUploader::StartThreads()
     // launch thread to monitor fences
     m_fenceMonitorThread = std::thread([&]
         {
+            // initialize timer on the thread that will use it
+            RawCpuTimer fenceMonitorThread;
+            m_pFenceThreadTimer = &fenceMonitorThread;
+
             DebugPrint(L"Created Fence Monitor Thread\n");
             while (m_threadsRunning)
             {
@@ -268,7 +270,7 @@ Streaming::UpdateList* Streaming::DataUploader::AllocateUpdateList(Streaming::St
 
         // treat the array as a ring buffer
         // the next index is the most-likely to be available because it has had the most time to complete
-        UINT numLists = (UINT)m_updateLists.size();
+        const UINT numLists = (UINT)m_updateLists.size();
         for (UINT i = 0; i < numLists; i++)
         {
             m_updateListAllocIndex = (m_updateListAllocIndex + 1) % numLists;
@@ -311,12 +313,14 @@ void Streaming::DataUploader::SubmitUpdateList(Streaming::UpdateList& in_updateL
 {
     ASSERT(UpdateList::State::STATE_ALLOCATED == in_updateList.m_executionState);
 
+    // set to submitted, allowing mapping within submitThread
+    // fenceMonitorThread will wait for the copy fence to become valid before progressing state
+    in_updateList.m_executionState = UpdateList::State::STATE_SUBMITTED;
+
     if (in_updateList.GetNumStandardUpdates())
     {
         m_pFileStreamer->StreamTexture(in_updateList);
     }
-
-    in_updateList.m_executionState = UpdateList::State::STATE_SUBMITTED;
 
     m_submitFlag.Set();
 }
@@ -335,17 +339,30 @@ void Streaming::DataUploader::FenceMonitorThread()
     bool loadTextures = false;
     for (auto& updateList : m_updateLists)
     {
+        // assign a start time to every in-flight update list. this will give us an upper bound on latency.
+        // latency is only measured for tile uploads
+        if ((UpdateList::State::STATE_FREE != updateList.m_executionState) && (0 == updateList.m_copyLatencyTimer))
+        {
+            updateList.m_copyLatencyTimer = m_pFenceThreadTimer->GetTime();
+        }
+
         switch (updateList.m_executionState)
         {
 
         case UpdateList::State::STATE_PACKED_MAPPING:
-            ASSERT(updateList.GetNumPackedUpdates());
+            ASSERT(0 == updateList.GetNumStandardUpdates());
+            ASSERT(0 == updateList.GetNumEvictions());
+
             // wait for mapping complete before streaming packed tiles
             if (updateList.m_mappingFenceValue <= m_mappingFence->GetCompletedValue())
             {
-                updateList.m_copyFenceValue = LoadTexture(updateList.m_pStreamingResource->GetTiledResource(),
-                    updateList.m_pStreamingResource->GetPaddedPackedMips(),
-                    updateList.m_pStreamingResource->GetPackedMipInfo().NumStandardMips);
+                UINT uncompressedSize = 0;
+                auto& data = updateList.m_pStreamingResource->GetPaddedPackedMips(uncompressedSize);
+                updateList.m_copyFenceValue = LoadTexture(
+                    updateList.m_pStreamingResource->GetTiledResource(),
+                    updateList.m_pStreamingResource->GetPackedMipInfo().NumStandardMips,
+                    data, uncompressedSize,
+                    updateList.m_pStreamingResource->GetTextureFileInfo()->GetCompressionFormat());
                 updateList.m_executionState = UpdateList::State::STATE_PACKED_COPY_PENDING;
 
                 loadTextures = true;
@@ -355,7 +372,6 @@ void Streaming::DataUploader::FenceMonitorThread()
         case UpdateList::State::STATE_PACKED_COPY_PENDING:
             ASSERT(0 == updateList.GetNumStandardUpdates());
             ASSERT(0 == updateList.GetNumEvictions());
-            ASSERT(updateList.GetNumPackedUpdates());
 
             if (m_memoryFence->GetCompletedValue() >= updateList.m_copyFenceValue)
             {
@@ -375,8 +391,6 @@ void Streaming::DataUploader::FenceMonitorThread()
 
         case UpdateList::State::STATE_COPY_PENDING:
         {
-            ASSERT(0 == updateList.GetNumPackedUpdates());
-
             // standard updates? check if copy complete
             if (updateList.GetNumStandardUpdates())
             {
@@ -396,19 +410,21 @@ void Streaming::DataUploader::FenceMonitorThread()
             // notify evictions
             if (updateList.GetNumEvictions())
             {
-                m_numTotalEvictions.fetch_add(updateList.GetNumEvictions(), std::memory_order_relaxed);
-
                 updateList.m_pStreamingResource->NotifyEvicted(updateList.m_evictCoords);
+
+                m_numTotalEvictions.fetch_add(updateList.GetNumEvictions(), std::memory_order_relaxed);
             }
 
             // notify regular tiles
             if (updateList.GetNumStandardUpdates())
             {
-                // a gpu copy has completed, so we can update the corresponding timer
-                //timings.m_gpuTime = m_gpuTimer.MapReadBack(in_updateList.m_streamingTimeIndex);
+                updateList.m_pStreamingResource->NotifyCopyComplete(updateList.m_coords);
+
+                auto updateLatency = m_pFenceThreadTimer->GetTime() - updateList.m_copyLatencyTimer;
+                m_totalTileCopyLatency.fetch_add(updateLatency * updateList.GetNumStandardUpdates(), std::memory_order_relaxed);
+
                 m_numTotalUploads.fetch_add(updateList.GetNumStandardUpdates(), std::memory_order_relaxed);
 
-                updateList.m_pStreamingResource->NotifyCopyComplete(updateList.m_coords);
             }
 
             // UpdateList complete
@@ -467,12 +483,12 @@ void Streaming::DataUploader::SubmitThread()
                     updateList.m_pStreamingResource->GetHeap()->GetHeap(),
                     updateList.m_coords, updateList.m_heapIndices);
             }
-            else if (0 == updateList.GetNumPackedUpdates())
+            else if (updateList.GetNumEvictions())
             {
                 // if no uploads, skip the uploading state
                 updateList.m_executionState = UpdateList::State::STATE_COPY_PENDING;
             }
-            else
+            else // must be mapping packed mips
             {
                 updateList.m_pStreamingResource->MapPackedMips(GetMappingQueue());
                 // special state for packed mips: mapping must happen before copying

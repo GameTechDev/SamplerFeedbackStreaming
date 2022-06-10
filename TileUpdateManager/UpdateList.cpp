@@ -39,27 +39,5 @@ void Streaming::UpdateList::Reset(Streaming::StreamingResourceDU* in_pStreamingR
     m_coords.clear();         // indicates standard tile map & upload
     m_heapIndices.clear();    // because AddUpdate() does a push_back()
     m_evictCoords.clear();    // indicates tiles to un-map
-    m_numPackedMips = 0;      // indicates to map & load packed mips
-}
-
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-void Streaming::UpdateList::AddPackedMipRequest(UINT in_numMips)
-{
-    ASSERT(UpdateList::State::STATE_ALLOCATED == m_executionState);
-    ASSERT(0 == GetNumStandardUpdates());
-
-    m_numPackedMips = in_numMips;
-}
-
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-void Streaming::UpdateList::AddUpdate(
-    const D3D12_TILED_RESOURCE_COORDINATE& in_coord,
-    UINT in_heapIndex)
-{
-    ASSERT(State::STATE_ALLOCATED == m_executionState);
-
-    m_coords.push_back(in_coord);
-    m_heapIndices.push_back(in_heapIndex);
+    m_copyLatencyTimer = 0;   // clear latency timer
 }

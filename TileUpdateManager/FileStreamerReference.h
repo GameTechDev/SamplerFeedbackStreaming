@@ -39,7 +39,6 @@ namespace Streaming
     public:
         FileStreamerReference(ID3D12Device* in_pDevice,
             UINT in_maxNumCopyBatches,               // maximum number of in-flight batches
-            UINT in_maxTileCopiesPerBatch,           // batch size. a small number, like 32
             UINT in_maxTileCopiesInFlight);          // upload buffer size. 1024 would become a 64MB upload buffer
         virtual ~FileStreamerReference();
 
@@ -48,8 +47,6 @@ namespace Streaming
         virtual void StreamTexture(Streaming::UpdateList& in_updateList) override;
 
         virtual void Signal() override {} // reference auto-submits
-
-        virtual bool GetCompleted(const UpdateList& in_updateList) const override;
 
         static HANDLE GetFileHandle(const FileHandle* in_pHandle) { return dynamic_cast<const FileHandleReference*>(in_pHandle)->GetHandle(); }
 
@@ -78,7 +75,6 @@ namespace Streaming
             {
                 FREE = 0,
                 ALLOCATED,
-                LOAD_TILES,
                 COPY_TILES,
                 WAIT_COMPLETE,
             };
@@ -86,12 +82,8 @@ namespace Streaming
             std::atomic<State> m_state{ State::FREE };
 
             Streaming::UpdateList* m_pUpdateList{ nullptr };
-            std::vector<UINT> m_uploadIndices; // indices into upload buffer
+            std::vector<UINT> m_uploadIndices; // indices into upload buffer. also serves as indices into the shared array of event handles.
             UINT64 m_copyFenceValue{ 0 }; // tracked independently from UpdateList so CopyBatch lifetime can be independent
-
-            void Reset() { m_lastSignaled = 0; m_numEvents = 0; }
-            void ReadFile(const HANDLE in_fileHandle, void* in_pDst, UINT in_numBytes, UINT in_fileOffset);
-            bool GetReadsComplete();
 
             ID3D12CommandAllocator* GetCommandAllocator()
             {
@@ -100,19 +92,24 @@ namespace Streaming
             }
 
             // call only once
-            void Init(UINT in_maxNumCopies, ID3D12Device* in_pDevice);
-        private:
-            struct Request : public OVERLAPPED
-            {
-                Request() { hEvent = ::CreateEvent(nullptr, FALSE, FALSE, nullptr); }
-                ~Request() { ::CloseHandle(hEvent); }
-            };
-            std::vector<Request> m_requests;
+            void Init(ID3D12Device* in_pDevice);
+
+            UINT m_copyStart{ 0 };
+            UINT m_copyEnd{ 0 };
+
             UINT m_numEvents{ 0 };
             UINT m_lastSignaled{ 0 };
 
+        private:
             ComPtr<ID3D12CommandAllocator> m_commandAllocator;
         };
+
+        struct Request : public OVERLAPPED
+        {
+            Request() { hEvent = ::CreateEvent(nullptr, FALSE, FALSE, nullptr); }
+            ~Request() { ::CloseHandle(hEvent); }
+        };
+        std::vector<Request> m_requests;
 
         // close command list, execute on m_copyCommandQueue, signal fence, increment fence value
         void ExecuteCopyCommandList(ID3D12GraphicsCommandList* in_pCmdList);
@@ -127,9 +124,7 @@ namespace Streaming
         std::atomic<bool> m_copyThreadRunning{ false };
         std::thread m_copyThread;
 
-        void AllocateCopyBatch(Streaming::UpdateList& in_updateList, CopyBatch::State in_desiredState);
-
-        void LoadTexture(CopyBatch& in_copyBatch);
+        void LoadTexture(CopyBatch& in_copyBatch, UINT in_numtilesToLoad);
         void CopyTiles(ID3D12GraphicsCommandList* out_pCopyCmdList, ID3D12Resource* in_pSrcResource,
             const UpdateList* in_pUpdateList, const std::vector<UINT>& in_indices);
     };

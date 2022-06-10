@@ -53,7 +53,6 @@ m_numSwapBuffers(in_desc.m_swapChainBufferCount)
 , m_device(in_pDevice)
 , m_commandLists((UINT)CommandListName::Num)
 , m_maxTileMappingUpdatesPerApiCall(in_desc.m_maxTileMappingUpdatesPerApiCall)
-, m_maxTileCopiesPerBatch(in_desc.m_maxTileCopiesPerBatch)
 , m_addAliasingBarriers(in_desc.m_addAliasingBarriers)
 {
     ASSERT(D3D12_COMMAND_LIST_TYPE_DIRECT == in_pDirectCommandQueue->GetDesc().Type);
@@ -64,8 +63,7 @@ m_numSwapBuffers(in_desc.m_swapChainBufferCount)
     m_pDataUploader = std::make_unique<Streaming::DataUploader>(
         in_pDevice,
         in_desc.m_maxNumCopyBatches,
-        in_desc.m_maxTileCopiesPerBatch,
-        in_desc.m_maxTileCopiesInFlight,
+        in_desc.m_stagingBufferSizeMB,
         in_desc.m_maxTileMappingUpdatesPerApiCall);
 
     const UINT numAllocators = m_numSwapBuffers;
@@ -179,7 +177,7 @@ void Streaming::TileUpdateManagerBase::StartThreads()
 
                 // continuously push uploads and evictions
                 bool uploadRequested = false;
-                for (UINT i = 0; i < staleResources.size(); i++)
+                for (UINT i = 0; i < staleResources.size(); )
                 {
                     if (!m_threadsRunning)
                     {
@@ -188,7 +186,8 @@ void Streaming::TileUpdateManagerBase::StartThreads()
 
                     UINT resourceIndex = staleResources[i];
                     auto p = m_streamingResources[resourceIndex];
-                    uploadRequested = (uploadRequested || p->QueueTiles());
+                    bool tilesQueued = p->QueueTiles();
+                    uploadRequested = uploadRequested || tilesQueued;
 
                     // if all loads/evictions handled, remove from staleResource list
                     if (!p->IsStale())
@@ -197,6 +196,10 @@ void Streaming::TileUpdateManagerBase::StartThreads()
                         // compact the array by swapping this entry with the last
                         staleResources[i] = staleResources.back();
                         staleResources.resize(staleResources.size() - 1);
+                    }
+                    else
+                    {
+                        i++;
                     }
                 }
 

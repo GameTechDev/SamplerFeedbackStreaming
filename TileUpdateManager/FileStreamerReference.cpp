@@ -37,11 +37,11 @@
 //-----------------------------------------------------------------------------
 Streaming::FileStreamerReference::FileStreamerReference(ID3D12Device* in_pDevice,
     UINT in_maxNumCopyBatches,                // maximum number of in-flight batches
-    UINT in_maxTileCopiesPerBatch,             // batch size. a small number, like 32
     UINT in_maxTileCopiesInFlight):           // upload buffer size. 1024 would become a 64MB upload buffer
     Streaming::FileStreamer(in_pDevice),
     m_copyBatches(in_maxNumCopyBatches + 2)   // padded by a couple to try to help with observed issue perhaps due to OS thread sched.
     , m_uploadAllocator(in_pDevice, in_maxTileCopiesInFlight)
+    , m_requests(in_maxTileCopiesInFlight)    // pre-allocate an array of event handles corresponding to # of tiles that can fit in the upload heap
 {
     D3D12_COMMAND_QUEUE_DESC queueDesc = {};
     queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
@@ -55,7 +55,7 @@ Streaming::FileStreamerReference::FileStreamerReference(ID3D12Device* in_pDevice
     UINT copyBatchIndex = 0;
     for (auto& copyBatch : m_copyBatches)
     {
-        copyBatch.Init(in_maxTileCopiesPerBatch, in_pDevice);
+        copyBatch.Init(in_pDevice);
 
         std::wstringstream name;
         name << "CopyBatch[" << copyBatchIndex << "]::m_commandAllocator";
@@ -94,49 +94,11 @@ Streaming::FileStreamerReference::~FileStreamerReference()
 
 //=============================================================================
 //=============================================================================
-void Streaming::FileStreamerReference::CopyBatch::Init(UINT in_maxNumCopies, ID3D12Device* in_pDevice)
+void Streaming::FileStreamerReference::CopyBatch::Init(ID3D12Device* in_pDevice)
 {
-    m_requests.resize(in_maxNumCopies);
-    m_uploadIndices.reserve(in_maxNumCopies);
     ThrowIfFailed(in_pDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_COPY, IID_PPV_ARGS(&m_commandAllocator)));
 }
 
-//-----------------------------------------------------------------------------
-// start copying from a file
-//-----------------------------------------------------------------------------
-void Streaming::FileStreamerReference::CopyBatch::ReadFile(const HANDLE in_fileHandle, void* in_pDst, UINT in_numBytes, UINT in_fileOffset)
-{
-    ASSERT(m_numEvents < m_requests.size());
-
-    auto& o = m_requests[m_numEvents];
-    m_numEvents++;
-
-    o.Internal = 0;
-    o.InternalHigh = 0;
-    o.OffsetHigh = 0;
-    o.Offset = in_fileOffset;
-
-    // align # bytes read
-    UINT alignment = FileStreamerReference::MEDIA_SECTOR_SIZE - 1;
-    UINT numBytes = (in_numBytes + alignment) & ~(alignment);
-
-    ::ReadFile(in_fileHandle, in_pDst, numBytes, nullptr, &o);
-}
-
-//-----------------------------------------------------------------------------
-// all loads complete? check from oldest to newest
-//-----------------------------------------------------------------------------
-bool Streaming::FileStreamerReference::CopyBatch::GetReadsComplete()
-{
-    for (; m_lastSignaled < m_numEvents; m_lastSignaled++)
-    {
-        if (0 != WaitForSingleObject(m_requests[m_lastSignaled].hEvent, 0))
-        {
-            return false;
-        }
-    }
-    return true;
-}
 
 //-----------------------------------------------------------------------------
 // opening a file returns an opaque file handle
@@ -172,8 +134,10 @@ Streaming::FileHandle* Streaming::FileStreamerReference::OpenFile(const std::wst
 // Best guess is OS pauses the thread delaying when the copybatch is released
 // very rarely, the result is a (very) long delay waiting for an available batch
 //-----------------------------------------------------------------------------
-void Streaming::FileStreamerReference::AllocateCopyBatch(Streaming::UpdateList& in_updateList, CopyBatch::State in_desiredState)
+void Streaming::FileStreamerReference::StreamTexture(Streaming::UpdateList& in_updateList)
 {
+    ASSERT(in_updateList.GetNumStandardUpdates());
+
     const UINT numBatches = (UINT)m_copyBatches.size();
 
     while (1)
@@ -187,46 +151,42 @@ void Streaming::FileStreamerReference::AllocateCopyBatch(Streaming::UpdateList& 
         CopyBatch::State expected = CopyBatch::State::FREE;
         if (batch.m_state.compare_exchange_weak(expected, CopyBatch::State::ALLOCATED))
         {
-            // set the update list while the CopyBatch is in the "allocated" state
+            // initialize while the CopyBatch is in the "allocated" state
             batch.m_pUpdateList = &in_updateList;
-            // as soon as this state changes, the 
-            batch.m_state = in_desiredState;
+            batch.m_uploadIndices.resize(in_updateList.GetNumStandardUpdates());
+            batch.m_copyStart = 0;
+            batch.m_copyEnd = 0;
+            batch.m_numEvents = 0;
+            batch.m_lastSignaled = 0;
+
+            // as soon as this state changes, the copy thread can start executing copies
+            batch.m_state = CopyBatch::State::COPY_TILES;
             break;
         }
     }
 }
 
 //-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-void Streaming::FileStreamerReference::StreamTexture(Streaming::UpdateList& in_updateList)
-{
-    ASSERT(0 == in_updateList.GetNumPackedUpdates());
-    ASSERT(in_updateList.GetNumStandardUpdates());
-
-    AllocateCopyBatch(in_updateList, CopyBatch::State::LOAD_TILES);
-}
-
-//-----------------------------------------------------------------------------
 // Generate ReadFile()s for each tile in the texture
 //-----------------------------------------------------------------------------
-void Streaming::FileStreamerReference::LoadTexture(Streaming::FileStreamerReference::CopyBatch& in_copyBatch)
+void Streaming::FileStreamerReference::LoadTexture(Streaming::FileStreamerReference::CopyBatch& in_copyBatch, UINT in_numtilesToLoad)
 {
-    in_copyBatch.Reset();
-
     Streaming::UpdateList* pUpdateList = in_copyBatch.m_pUpdateList;
 
     BYTE* pStagingBaseAddress = (BYTE*)m_uploadAllocator.GetBuffer().m_pData;
 
-    const UINT numReads = (UINT)pUpdateList->GetNumStandardUpdates();
+    UINT startIndex = in_copyBatch.m_numEvents;
+    UINT endIndex = startIndex + in_numtilesToLoad;
 
     if (VisualizationMode::DATA_VIZ_NONE == m_visualizationMode)
     {
         auto pTextureFileInfo = pUpdateList->m_pStreamingResource->GetTextureFileInfo();
         auto pFileHandle = FileStreamerReference::GetFileHandle(pUpdateList->m_pStreamingResource->GetFileHandle());
-        for (UINT i = 0; i < numReads; i++)
+        for (UINT i = startIndex; i < endIndex; i++)
         {
             // get file offset to tile
-            UINT fileOffset = pTextureFileInfo->GetFileOffset(pUpdateList->m_coords[i]);
+            UINT32 numBytes = 0;
+            UINT fileOffset = pTextureFileInfo->GetFileOffset(pUpdateList->m_coords[i], numBytes);
 
             // convert tile index into byte offset
             UINT byteOffset = D3D12_TILED_RESOURCE_TILE_SIZE_IN_BYTES * in_copyBatch.m_uploadIndices[i];
@@ -234,12 +194,25 @@ void Streaming::FileStreamerReference::LoadTexture(Streaming::FileStreamerRefere
             // add to base address of upload buffer
             BYTE* pDst = pStagingBaseAddress + byteOffset;
 
-            in_copyBatch.ReadFile(pFileHandle, pDst, D3D12_TILED_RESOURCE_TILE_SIZE_IN_BYTES, fileOffset);
+            auto& o = m_requests[in_copyBatch.m_uploadIndices[i]];
+            in_copyBatch.m_numEvents++;
+
+            o.Internal = 0;
+            o.InternalHigh = 0;
+            o.OffsetHigh = 0;
+            o.Offset = fileOffset;
+
+            // align # bytes read
+            UINT alignment = FileStreamerReference::MEDIA_SECTOR_SIZE - 1;
+            numBytes = (numBytes + alignment) & ~(alignment);
+
+            ::ReadFile(pFileHandle, pDst, numBytes, nullptr, &o);
         }
+        ASSERT(in_copyBatch.m_numEvents == endIndex);
     }
     else // visualization enabled
     {
-        for (UINT i = 0; i < numReads; i++)
+        for (UINT i = startIndex; i < endIndex; i++)
         {
             // convert tile index into byte offset
             UINT byteOffset = D3D12_TILED_RESOURCE_TILE_SIZE_IN_BYTES * in_copyBatch.m_uploadIndices[i];
@@ -249,6 +222,8 @@ void Streaming::FileStreamerReference::LoadTexture(Streaming::FileStreamerRefere
             void* pSrc = GetVisualizationData(pUpdateList->m_coords[i], in_copyBatch.m_pUpdateList->m_pStreamingResource->GetTextureFileInfo()->GetFormat());
             memcpy(pDst, pSrc, D3D12_TILED_RESOURCE_TILE_SIZE_IN_BYTES);
         }
+        // fast-forward last signaled to the end. there are no events to check because there are no file accesses
+        in_copyBatch.m_lastSignaled = endIndex;
     }
 }
 
@@ -286,15 +261,6 @@ void Streaming::FileStreamerReference::ExecuteCopyCommandList(ID3D12GraphicsComm
 }
 
 //-----------------------------------------------------------------------------
-// updatelist complete if the copy fence has signaled
-//-----------------------------------------------------------------------------
-bool Streaming::FileStreamerReference::GetCompleted(const UpdateList& in_updateList) const
-{
-    bool completed = in_updateList.m_copyFenceValue <= m_copyFence->GetCompletedValue();
-    return completed;
-}
-
-//-----------------------------------------------------------------------------
 // move through CopyBatch state machine
 //-----------------------------------------------------------------------------
 void Streaming::FileStreamerReference::CopyThread()
@@ -305,40 +271,83 @@ void Streaming::FileStreamerReference::CopyThread()
     {
         switch (c.m_state)
         {
-        case CopyBatch::State::LOAD_TILES:
-            ASSERT(c.m_pUpdateList->GetNumStandardUpdates());
-            ASSERT(0 == c.m_pUpdateList->GetNumPackedUpdates());
-            if (m_uploadAllocator.Allocate(c.m_uploadIndices, c.m_pUpdateList->GetNumStandardUpdates()))
-            {
-                LoadTexture(c);
-                c.m_state = CopyBatch::State::COPY_TILES;
-            }
-            break;
-
         case CopyBatch::State::COPY_TILES:
-            // file loads in progress
-            if (c.GetReadsComplete())
+            // have any copies completed?
+            // do this first to free some heap space for loading
+            if ((c.m_copyStart != c.m_copyEnd) && (c.m_copyFenceValue <= m_copyFence->GetCompletedValue()))
+            {
+                m_uploadAllocator.Free(&c.m_uploadIndices[c.m_copyStart], c.m_copyEnd - c.m_copyStart);
+                c.m_copyStart = c.m_copyEnd;
+            }
+
+            // can we start new loads?
+            if (c.m_numEvents < c.m_pUpdateList->GetNumStandardUpdates())
+            {
+                UINT numtilesToLoad = c.m_pUpdateList->GetNumStandardUpdates() - c.m_numEvents;
+                numtilesToLoad = std::min(numtilesToLoad, m_uploadAllocator.GetAvailable());
+                if (numtilesToLoad)
+                {
+                    m_uploadAllocator.Allocate(&c.m_uploadIndices[c.m_numEvents], numtilesToLoad);
+                    LoadTexture(c, numtilesToLoad);
+                    ASSERT(c.m_numEvents <= c.m_pUpdateList->GetNumStandardUpdates());
+                }
+            }
+
+            // have any loads completed?
+            for (; c.m_lastSignaled < c.m_numEvents; c.m_lastSignaled++)
+            {
+                UINT requestIndex = c.m_uploadIndices[c.m_lastSignaled];
+                if (0 != WaitForSingleObject(m_requests[requestIndex].hEvent, 0))
+                {
+                    break;
+                }
+            }
+
+            // start copies for any completed events ONLY IF there are no in-flight copies
+            if ((c.m_copyEnd < c.m_lastSignaled) && (c.m_copyStart == c.m_copyEnd))
             {
                 c.m_copyFenceValue = m_copyFenceValue;
-                
                 if (!submitCopyCommands)
                 {
                     submitCopyCommands = true;
                     m_copyCommandList->Reset(c.GetCommandAllocator(), nullptr);
                 }
-                CopyTiles(m_copyCommandList.Get(), m_uploadAllocator.GetBuffer().m_resource.Get(), c.m_pUpdateList, c.m_uploadIndices);
 
+                // generate copy commands
+                // copy from we left of last time (copyEnd) until the last load that completed (lastSignaled)
+                D3D12_TILE_REGION_SIZE tileRegionSize{ 1, FALSE, 0, 0, 0 };
+                DXGI_FORMAT textureFormat = c.m_pUpdateList->m_pStreamingResource->GetTextureFileInfo()->GetFormat();
+                for (UINT i = c.m_copyEnd; i < c.m_lastSignaled; i++)
+                {
+                    D3D12_TILED_RESOURCE_COORDINATE coord;
+                    ID3D12Resource* pAtlas = c.m_pUpdateList->m_pStreamingResource->GetHeap()->ComputeCoordFromTileIndex(coord, c.m_pUpdateList->m_heapIndices[i], textureFormat);
+
+                    m_copyCommandList->CopyTiles(pAtlas, &coord,
+                        &tileRegionSize, m_uploadAllocator.GetBuffer().m_resource.Get(),
+                        D3D12_TILED_RESOURCE_TILE_SIZE_IN_BYTES * c.m_uploadIndices[i],
+                        D3D12_TILE_COPY_FLAG_LINEAR_BUFFER_TO_SWIZZLED_TILED_RESOURCE | D3D12_TILE_COPY_FLAG_NO_HAZARD);
+                }
+                c.m_copyEnd = c.m_lastSignaled;
+                ASSERT(c.m_copyEnd <= c.m_pUpdateList->GetNumStandardUpdates());
+            }
+
+            // if the outstanding copy is for the rest of the tiles, we can hand this batch off...
+            if (c.m_pUpdateList->GetNumStandardUpdates() == c.m_copyEnd)
+            {
                 c.m_pUpdateList->m_copyFenceValue = c.m_copyFenceValue;
                 c.m_pUpdateList->m_copyFenceValid = true;
+                c.m_pUpdateList = nullptr; // clear for debugging purposes. the updatelist can be re-cycled before the copyBatch
                 c.m_state = CopyBatch::State::WAIT_COMPLETE;
             }
             break;
 
         case CopyBatch::State::WAIT_COMPLETE:
             // can't recycle this command allocator until the corresponding fence has completed
+            // note that the updatelist pointer is invalid
             if (c.m_copyFenceValue <= m_copyFence->GetCompletedValue())
             {
-                m_uploadAllocator.Free(c.m_uploadIndices);
+                ASSERT(nullptr == c.m_pUpdateList);
+                m_uploadAllocator.Free(&c.m_uploadIndices[c.m_copyStart], c.m_copyEnd - c.m_copyStart);
                 c.m_state = CopyBatch::State::FREE;
             }
             break;

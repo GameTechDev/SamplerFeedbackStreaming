@@ -49,30 +49,24 @@ Streaming::XeTexture::XeTexture(const std::wstring& in_fileName)
     if (!inFile.good()) { Error(in_fileName + L"Unexpected Error"); }
 
     if (m_fileHeader.m_magic != XetFileHeader::GetMagic()) { Error(in_fileName + L" Not a valid XET file"); }
-    if (m_fileHeader.m_version != XetFileHeader::GetVersion()) { Error(in_fileName + L"Incorrect XET version"); }
+    if (m_fileHeader.m_version != XetFileHeader::GetVersion()) { Error(in_fileName + L" Incorrect XET version"); }
 
-    m_tileOffsets.resize(m_fileHeader.m_mipInfo.m_numTilesForStandardMips);
+    m_subresourceInfo.resize(m_fileHeader.m_ddsHeader.mipMapCount);
+    inFile.read((char*)m_subresourceInfo.data(), m_subresourceInfo.size() * sizeof(m_subresourceInfo[0]));
+    if (!inFile.good()) { Error(in_fileName + L"Unexpected Error"); }
+
+    m_tileOffsets.resize(m_fileHeader.m_mipInfo.m_numTilesForStandardMips + 1); // plus 1 for the packed mips offset & size
     inFile.read((char*)m_tileOffsets.data(), m_tileOffsets.size() * sizeof(m_tileOffsets[0]));
     if (!inFile.good()) { Error(in_fileName + L"Unexpected Error"); }
-
-    m_metadataOffsets.resize(m_fileHeader.m_numMetadataBlobs);
-    inFile.read((char*)m_metadataOffsets.data(), m_metadataOffsets.size() * sizeof(m_metadataOffsets[0]));
-    if (!inFile.good()) { Error(in_fileName + L"Unexpected Error"); }
-
-    inFile.seekg(0, std::ios::end);
-    m_fileSize = inFile.tellg();
-    inFile.close();
 }
 
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
-UINT Streaming::XeTexture::GetPackedMipFileOffset(UINT* out_pNumBytesTotal)
+UINT Streaming::XeTexture::GetPackedMipFileOffset(UINT* out_pNumBytesTotal, UINT* out_pNumBytesUncompressed)
 {
-    UINT packedOffset = m_fileHeader.m_subresourceInfo[m_fileHeader.m_mipInfo.m_numStandardMips].m_packedMipInfo.m_fileOffset;
-    if (out_pNumBytesTotal)
-    {
-        *out_pNumBytesTotal = UINT(m_fileSize - packedOffset);
-    }
+    UINT packedOffset = m_tileOffsets[m_fileHeader.m_mipInfo.m_numTilesForStandardMips].m_offset;
+    *out_pNumBytesTotal = m_tileOffsets[m_fileHeader.m_mipInfo.m_numTilesForStandardMips].m_numBytes;
+    *out_pNumBytesUncompressed = m_fileHeader.m_mipInfo.m_numUncompressedBytesForPackedMips;
     return packedOffset;
 }
 
@@ -81,17 +75,18 @@ UINT Streaming::XeTexture::GetPackedMipFileOffset(UINT* out_pNumBytesTotal)
 //-----------------------------------------------------------------------------
 UINT Streaming::XeTexture::GetLinearIndex(const D3D12_TILED_RESOURCE_COORDINATE& in_coord) const
 {
-    const auto& data = m_fileHeader.m_subresourceInfo[in_coord.Subresource].m_standardMipInfo;
+    const auto& data = m_subresourceInfo[in_coord.Subresource].m_standardMipInfo;
     return data.m_subresourceTileIndex + (in_coord.Y * data.m_widthTiles) + in_coord.X;
 }
 
 //-----------------------------------------------------------------------------
 // return value is byte offset into file
 //-----------------------------------------------------------------------------
-UINT Streaming::XeTexture::GetFileOffset(const D3D12_TILED_RESOURCE_COORDINATE& in_coord) const
+UINT Streaming::XeTexture::GetFileOffset(const D3D12_TILED_RESOURCE_COORDINATE& in_coord, UINT32& out_numBytes) const
 {
     UINT index = GetLinearIndex(in_coord);
 
     // use index to look up file offset and number of bytes
+    out_numBytes = m_tileOffsets[index].m_numBytes;
     return m_tileOffsets[index].m_offset;
 }

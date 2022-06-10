@@ -28,6 +28,7 @@
 
 #include "pch.h"
 
+#include <filesystem>
 #include <DirectXMath.h>
 #include <wrl.h>
 #include <string>
@@ -236,10 +237,8 @@ std::wstring SceneObjects::BaseObject::GetAssetFullPath(const std::wstring& in_f
 {
     WCHAR buffer[MAX_PATH];
     GetModuleFileName(nullptr, buffer, MAX_PATH);
-    std::wstring exePath(buffer);
-    exePath.resize(exePath.rfind('\\') + 1);
-    std::wstring path = exePath + in_filename;
-    return path;
+    std::filesystem::path exePath(buffer);
+    return exePath.remove_filename().append(in_filename);
 }
 
 //-------------------------------------------------------------------------
@@ -368,68 +367,6 @@ void SceneObjects::BaseObject::Draw(ID3D12GraphicsCommandList1* in_pCommandList,
         in_pCommandList->DrawIndexedInstanced(geometry.m_numIndices, 1, 0, 0, 0);
     }
 }
-
-//-----------------------------------------------------------------------------
-// helper class
-//-----------------------------------------------------------------------------
-class Staging
-{
-public:
-    Staging(ID3D12Resource* out_pBuffer, const D3D12_RESOURCE_DESC& in_desc,
-        D3D12_RESOURCE_STATES in_finalState) :
-        m_finalState(in_finalState), m_pBuffer(out_pBuffer)
-    {
-        ComPtr<ID3D12Device> device;
-        out_pBuffer->GetDevice(IID_PPV_ARGS(&device));
-
-        ThrowIfFailed(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&m_commandAllocator)));
-        device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_commandAllocator.Get(), nullptr, IID_PPV_ARGS(&m_commandList));
-        m_commandList->SetName(L"Staging::m_commandList");
-        D3D12_COMMAND_QUEUE_DESC queueDesc = {};
-        queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
-        queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
-        ThrowIfFailed(device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&m_commandQueue)));
-        ThrowIfFailed(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_renderFence)));
-
-        const auto heapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-        ThrowIfFailed(device->CreateCommittedResource(
-            &heapProperties, D3D12_HEAP_FLAG_NONE,
-            &in_desc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_stagingResource)));
-    }
-    ID3D12Resource* GetResource() { return m_stagingResource.Get(); }
-    ID3D12GraphicsCommandList* GetCommandList() { return m_commandList.Get(); }
-    ~Staging()
-    {
-        D3D12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(m_pBuffer, D3D12_RESOURCE_STATE_COPY_DEST, m_finalState);
-        m_commandList->ResourceBarrier(1, &barrier);
-
-        // submit all our initialization commands
-        m_commandList->Close();
-        ID3D12CommandList* ppCommandLists[] = { m_commandList.Get() };
-        m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
-
-        HANDLE renderFenceEvent = ::CreateEvent(nullptr, FALSE, FALSE, nullptr);
-        if (renderFenceEvent == nullptr)
-        {
-            ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
-        }
-
-        ThrowIfFailed(m_commandQueue->Signal(m_renderFence.Get(), 1));
-        ThrowIfFailed(m_renderFence->SetEventOnCompletion(1, renderFenceEvent));
-        WaitForSingleObject(renderFenceEvent, INFINITE);
-        ::CloseHandle(renderFenceEvent);
-    }
-private:
-    template<typename T> using ComPtr = Microsoft::WRL::ComPtr<T>;
-
-    ComPtr<ID3D12CommandAllocator> m_commandAllocator;
-    ComPtr<ID3D12GraphicsCommandList> m_commandList;
-    ComPtr<ID3D12CommandQueue> m_commandQueue;
-    ComPtr<ID3D12Fence> m_renderFence;
-    ComPtr<ID3D12Resource> m_stagingResource;
-    ID3D12Resource* m_pBuffer;
-    D3D12_RESOURCE_STATES m_finalState;
-};
 
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------

@@ -9,6 +9,9 @@
       <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
       <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
     </Filter>
+    <Filter Include="scripts">
+      <UniqueIdentifier>{6d432c77-37cd-43cf-9691-b7787e8ae3f1}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="DdsToXet.cpp">
@@ -19,5 +22,13 @@
     <ClInclude Include="..\TileUpdateManager\XetFileHeader.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="XeTv2.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <CopyFileToFolders Include="..\scripts\convert.bat">
+      <Filter>scripts</Filter>
+    </CopyFileToFolders>
   </ItemGroup>
 </Project>

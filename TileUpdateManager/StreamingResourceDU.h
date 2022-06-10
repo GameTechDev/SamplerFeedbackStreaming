@@ -51,7 +51,7 @@ namespace Streaming
 
         const FileHandle* GetFileHandle() const { return m_pFileHandle.get(); }
 
-        std::vector<BYTE>& GetPaddedPackedMips() { return m_packedMips; }
+        std::vector<BYTE>& GetPaddedPackedMips(UINT& out_uncompressedSize) { out_uncompressedSize = m_packedMipsUncompressedSize; return m_packedMips; }
 
         // packed mips are treated differently from regular tiles: they aren't tracked by the data structure, and share heap indices
         void MapPackedMips(ID3D12CommandQueue* in_pCommandQueue);

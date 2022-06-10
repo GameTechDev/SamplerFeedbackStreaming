@@ -6,9 +6,11 @@ This repository contains an [MIT licensed](LICENSE) demo of _DirectX12 Sampler F
 
 The demo requires ***Windows 10 20H1 (aka May 2020 Update, build 19041)*** or later and a GPU with Sampler Feedback Support, such as Intel Iris Xe Graphics as found in 11th Generation Intel&reg; Core&trade; processors and discrete GPUs (driver version **[30.0.100.9667](https://downloadcenter.intel.com/product/80939/Graphics) or later**).
 
-This repository has been updated with DirectStorage 1.0.0 for Windows&reg; from https://www.nuget.org/packages/Microsoft.Direct3D.DirectStorage/
-- Note the legacy streaming code using ReadFile() had sector alignment constraints for the file internals that are not required by DirectStorage for Windows.
-- Documentation for accessing nuget packages may be added in the future, but there are many online resources. 
+This repository has been updated with DirectStorage 1.0.2 for Windows&reg; from https://www.nuget.org/packages/Microsoft.Direct3D.DirectStorage/
+
+Notes:
+- The file format has changed since large textures were provided as "releases." See the [log](#log) below.
+- The legacy streaming code using ReadFile() had sector alignment constraints for the file internals that are not required by DirectStorage for Windows. 
 
 See also:
 
@@ -20,9 +22,9 @@ See also:
 Textures derived from [Hubble Images](https://www.nasa.gov/mission_pages/hubble/multimedia/index.html), see the [Hubble Copyright](https://hubblesite.org/copyright)
 
 
-Note the textures shown above, which total over 13GB, are not part of the repo. A few 16k x 16k textures are available as a [release](https://github.com/GameTechDev/SamplerFeedbackStreaming/releases/tag/1)
+Note the textures shown above, which total over 13GB, are not part of the repo. A few 16k x 16k textures are available as [release 1](https://github.com/GameTechDev/SamplerFeedbackStreaming/releases/tag/1) and  [release 2](https://github.com/GameTechDev/SamplerFeedbackStreaming/releases/tag/2)
 
-Test textures are provided, as is a mechanism to convert from BCx format DDS files into the custom .XET format.
+Test textures are provided. At build time, BCx textures (BC7 and BC1 tested) in the dds/ directory are converted into the custom .XET format and placed in the ($TargetDir)/media directory (e.g. x64/Release/media)
 
 ## Build Instructions
 
@@ -282,17 +284,13 @@ ID3D12CommandList* pCommandLists[] = { commandLists.m_beforeDrawCommands, m_comm
 
 ## Log
 
-- 2021-06-21: initial commit
-- 2021-07-23: use windows events to reduce cpu overhead
-- 2021-08-10: use WaitOnAddress to further reduce cpu overhead. some 16k x 16k textures (BC7 format) posted as "release 1".
-- 2021-08-28: proof-of-concept culling: textures for objects behind view are evicted
-- 2021-09-20: fixed race condition that could result in hang on exit
-- 2021-10-21: code refactor to improve sampler feedback streaming library API
-- 2021-12-03: added BC1 asset collection as "release 2." All texture assets (.xet files) can reside in the same directory despite format differences, and can co-exist in the same GPU heap. Also minor source tweaks, including fix to not cull base "terrain" object.
-- 2021-12-15: "-addAliasingBarriers" command line option to add an aliasing barrier to assist PIX analysis. Can also be enabled in config.json.
-- 2022-01-19: eliminated aliasing barrier perf cost (still requires command line/config to enable). config file parser fixes. terrain texture not applied to planets for prettier out-of-box demo experience.
-- 2022-03-14: DirectStorage integrated into mainline
+- 2022-06-10: File format (.xet) change. DdsToXet can upgrade old Xet files to the new format. Assets in the DDS directory are exported at build time into media directory. Upgrade to DirectStorage v1.0.2. Many misc. improvements.
 - 2022-05-05: Workaround for rare race condition. Many tweaks and improvements.
+- 2022-03-14: DirectStorage 1.0.0 integrated into mainline
+- 2021-12-15: "-addAliasingBarriers" command line option to add an aliasing barrier to assist PIX analysis. Can also be enabled in config.json.
+- 2021-12-03: added BC1 asset collection as "release 2." All texture assets (.xet files) can reside in the same directory despite format differences, and can co-exist in the same GPU heap. Also minor source tweaks, including fix to not cull base "terrain" object.
+- 2021-10-21: code refactor to improve sampler feedback streaming library API
+- 2021-08-10: Added some 16k x 16k textures (BC7 format) posted as "release 1".
 
 ## License
 

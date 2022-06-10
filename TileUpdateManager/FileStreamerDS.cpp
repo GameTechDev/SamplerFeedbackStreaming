@@ -56,7 +56,6 @@ Streaming::FileHandle* Streaming::FileStreamerDS::OpenFile(const std::wstring& i
 //-----------------------------------------------------------------------------
 void Streaming::FileStreamerDS::StreamTexture(Streaming::UpdateList& in_updateList)
 {
-    ASSERT(0 == in_updateList.GetNumPackedUpdates());
     ASSERT(in_updateList.GetNumStandardUpdates());
 
     auto pTextureFileInfo = in_updateList.m_pStreamingResource->GetTextureFileInfo();
@@ -70,20 +69,20 @@ void Streaming::FileStreamerDS::StreamTexture(Streaming::UpdateList& in_updateLi
     if (VisualizationMode::DATA_VIZ_NONE == m_visualizationMode)
     {
         request.Options.SourceType = DSTORAGE_REQUEST_SOURCE_FILE;
-        request.Source.File.Size = D3D12_TILED_RESOURCE_TILE_SIZE_IN_BYTES;
         request.Source.File.Source = GetFileHandle(in_updateList.m_pStreamingResource->GetFileHandle());
         request.UncompressedSize = D3D12_TILED_RESOURCE_TILE_SIZE_IN_BYTES;
 
         UINT numCoords = (UINT)in_updateList.m_coords.size();
         for (UINT i = 0; i < numCoords; i++)
         {
-            request.Source.File.Offset = pTextureFileInfo->GetFileOffset(in_updateList.m_coords[i]);
+            request.Source.File.Offset = pTextureFileInfo->GetFileOffset(in_updateList.m_coords[i], request.Source.File.Size);
 
             D3D12_TILED_RESOURCE_COORDINATE coord;
             ID3D12Resource* pAtlas = pDstHeap->ComputeCoordFromTileIndex(coord, in_updateList.m_heapIndices[i], textureFormat);
 
             request.Destination.Tiles.Resource = pAtlas;
             request.Destination.Tiles.TiledRegionStartCoordinate = coord;
+            request.Options.CompressionFormat = (DSTORAGE_COMPRESSION_FORMAT)pTextureFileInfo->GetCompressionFormat();
 
             m_fileQueue->EnqueueRequest(&request);
         }
@@ -111,15 +110,6 @@ void Streaming::FileStreamerDS::StreamTexture(Streaming::UpdateList& in_updateLi
 
     in_updateList.m_copyFenceValue = m_copyFenceValue;
     in_updateList.m_copyFenceValid = true;
-}
-
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-inline bool Streaming::FileStreamerDS::GetCompleted(const Streaming::UpdateList& in_updateList) const
-{
-    ASSERT(0 == in_updateList.GetNumPackedUpdates());
-
-    return in_updateList.m_copyFenceValue <= m_copyFence->GetCompletedValue();;
 }
 
 //-----------------------------------------------------------------------------

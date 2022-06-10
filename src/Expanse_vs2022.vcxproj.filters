@@ -15,18 +15,12 @@
     <Filter Include="scripts">
       <UniqueIdentifier>{23f41b89-5d6f-48b1-8016-ea5107d4976f}</UniqueIdentifier>
     </Filter>
-    <Filter Include="media">
-      <UniqueIdentifier>{6e46226a-0c46-4bfa-a464-5190adf0fe4e}</UniqueIdentifier>
-    </Filter>
     <Filter Include="include">
       <UniqueIdentifier>{aca759ef-33ea-4723-8a6f-84302ce25d77}</UniqueIdentifier>
     </Filter>
     <Filter Include="config">
       <UniqueIdentifier>{71df60be-5005-472b-a6c3-c52100ccae2b}</UniqueIdentifier>
     </Filter>
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="BufferViewer.cpp">
@@ -161,23 +155,11 @@
     <CopyFileToFolders Include="shaders\GetLodVisualizationColor.h">
       <Filter>Shaders</Filter>
     </CopyFileToFolders>
-    <CopyFileToFolders Include="..\scripts\convert.bat">
-      <Filter>scripts</Filter>
-    </CopyFileToFolders>
-    <CopyFileToFolders Include="..\media\4ktiles.xet">
-      <Filter>media</Filter>
-    </CopyFileToFolders>
     <CopyFileToFolders Include="..\config\config.json">
       <Filter>config</Filter>
     </CopyFileToFolders>
     <CopyFileToFolders Include="..\config\fragmentationWA.json">
       <Filter>config</Filter>
-    </CopyFileToFolders>
-    <CopyFileToFolders Include="..\media\heic0707a-4k.xet">
-      <Filter>media</Filter>
-    </CopyFileToFolders>
-    <CopyFileToFolders Include="..\media\potw2039a-4k.xet">
-      <Filter>media</Filter>
     </CopyFileToFolders>
     <CopyFileToFolders Include="..\scripts\demo.bat">
       <Filter>scripts</Filter>
@@ -191,5 +173,8 @@
     <CopyFileToFolders Include="..\scripts\stress.bat">
       <Filter>scripts</Filter>
     </CopyFileToFolders>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="packages.config" />
   </ItemGroup>
 </Project>

@@ -36,16 +36,21 @@ namespace Streaming
     class SimpleAllocator
     {
     public:
-        SimpleAllocator(UINT in_maxNumTiles);
+        SimpleAllocator(UINT in_maxNumElements);
         virtual ~SimpleAllocator();
 
         // output array will be sized to receive tile indices
-        bool Allocate(std::vector<UINT>& out_indices, UINT in_numTiles);
+        bool Allocate(std::vector<UINT>& out_indices, UINT in_numIndices);
         void Free(const std::vector<UINT>& in_indices);
+
+        // assumes caller is doing due-diligence to allocate destination appropriately and check availability before calling
+        void Allocate(UINT* out_pIndices, UINT in_numIndices);
+        void Free(const UINT* in_pIndices, UINT in_numIndices);
 
         // for debug
         static const UINT InvalidIndex{ UINT(-1) };
         UINT GetAvailable() const { return m_index; }
+        UINT GetCapacity() const { return (UINT)m_heap.size(); }
     private:
         std::vector<UINT> m_heap;
         UINT m_index;

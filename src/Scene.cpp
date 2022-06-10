@@ -207,6 +207,7 @@ Scene::Scene(const CommandLineArgs& in_args, HWND in_hwnd) :
     if (m_args.m_timingFrameFileName.size() && (m_args.m_timingStopFrame >= m_args.m_timingStartFrame))
     {
         m_csvFile = std::make_unique<FrameEventTracing>(m_args.m_timingFrameFileName, adapterDescription);
+        m_csvFile->Reserve(m_args.m_timingStopFrame - m_args.m_timingStartFrame);
     }
 }
 
@@ -658,8 +659,7 @@ void Scene::StartStreamingLibrary()
 {
     TileUpdateManagerDesc tumDesc;
     tumDesc.m_maxNumCopyBatches = m_args.m_numStreamingBatches;
-    tumDesc.m_maxTileCopiesPerBatch = m_args.m_streamingBatchSize;
-    tumDesc.m_maxTileCopiesInFlight = m_args.m_maxTilesInFlight;
+    tumDesc.m_stagingBufferSizeMB = m_args.m_stagingSizeMB;
     tumDesc.m_maxTileMappingUpdatesPerApiCall = m_args.m_maxTileUpdatesPerApiCall;
     tumDesc.m_swapChainBufferCount = SharedConstants::SWAP_CHAIN_BUFFER_COUNT;
     tumDesc.m_addAliasingBarriers = m_args.m_addAliasingBarriers;
@@ -1275,11 +1275,13 @@ void Scene::GatherStatistics(float in_cpuProcessFeedbackTime, float in_gpuProces
             float tilesPerSecond = float(measuredNumUploads) / measuredTime;
             float bytesPerTileDivMega = float(64 * 1024) / (1000.f * 1000.f);
             float mbps = tilesPerSecond * bytesPerTileDivMega;
+            m_totalTileLatency = m_pTileUpdateManager->GetTotalTileCopyLatency() - m_totalTileLatency;
+            float approximatePerTileLatency = 1000.f * (m_totalTileLatency / measuredNumUploads);
 
             DebugPrint(L"Gathering final statistics before exiting\n");
 
             m_csvFile->WriteEvents(m_hwnd, m_args);
-            *m_csvFile << measuredNumUploads << " " << measuredTime << " " << mbps << " uploads|seconds|bandwidth\n";
+            *m_csvFile << measuredNumUploads << " " << measuredTime << " " << mbps << " " << approximatePerTileLatency << " uploads|seconds|bandwidth|latency_ms\n";
             m_csvFile->close();
             m_csvFile = nullptr;
         }
@@ -1297,6 +1299,7 @@ void Scene::GatherStatistics(float in_cpuProcessFeedbackTime, float in_gpuProces
     if (m_args.m_timingFrameFileName.size() && (m_frameNumber == m_args.m_timingStartFrame))
     {
         m_startUploadCount = m_pTileUpdateManager->GetTotalNumUploads();
+        m_totalTileLatency = m_pTileUpdateManager->GetTotalTileCopyLatency();
         m_cpuTimer.Start();
     }
 }

@@ -46,11 +46,12 @@ namespace Streaming
         UINT GetImageWidth() const { return m_fileHeader.m_ddsHeader.width; }
         UINT GetImageHeight() const { return m_fileHeader.m_ddsHeader.height; }
         UINT GetMipCount() const { return m_fileHeader.m_ddsHeader.mipMapCount; }
+        UINT32 GetCompressionFormat() const { return m_fileHeader.m_compressionFormat; }
 
         // return value is # bytes. out_offset is byte offset into file
-        UINT GetFileOffset(const D3D12_TILED_RESOURCE_COORDINATE& in_coord) const;
+        UINT GetFileOffset(const D3D12_TILED_RESOURCE_COORDINATE& in_coord, UINT32& out_numBytes) const;
 
-        UINT GetPackedMipFileOffset(UINT* out_pNumBytesTotal = nullptr);
+        UINT GetPackedMipFileOffset(UINT* out_pNumBytesTotal, UINT* out_pNumBytesUncompressed);
 
         XeTexture(const std::wstring& in_filename);
     protected:
@@ -63,10 +64,9 @@ namespace Streaming
         static const UINT NUM_BYTES_PER_TILE{ D3D12_TILED_RESOURCE_TILE_SIZE_IN_BYTES }; // tiles are always 64KB in size
 
         XetFileHeader m_fileHeader;
-        size_t m_fileSize{ 0 };
 
+        std::vector<XetFileHeader::SubresourceInfo> m_subresourceInfo;
         std::vector<XetFileHeader::TileData> m_tileOffsets;
-        std::vector<XetFileHeader::MetaData> m_metadataOffsets;
 
         UINT GetLinearIndex(const D3D12_TILED_RESOURCE_COORDINATE& in_coord) const;
     };

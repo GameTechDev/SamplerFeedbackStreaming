@@ -26,6 +26,7 @@
 
 #include "pch.h"
 
+#include <filesystem>
 #include "TextureViewer.h"
 #include "DebugHelper.h"
 
@@ -51,17 +52,14 @@ struct ConstantBuffer
 };
 
 //-----------------------------------------------------------------------------
-
-
 // expect hlsl files to be next to the exe
 //-----------------------------------------------------------------------------
 inline std::wstring GetAssetFullPath(const std::wstring in_filename)
 {
     WCHAR buffer[MAX_PATH];
     GetModuleFileName(nullptr, buffer, MAX_PATH);
-    std::wstring exePath(buffer);
-    exePath.resize(exePath.rfind('\\') + 1);
-    return (exePath + in_filename);
+    std::filesystem::path exePath(buffer);
+    return exePath.remove_filename().append(in_filename);
 }
 
 //-----------------------------------------------------------------------------
