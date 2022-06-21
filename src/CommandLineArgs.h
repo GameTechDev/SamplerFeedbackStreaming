@@ -29,6 +29,8 @@
 #include <string>
 #include <cstdint>
 
+#include "TerrainGenerator.h"
+
 struct CommandLineArgs
 {
     UINT  m_windowWidth{ 1280 };
@@ -89,7 +91,6 @@ struct CommandLineArgs
     bool m_enableTileUpdates{ true }; // toggle enabling tile uploads/evictions
     int  m_visualizationBaseMip{ 0 };
     bool m_showFeedbackMapVertical{ false };
-    bool m_drainTiles{ false }; // while enabled, no updates and tiles will drain out from heap
 
     enum VisualizationMode : int
     {
@@ -109,10 +110,5 @@ struct CommandLineArgs
     UINT m_sphereLong{ 128 }; // # steps vertically. must be even
     UINT m_sphereLat{ 111 };  // # steps around. must be odd
 
-    // terrain object parameters
-    UINT  m_terrainSideSize{ 256 };
-    float m_heightScale{ 50 };
-    float m_noiseScale{ 25 };
-    UINT  m_numOctaves{ 8 };
-    float m_mountainSize{ 4000 };
+    TerrainGenerator::Params m_terrainParams;
 };

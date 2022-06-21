@@ -77,8 +77,6 @@ Scene::Scene(const CommandLineArgs& in_args, HWND in_hwnd) :
     , m_pFrameConstantData(nullptr)
 
     // visuals
-    , m_showFrustum(!in_args.m_visualizeFrustum) // need to force first-time creation
-    , m_useDirectStorage(in_args.m_useDirectStorage)
     , m_pGui(nullptr)
     , m_pTextureViewer(nullptr)
     , m_pMinMipMapViewer(nullptr)
@@ -190,8 +188,7 @@ Scene::Scene(const CommandLineArgs& in_args, HWND in_hwnd) :
     XMVECTOR vUpVec = XMVectorSet(0.0f, 1.0f, 0.0f, 1.0f);
 
     m_viewMatrix = XMMatrixLookAtLH(vEyePt, lookAt, vUpVec);
-    XMVECTOR pDet;
-    m_viewMatrixInverse = XMMatrixInverse(&pDet, m_viewMatrix);
+    m_viewMatrixInverse = XMMatrixInverse(nullptr, m_viewMatrix);
 
     m_pGui = new Gui(m_hwnd, m_device.Get(), m_srvHeap.Get(), (UINT)DescriptorHeapOffsets::GUI, m_swapBufferCount, SharedConstants::SWAP_CHAIN_FORMAT, adapterDescription, m_args);
 
@@ -299,8 +296,7 @@ void Scene::RotateView(float in_x, float in_y, float in_z)
 
     m_viewMatrix = XMMatrixMultiply(m_viewMatrix, rotation);
 
-    XMVECTOR pDet;
-    m_viewMatrixInverse = XMMatrixInverse(&pDet, m_viewMatrix);
+    m_viewMatrixInverse = XMMatrixInverse(nullptr, m_viewMatrix);
 }
 
 
@@ -493,7 +489,7 @@ void Scene::CreateDescriptorHeaps()
     dsvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
     dsvHeapDesc.NumDescriptors = 1;
     ThrowIfFailed(m_device->CreateDescriptorHeap(&dsvHeapDesc, IID_PPV_ARGS(&m_dsvHeap)));
-    m_srvHeap->SetName(L"m_dsvHeap");
+    m_dsvHeap->SetName(L"m_dsvHeap");
 }
 
 //-----------------------------------------------------------------------------
@@ -1053,36 +1049,6 @@ void Scene::SetSampler()
 }
 
 //----------------------------------------------------------
-// should we drain tiles?
-//----------------------------------------------------------
-void Scene::DrainTiles()
-{
-    bool drainTiles = false;
-
-    static int previousVisualizationMode = m_args.m_dataVisualizationMode;
-    if (previousVisualizationMode != m_args.m_dataVisualizationMode)
-    {
-        m_pTileUpdateManager->SetVisualizationMode((UINT)m_args.m_dataVisualizationMode);
-        previousVisualizationMode = m_args.m_dataVisualizationMode;
-        drainTiles = true;
-    }
-
-    if (m_args.m_drainTiles)
-    {
-        m_args.m_drainTiles = false;
-        drainTiles = true;
-    }
-
-    if (drainTiles)
-    {
-        for (auto m : m_objects)
-        {
-            m->GetStreamingResource()->ClearAllocations();
-        }
-    }
-}
-
-//----------------------------------------------------------
 // time-limit the number of feedback resolves on the GPU
 // by keeping a running average of the time to resolve feedback
 // and only calling QueueFeedback() for a subset of the StreamingResources
@@ -1244,7 +1210,7 @@ void Scene::ScreenShot(std::wstring& in_fileName) const
 
 //-------------------------------------------------------------------------
 //-------------------------------------------------------------------------
-void Scene::GatherStatistics(float in_cpuProcessFeedbackTime, float in_gpuProcessFeedbackTime)
+void Scene::GatherStatistics()
 {
     // NOTE: streaming isn't aware of frame time.
     // these numbers are approximately a measure of the number of operations during the last frame
@@ -1266,7 +1232,8 @@ void Scene::GatherStatistics(float in_cpuProcessFeedbackTime, float in_gpuProces
             m_numUploadsPreviousFrame, m_numEvictionsPreviousFrame,
             m_prevNumFeedbackObjects[m_frameIndex],
             // Note: these may be off by 1 frame, but probably good enough
-            in_cpuProcessFeedbackTime, in_gpuProcessFeedbackTime);
+            m_pTileUpdateManager->GetCpuProcessFeedbackTime(),
+            m_gpuProcessFeedbackTime);
 
         if (m_frameNumber == m_args.m_timingStopFrame)
         {
@@ -1305,20 +1272,11 @@ void Scene::GatherStatistics(float in_cpuProcessFeedbackTime, float in_gpuProces
 }
 
 //-------------------------------------------------------------------------
+// typically animation rates would be a function of frame time
+// however, we wanted reproduceable frames for timing purposes
 //-------------------------------------------------------------------------
 void Scene::Animate()
 {
-    if (m_args.m_waitForAssetLoad)
-    {
-        for (const auto& o : m_objects)
-        {
-            if (!o->GetPackedMipsPresent())
-            {
-                return; // do not animate or, for statistics purposes, increment frame #
-            }
-        }
-    }
-
     // animate camera
     if (m_args.m_cameraAnimationRate)
     {
@@ -1363,15 +1321,10 @@ void Scene::Animate()
             m_viewMatrix = XMMatrixLookAtLH(pos, XMVectorSet(0, 0, 0, 0), XMVectorSet(0.0f, 1.0f, 0.0f, 1.0f));
         }
 
-        XMVECTOR pDet;
-        m_viewMatrixInverse = XMMatrixInverse(&pDet, m_viewMatrix);
+        m_viewMatrixInverse = XMMatrixInverse(nullptr, m_viewMatrix);
     }
 
     // spin objects
-    
-    // normally rotation would be a function of frame time
-    // however, we wanted reproduceable frames for timing purposes
-    //float rotation = m_args.m_animationRate * GetFrameTime() / 200.0f;
     float rotation = m_args.m_animationRate * 0.01f;
 
     for (auto o : m_objects)
@@ -1482,6 +1435,8 @@ void Scene::StartScene()
 
     SetSampler();
     m_pFrameConstantData->g_view = m_viewMatrix;
+    DirectX::XMVECTOR vEyePt = m_viewMatrixInverse.r[3];
+    DirectX::XMStoreFloat4(&m_pFrameConstantData->g_eyePos, vEyePt);
     m_pFrameConstantData->g_visualizeFeedback = m_args.m_visualizeMinMip;
 
     if (m_args.m_lightFromView)
@@ -1499,7 +1454,7 @@ void Scene::StartScene()
 
 //-------------------------------------------------------------------------
 //-------------------------------------------------------------------------
-void Scene::DrawUI(float in_cpuProcessFeedbackTime)
+void Scene::DrawUI()
 {
     //-------------------------------------------
     // Display various textures
@@ -1582,7 +1537,7 @@ void Scene::DrawUI(float in_cpuProcessFeedbackTime)
             guiDrawParams.m_cpuDrawTime = a.Get(RenderEvents::TumEndFrameBegin) - a.Get(RenderEvents::FrameBegin);
         }
 
-        guiDrawParams.m_cpuFeedbackTime = in_cpuProcessFeedbackTime;
+        guiDrawParams.m_cpuFeedbackTime = m_pTileUpdateManager->GetCpuProcessFeedbackTime();
         if (m_pTerrainSceneObject)
         {
             guiDrawParams.m_scrollMipDim = m_pTerrainSceneObject->GetStreamingResource()->GetTiledResource()->GetDesc().MipLevels;
@@ -1600,9 +1555,90 @@ void Scene::DrawUI(float in_cpuProcessFeedbackTime)
         }
         else
         {
-            m_pGui->Draw(m_commandList.Get(), m_args, guiDrawParams);
+            m_pGui->Draw(m_commandList.Get(), m_args, guiDrawParams, m_uiButtonChanges);
         }
     }
+}
+
+//-------------------------------------------------------------------------
+//-------------------------------------------------------------------------
+void Scene::HandleUiToggleFrustum()
+{
+    static bool enableTileUpdates = m_args.m_enableTileUpdates;
+    static float samplerLodBias = m_args.m_lodBias;
+
+    // stop updating while the frustum is shown
+    if (m_args.m_visualizeFrustum)
+    {
+        // stop spinning
+        m_args.m_animationRate = 0;
+
+        XMVECTOR lookDir = m_viewMatrixInverse.r[2];
+        XMVECTOR pos = m_viewMatrixInverse.r[3];
+
+        // scale to something within universe scale
+        float scale = SharedConstants::SPHERE_SCALE * 2.5;
+
+        m_pFrustumViewer->SetView(m_viewMatrixInverse, scale);
+
+        enableTileUpdates = m_args.m_enableTileUpdates;
+        m_args.m_enableTileUpdates = false;
+        m_args.m_lodBias = -5.0f;
+    }
+    else
+    {
+        m_args.m_enableTileUpdates = enableTileUpdates;
+        m_args.m_lodBias = samplerLodBias;
+    }
+}
+
+//-------------------------------------------------------------------------
+// handle UI changes (outside of begin/end frame)
+//-------------------------------------------------------------------------
+void Scene::HandleUIchanges()
+{
+    if (m_args.m_showUI)
+    {
+        if (m_uiButtonChanges.m_directStorageToggle)
+        {
+            m_pTileUpdateManager->UseDirectStorage(m_args.m_useDirectStorage);
+        }
+        if (m_uiButtonChanges.m_frustumToggle)
+        {
+            HandleUiToggleFrustum();
+        }
+        if (m_uiButtonChanges.m_visualizationChange)
+        {
+            m_pTileUpdateManager->SetVisualizationMode((UINT)m_args.m_dataVisualizationMode);
+        }
+
+        m_uiButtonChanges = Gui::ButtonChanges(); // reset
+    }
+}
+
+//-------------------------------------------------------------------------
+// the m_waitForAssetLoad setting pauses until packed mips load
+// do not animate or, for statistics purposes, increment frame #
+//-------------------------------------------------------------------------
+bool Scene::WaitForAssetLoad()
+{
+    for (const auto o : m_objects)
+    {
+        if (!o->GetPackedMipsPresent())
+        {
+            // must give TileUpdateManager a chance to process packed mip requests
+            D3D12_CPU_DESCRIPTOR_HANDLE minmipmapDescriptor = CD3DX12_CPU_DESCRIPTOR_HANDLE(m_srvHeap->GetCPUDescriptorHandleForHeapStart(), (UINT)DescriptorHeapOffsets::SHARED_MIN_MIP_MAP, m_srvUavCbvDescriptorSize);
+            m_pTileUpdateManager->BeginFrame(m_srvHeap.Get(), minmipmapDescriptor);
+            auto commandLists = m_pTileUpdateManager->EndFrame();
+            ID3D12CommandList* pCommandLists[] = { commandLists.m_beforeDrawCommands, commandLists.m_afterDrawCommands };
+            m_commandQueue->ExecuteCommandLists(_countof(pCommandLists), pCommandLists);
+
+            MoveToNextFrame();
+
+            return true;
+        }
+    }
+    return false;
 }
 
 //-------------------------------------------------------------------------
@@ -1614,70 +1650,35 @@ bool Scene::Draw()
         return false;
     }
 
-    if (m_useDirectStorage != m_args.m_useDirectStorage)
-    {
-        m_useDirectStorage = m_args.m_useDirectStorage;
-        m_pTileUpdateManager->UseDirectStorage(m_useDirectStorage);
-    }
+    HandleUIchanges(); // handle UI changes (outside of begin/end frame)
 
     // handle any changes to window dimensions or enter/exit full screen
     Resize();
-
-    DrainTiles();
-
-    // prepare for new commands (need an open command list for LoadSpheres)
-    m_commandAllocators[m_frameIndex]->Reset();
-    m_commandList->Reset((ID3D12CommandAllocator*)m_commandAllocators[m_frameIndex].Get(), nullptr);
 
     // load more spheres?
     // SceneResource destruction/creation must be done outside of BeginFrame/EndFrame
     LoadSpheres();
 
+    // after loading new objects
+    if (m_args.m_waitForAssetLoad && WaitForAssetLoad())
+    {
+        return true;
+    }
+
+    // prepare for new commands (need an open command list for LoadSpheres)
+    m_commandAllocators[m_frameIndex]->Reset();
+    m_commandList->Reset((ID3D12CommandAllocator*)m_commandAllocators[m_frameIndex].Get(), nullptr);
+
     m_renderThreadTimes.Set(RenderEvents::FrameBegin);
 
     // get the total time the GPU spent processing feedback during the previous frame (by calling before TUM::BeginFrame)
     m_gpuProcessFeedbackTime = m_pTileUpdateManager->GetGpuTime();
-    float cpuProcessFeedbackTime = m_pTileUpdateManager->GetCpuProcessFeedbackTime();
 
     // prepare to update Feedback & stream textures
     D3D12_CPU_DESCRIPTOR_HANDLE minmipmapDescriptor = CD3DX12_CPU_DESCRIPTOR_HANDLE(m_srvHeap->GetCPUDescriptorHandleForHeapStart(), (UINT)DescriptorHeapOffsets::SHARED_MIN_MIP_MAP, m_srvUavCbvDescriptorSize);
     m_pTileUpdateManager->BeginFrame(m_srvHeap.Get(), minmipmapDescriptor);
 
     Animate();
-
-    //-------------------------------------------
-    // frustum visualization
-    //-------------------------------------------
-    if (m_showFrustum != m_args.m_visualizeFrustum)
-    {
-        m_showFrustum = m_args.m_visualizeFrustum;
-        static bool enableTileUpdates = m_args.m_enableTileUpdates;
-        static float samplerLodBias = m_args.m_lodBias;
-
-        // stop updating while the frustum is shown
-        if (m_showFrustum)
-        {
-            // stop spinning
-            m_args.m_animationRate = 0;
-
-            XMVECTOR lookDir = m_viewMatrixInverse.r[2];
-            XMVECTOR pos = m_viewMatrixInverse.r[3];
-
-            // scale to something within universe scale
-            float scale = SharedConstants::SPHERE_SCALE * 2.5;
-
-            m_pFrustumViewer->SetView(m_viewMatrixInverse, scale);
-
-            enableTileUpdates = m_args.m_enableTileUpdates;
-            m_args.m_enableTileUpdates = false;
-            m_args.m_lodBias = -5.0f;
-        }
-        else
-        {
-            m_args.m_enableTileUpdates = enableTileUpdates;
-            m_args.m_lodBias = samplerLodBias;
-        }
-    }
 
     //-------------------------------------------
     // draw everything
@@ -1691,7 +1692,7 @@ bool Scene::Draw()
         // draw all geometry
         DrawObjects();
 
-        if (m_showFrustum)
+        if (m_args.m_visualizeFrustum)
         {
             XMMATRIX combinedTransform = XMMatrixMultiply(m_viewMatrix, m_projection);
             m_pFrustumViewer->Draw(m_commandList.Get(), combinedTransform, m_fieldOfView, m_aspectRatio);
@@ -1703,7 +1704,7 @@ bool Scene::Draw()
             MsaaResolve();
         }
 
-        DrawUI(cpuProcessFeedbackTime);
+        DrawUI();
 
         D3D12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_frameIndex].Get(),
             D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
@@ -1736,7 +1737,7 @@ bool Scene::Draw()
     //-------------------------------------------
     // gather statistics before moving to next frame
     //-------------------------------------------
-    GatherStatistics(cpuProcessFeedbackTime, m_gpuProcessFeedbackTime);
+    GatherStatistics();
     m_renderThreadTimes.Set(RenderEvents::WaitOnFencesBegin);
 
     MoveToNextFrame();

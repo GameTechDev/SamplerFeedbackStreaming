@@ -40,9 +40,11 @@ Streaming::FileStreamerReference::FileStreamerReference(ID3D12Device* in_pDevice
     UINT in_maxTileCopiesInFlight):           // upload buffer size. 1024 would become a 64MB upload buffer
     Streaming::FileStreamer(in_pDevice),
     m_copyBatches(in_maxNumCopyBatches + 2)   // padded by a couple to try to help with observed issue perhaps due to OS thread sched.
-    , m_uploadAllocator(in_pDevice, in_maxTileCopiesInFlight)
+    , m_uploadAllocator(in_maxTileCopiesInFlight)
     , m_requests(in_maxTileCopiesInFlight)    // pre-allocate an array of event handles corresponding to # of tiles that can fit in the upload heap
 {
+    m_uploadBuffer.Allocate(in_pDevice, in_maxTileCopiesInFlight * D3D12_TILED_RESOURCE_TILE_SIZE_IN_BYTES);
+
     D3D12_COMMAND_QUEUE_DESC queueDesc = {};
     queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
     queueDesc.Type = D3D12_COMMAND_LIST_TYPE_COPY;
@@ -173,7 +175,7 @@ void Streaming::FileStreamerReference::LoadTexture(Streaming::FileStreamerRefere
 {
     Streaming::UpdateList* pUpdateList = in_copyBatch.m_pUpdateList;
 
-    BYTE* pStagingBaseAddress = (BYTE*)m_uploadAllocator.GetBuffer().m_pData;
+    BYTE* pStagingBaseAddress = (BYTE*)m_uploadBuffer.GetData();
 
     UINT startIndex = in_copyBatch.m_numEvents;
     UINT endIndex = startIndex + in_numtilesToLoad;
@@ -323,7 +325,7 @@ void Streaming::FileStreamerReference::CopyThread()
                     ID3D12Resource* pAtlas = c.m_pUpdateList->m_pStreamingResource->GetHeap()->ComputeCoordFromTileIndex(coord, c.m_pUpdateList->m_heapIndices[i], textureFormat);
 
                     m_copyCommandList->CopyTiles(pAtlas, &coord,
-                        &tileRegionSize, m_uploadAllocator.GetBuffer().m_resource.Get(),
+                        &tileRegionSize, m_uploadBuffer.GetResource(),
                         D3D12_TILED_RESOURCE_TILE_SIZE_IN_BYTES * c.m_uploadIndices[i],
                         D3D12_TILE_COPY_FLAG_LINEAR_BUFFER_TO_SWIZZLED_TILED_RESOURCE | D3D12_TILE_COPY_FLAG_NO_HAZARD);
                 }

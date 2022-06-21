@@ -34,7 +34,7 @@ using namespace DirectX;
 //-----------------------------------------------------------------------------
 // Setup random lattice
 //-----------------------------------------------------------------------------
-TerrainGenerator::TerrainGenerator(const CommandLineArgs& in_args) :
+TerrainGenerator::TerrainGenerator(const TerrainGenerator::Params& in_args) :
     m_args(in_args)
 {
     std::mt19937 gen(42);
@@ -51,6 +51,9 @@ TerrainGenerator::TerrainGenerator(const CommandLineArgs& in_args) :
 
     m_vertices.resize(gridSize);
     GenerateVertices();
+
+    UINT numQuads = (in_args.m_terrainSideSize - 1) * (in_args.m_terrainSideSize - 1);
+    m_numIndices = numQuads * 6;
 }
 
 //-----------------------------------------------------------------------------
@@ -117,6 +120,18 @@ float TerrainGenerator::Noise(XMFLOAT2 scaledLocation)
     return noise;
 }
 
+void TerrainGenerator::Add(DirectX::XMFLOAT3& out_a, DirectX::XMVECTOR in_b)
+{
+    DirectX::XMVECTOR n = DirectX::XMLoadFloat3(&out_a);
+    DirectX::XMStoreFloat3(&out_a, n + in_b);
+}
+
+void TerrainGenerator::Normalize(DirectX::XMFLOAT3& out_v)
+{
+    DirectX::XMVECTOR n = DirectX::XMVector3Normalize(DirectX::XMLoadFloat3(&out_v));
+    DirectX::XMStoreFloat3(&out_v, n);
+}
+
 //-----------------------------------------------------------------------------
 // Compute vertex buffer for terrain that is a 2D grid.
 // The computed terrain spans [0,1] in texture coordinates (inclusive on edges).
@@ -127,6 +142,7 @@ void TerrainGenerator::GenerateVertices()
     float minDimension = -100.0f;
     float maxDimension = 100.0f;
 
+    float length = maxDimension - minDimension;
     const float frac = 1.0f / static_cast<float>(m_args.m_terrainSideSize - 1);
 
     for (UINT y = 0; y < m_args.m_terrainSideSize; y++)
@@ -135,8 +151,11 @@ void TerrainGenerator::GenerateVertices()
         {
             Vertex& vtx = m_vertices[y * m_args.m_terrainSideSize + x];
 
-            vtx.pos.x = Lerp(minDimension, maxDimension, (float)x / (m_args.m_terrainSideSize - 1));   // x,y = minDim..maxDim evenly distributed
-            vtx.pos.z = Lerp(minDimension, maxDimension, (float)y / (m_args.m_terrainSideSize - 1));
+            vtx.tex.x = x * frac;     // u,v = 0.0..1.0 evenly distributed
+            vtx.tex.y = y * frac;
+
+            vtx.pos.x = minDimension + (length * vtx.tex.x);
+            vtx.pos.z = minDimension + (length * vtx.tex.y);
 
             float height = 0.0f;
 
@@ -159,9 +178,6 @@ void TerrainGenerator::GenerateVertices()
 
             vtx.pos.y = m_args.m_heightScale * height * Gaussian(distanceFromCenter, m_args.m_mountainSize);
 
-            vtx.tex.x = x * frac;     // u,v = 0.0..1.0 evenly distributed
-            vtx.tex.y = y * frac;
-
             // FIXME? the terrain is shown upside down!
             vtx.tex.x = 1.f - vtx.tex.x;
         }
@@ -175,10 +191,6 @@ void TerrainGenerator::GenerateVertices()
     // Compute smooth normal as the average of these connected triangle's face normals.
     // We do this by looping over quads, and for each of its two triangles,
     // compute face normal and accumulate to each of the triangle's three vertices.
-    std::vector<XMVECTOR> normals(
-        m_args.m_terrainSideSize * m_args.m_terrainSideSize,
-        XMVectorSet(0.f, 0.f, 0.f, 0.f));
-
     for (UINT y = 0; y < m_args.m_terrainSideSize - 1; y++)
     {
         for (UINT x = 0; x < m_args.m_terrainSideSize - 1; x++)
@@ -190,9 +202,9 @@ void TerrainGenerator::GenerateVertices()
                 UINT vtx2 = vtx0 + 1;
                 UINT vtx1 = vtx0 + 1 + m_args.m_terrainSideSize;
                 XMVECTOR n = ComputeNormal(vtx0, vtx2, vtx1);
-                normals[vtx0] += n;
-                normals[vtx1] += n;
-                normals[vtx2] += n;
+                Add(m_vertices[vtx0].normal, n);
+                Add(m_vertices[vtx1].normal, n);
+                Add(m_vertices[vtx2].normal, n);
             }
 
             // Lower triangle (CCW)
@@ -200,17 +212,16 @@ void TerrainGenerator::GenerateVertices()
                 UINT vtx2 = vtx0 + 1 + m_args.m_terrainSideSize;
                 UINT vtx1 = vtx0 + m_args.m_terrainSideSize;
                 XMVECTOR n = ComputeNormal(vtx0, vtx2, vtx1);
-                normals[vtx0] += n;
-                normals[vtx1] += n;
-                normals[vtx2] += n;
+                Add(m_vertices[vtx0].normal, n);
+                Add(m_vertices[vtx1].normal, n);
+                Add(m_vertices[vtx2].normal, n);
             }
         }
     }
 
-    for (size_t i = 0; i < normals.size(); i++)
+    for (auto& v : m_vertices)
     {
-        XMVECTOR n = XMVector3Normalize(normals[i]);
-        XMStoreFloat3(&m_vertices[i].normal, n);
+        Normalize(v.normal);
     }
 }
 
@@ -221,12 +232,11 @@ void TerrainGenerator::GenerateVertices()
 void TerrainGenerator::GenerateIndices(UINT* pResult)
 {
     UINT outIdx = 0;
-    UINT topLeftIdx = 0;
 
     for (UINT y = 0; y < m_args.m_terrainSideSize - 1; y++)
     {
-        // reset to beginning of line
-        topLeftIdx = y * m_args.m_terrainSideSize;
+        // reset to beginning of row
+        UINT topLeftIdx = y * m_args.m_terrainSideSize;
         for (UINT x = 0; x < m_args.m_terrainSideSize - 1; x++)
         {
             pResult[outIdx + 0] = topLeftIdx;

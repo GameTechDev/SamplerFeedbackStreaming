@@ -27,10 +27,10 @@
 #pragma once
 
 #include "Streaming.h" // for ComPtr
-#include "HeapAllocator.h"
+#include "SimpleAllocator.h"
 
 //==================================================
-// Streaming Heap wraps the D3D heap, HeapAllocator, and Atlas
+// Streaming Heap wraps the D3D heap, Allocator, and Atlas
 //==================================================
 namespace Streaming
 {
@@ -71,9 +71,10 @@ namespace Streaming
 
         ID3D12Resource* ComputeCoordFromTileIndex(D3D12_TILED_RESOURCE_COORDINATE& out_coord, UINT in_index, const DXGI_FORMAT in_format);
         ID3D12Heap* GetHeap() const { return m_tileHeap.Get(); }
-        HeapAllocator& GetAllocator() { return m_heapAllocator; }
+        SimpleAllocator& GetAllocator() { return m_heapAllocator; }
     private:
-        HeapAllocator m_heapAllocator;
+        SimpleAllocator m_heapAllocator;
+
         std::vector<Streaming::Atlas*> m_atlases;
         ComPtr<ID3D12Heap> m_tileHeap; // heap to hold tiles resident in GPU memory
     };

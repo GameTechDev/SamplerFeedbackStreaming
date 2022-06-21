@@ -54,7 +54,17 @@ public:
         UINT m_windowHeight;
     };
 
-    void Draw(ID3D12GraphicsCommandList* in_pCommandList, CommandLineArgs& in_args, const DrawParams& in_drawParams);
+    struct ButtonChanges
+    {
+        bool m_directStorageToggle{ false };
+        bool m_frustumToggle{ false };
+        bool m_visualizationChange{ false };
+    };
+
+    void Draw(ID3D12GraphicsCommandList* in_pCommandList,
+        CommandLineArgs& in_args,
+        const DrawParams& in_drawParams,
+        ButtonChanges& out_buttonChanges);
 
     void DrawMini(ID3D12GraphicsCommandList* in_pCommandList, const DrawParams& in_drawParams);
 

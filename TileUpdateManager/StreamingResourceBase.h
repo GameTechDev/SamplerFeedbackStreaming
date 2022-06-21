@@ -39,7 +39,7 @@ Base class for StreamingResource
 
 namespace Streaming
 {
-    class TileUpdateManagerBase;
+    class TileUpdateManagerSR;
     struct UpdateList;
     class XeTexture;
     class Heap;
@@ -58,7 +58,7 @@ namespace Streaming
             const std::wstring& in_filename,
             Streaming::FileHandle* in_pFileHandle,
             // share heap and upload buffers with other InternalResources
-            Streaming::TileUpdateManagerBase* in_pTileUpdateManager,
+            Streaming::TileUpdateManagerSR* in_pTileUpdateManager,
             Heap* in_pHeap);
 
         virtual ~StreamingResourceBase();
@@ -125,9 +125,14 @@ namespace Streaming
         }
 
         bool InitPackedMips();
+
         //-------------------------------------
         // end called by TUM::ProcessFeedbackThread
         //-------------------------------------
+
+        // immediately evicts all except packed mips
+        // called by TUM::SetVisualizationMode()
+        void ClearAllocations();
 
         UINT GetNumTilesWidth() const { return m_tileReferencesWidth; }
         UINT GetNumTilesHeight() const { return m_tileReferencesHeight; }
@@ -182,35 +187,15 @@ namespace Streaming
                 Loading = 3,     // b11
             };
 
-            // called in UpdateMinMipMap()
-            bool GetResident(UINT x, UINT y, UINT s) const { return (Residency::Resident == m_resident[s][y][x]); }
-
-            // called by DataUploader during Notify* routines
-            void SetResident(UINT x, UINT y, UINT s) { m_resident[s][y][x] = Residency::Resident; }
-            void SetNotResident(UINT x, UINT y, UINT s) { m_resident[s][y][x] = Residency::NotResident; }
-            // for debugging, called by DataUploader Notify* routines
-            BYTE GetResidency(const D3D12_TILED_RESOURCE_COORDINATE& in_coord) const { return m_resident[in_coord.Subresource][in_coord.Y][in_coord.X]; }
-
-            // called via TUM::ProcessFeedback() when queueing evictions and loads
-            // redundant state represents that the heap index isn't reliable, as the resource is in the process of loading or evicting
-            void SetLoading(UINT x, UINT y, UINT s) { m_resident[s][y][x] = Residency::Loading; }
-            void SetEvicting(UINT x, UINT y, UINT s) { m_resident[s][y][x] = Residency::Evicting; }
-            UINT32& GetHeapIndex(UINT x, UINT y, UINT s) { return m_heapIndices[s][y][x]; }
-
-            // called via TUM::ProcessFeedback() in StreamingResource ProcessFeedback
+            void SetResidency(UINT x, UINT y, UINT s, Residency in_residency) { m_resident[s][y][x] = (BYTE)in_residency; }
+            BYTE GetResidency(UINT x, UINT y, UINT s) const { return m_resident[s][y][x]; }
             UINT32& GetRefCount(UINT x, UINT y, UINT s) { return m_refcounts[s][y][x]; }
-            UINT32 GetRefCount(UINT x, UINT y, UINT s) const { return m_refcounts[s][y][x]; }
 
-            bool GetResident(const D3D12_TILED_RESOURCE_COORDINATE& in_coord) const { return GetResident(in_coord.X, in_coord.Y, in_coord.Subresource); }
-            void SetResident(const D3D12_TILED_RESOURCE_COORDINATE& in_coord) { SetResident(in_coord.X, in_coord.Y, in_coord.Subresource); }
-            void SetNotResident(const D3D12_TILED_RESOURCE_COORDINATE& in_coord) { SetNotResident(in_coord.X, in_coord.Y, in_coord.Subresource); }
-            void SetLoading(const D3D12_TILED_RESOURCE_COORDINATE& in_coord) { SetLoading(in_coord.X, in_coord.Y, in_coord.Subresource); }
-            void SetEvicting(const D3D12_TILED_RESOURCE_COORDINATE& in_coord) { SetEvicting(in_coord.X, in_coord.Y, in_coord.Subresource); }
+            void SetResidency(const D3D12_TILED_RESOURCE_COORDINATE& in_coord, Residency in_residency) { SetResidency(in_coord.X, in_coord.Y, in_coord.Subresource, in_residency); }
+            BYTE GetResidency(const D3D12_TILED_RESOURCE_COORDINATE& in_coord) { return GetResidency(in_coord.X, in_coord.Y, in_coord.Subresource); }
+            UINT32 GetRefCount(const D3D12_TILED_RESOURCE_COORDINATE& in_coord) const { return m_refcounts[in_coord.Subresource][in_coord.Y][in_coord.X]; }
 
-            UINT32& GetRefCount(const D3D12_TILED_RESOURCE_COORDINATE& in_coord) { return GetRefCount(in_coord.X, in_coord.Y, in_coord.Subresource); }
-            UINT32 GetRefCount(const D3D12_TILED_RESOURCE_COORDINATE& in_coord) const { return GetRefCount(in_coord.X, in_coord.Y, in_coord.Subresource); }
-
-            UINT32& GetHeapIndex(const D3D12_TILED_RESOURCE_COORDINATE& in_coord) { return GetHeapIndex(in_coord.X, in_coord.Y, in_coord.Subresource); }
+            UINT32& GetHeapIndex(const D3D12_TILED_RESOURCE_COORDINATE& in_coord) { return m_heapIndices[in_coord.Subresource][in_coord.Y][in_coord.X]; }
 
             // checks refcount of bottom-most non-packed tile(s). If none are in use, we know nothing is resident.
             // used in UpdateMinMipMap()
@@ -225,6 +210,8 @@ namespace Streaming
 
             UINT GetWidth(UINT in_s) const { return (UINT)m_resident[in_s][0].size(); }
             UINT GetHeight(UINT in_s) const { return (UINT)m_resident[in_s].size(); }
+
+            static const UINT InvalidIndex{ UINT(-1) };
         private:
             template<typename T> using TileRow = std::vector<T>;
             template<typename T> using TileY = std::vector<TileRow<T>>;
@@ -236,7 +223,7 @@ namespace Streaming
         };
         TileMappingState m_tileMappingState;
 
-        Streaming::TileUpdateManagerBase* m_pTileUpdateManager;
+        Streaming::TileUpdateManagerSR* m_pTileUpdateManager;
 
         std::vector<UINT> m_packedMipHeapIndices;
 

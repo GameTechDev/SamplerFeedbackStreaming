@@ -41,11 +41,12 @@ namespace Streaming
 
     //==================================================
     //==================================================
-    struct UploadBuffer
+    class UploadBuffer
     {
+    public:
         ~UploadBuffer() { if (m_resource.Get()) m_resource->Unmap(0, nullptr); }
-        ComPtr<ID3D12Resource> m_resource;
-        void* m_pData{ nullptr };
+        ID3D12Resource* GetResource() const { return m_resource.Get(); }
+        void* GetData() const { return m_pData; }
 
         void Allocate(ID3D12Device* in_pDevice, UINT in_numBytes)
         {
@@ -63,6 +64,9 @@ namespace Streaming
                 IID_PPV_ARGS(&m_resource));
             m_resource->Map(0, nullptr, reinterpret_cast<void**>(&m_pData));
         }
+    private:
+        ComPtr<ID3D12Resource> m_resource;
+        void* m_pData{ nullptr };
     };
 
     //==================================================

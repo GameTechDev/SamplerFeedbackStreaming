@@ -68,7 +68,7 @@ namespace SceneObjects
     public:
         virtual ~BaseObject() {}
 
-        bool GetPackedMipsPresent() { return m_pStreamingResource->GetPackedMipsResident(); }
+        bool GetPackedMipsPresent() const { return m_pStreamingResource->GetPackedMipsResident(); }
 
         virtual void Draw(ID3D12GraphicsCommandList1* in_pCommandList, const DrawParams& in_drawParams);
 
@@ -113,7 +113,6 @@ namespace SceneObjects
         {
             DirectX::XMMATRIX g_combinedTransform;
             DirectX::XMMATRIX g_worldTransform;
-            DirectX::XMFLOAT4 g_eyePos;
 
             int g_minmipmapWidth;
             int g_minmipmapHeight;
@@ -122,7 +121,7 @@ namespace SceneObjects
 
         virtual void SetModelConstants(ModelConstantData& out_modelConstantData,
             const DirectX::XMMATRIX& in_projection,
-            const DirectX::XMMATRIX& in_view, const DirectX::XMMATRIX& in_viewInverse);
+            const DirectX::XMMATRIX& in_view);
 
         std::unique_ptr<StreamingResource> m_pStreamingResource;
 
@@ -227,6 +226,6 @@ namespace SceneObjects
 
         virtual void SetModelConstants(ModelConstantData& out_modelConstantData,
             const DirectX::XMMATRIX& in_projection,
-            const DirectX::XMMATRIX& in_view, const DirectX::XMMATRIX& in_viewInverse) override;
+            const DirectX::XMMATRIX& in_view) override;
     };
 }

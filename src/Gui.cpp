@@ -268,7 +268,7 @@ void Gui::ToggleBenchmarkMode(CommandLineArgs& in_args)
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 void Gui::Draw(ID3D12GraphicsCommandList* in_pCommandList,
-    CommandLineArgs& in_args, const DrawParams& in_drawParams)
+    CommandLineArgs& in_args, const DrawParams& in_drawParams, ButtonChanges& out_buttonChanges)
 {
     m_cpuTimes.Update(m_cpuTimer.GetTime());
     m_numUploads.AddDelta(in_drawParams.m_numTilesUploaded);
@@ -302,19 +302,17 @@ void Gui::Draw(ID3D12GraphicsCommandList* in_pCommandList,
     ImGui::SliderFloat("Feedback ms", &in_args.m_maxGpuFeedbackTimeMs, 0, 30);
     
     const char* visualizationModes[] = { "Texture", "Color = Mip", "Random Tile Color" };
-    ImGui::Combo("Visualize", &in_args.m_dataVisualizationMode, visualizationModes, _countof(visualizationModes));
+    out_buttonChanges.m_visualizationChange = ImGui::Combo("Visualize", &in_args.m_dataVisualizationMode, visualizationModes, _countof(visualizationModes));
 
     ImGui::Checkbox("Color MinMip", &in_args.m_visualizeMinMip);
     ImGui::Checkbox("Uploads Enabled", &in_args.m_enableTileUpdates);
-    ImGui::Checkbox("Drain Tiles", &in_args.m_drainTiles);
-    ImGui::Checkbox("Lock Frustum", &in_args.m_visualizeFrustum);
+    out_buttonChanges.m_frustumToggle = ImGui::Checkbox("Lock Frustum", &in_args.m_visualizeFrustum);
     ImGui::Checkbox("Update Every Object Every Frame", &in_args.m_updateEveryObjectEveryFrame);
     ImGui::Checkbox("VSync", &in_args.m_vsyncEnabled);
     ImGui::Checkbox("Lock \"Up\" Dir", &in_args.m_cameraUpLock);
     ImGui::SliderInt("Num Objects", &in_args.m_numSpheres, 0, (int)in_args.m_maxNumObjects);
 
-    // FIXME: turn this on when DirectStorage is public
-    ImGui::Checkbox("DirectStorage", &in_args.m_useDirectStorage);
+    out_buttonChanges.m_directStorageToggle = ImGui::Checkbox("DirectStorage", &in_args.m_useDirectStorage);
 
     ImGui::Separator();
     if (ImGui::Button("Reset Settings")) { in_args = m_initialArgs; }

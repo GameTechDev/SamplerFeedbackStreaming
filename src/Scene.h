@@ -31,6 +31,7 @@
 #include "SceneObject.h"
 #include "FrameEventTracing.h"
 #include "AssetUploader.h"
+#include "Gui.h"
 
 class Scene
 {
@@ -62,7 +63,7 @@ public:
     void ToggleRollerCoaster() { m_args.m_cameraRollerCoaster = !m_args.m_cameraRollerCoaster; }
     void SetVisualizationMode(CommandLineArgs::VisualizationMode in_mode) { m_args.m_dataVisualizationMode = in_mode; }
 
-    void ToggleFrustum() { m_args.m_visualizeFrustum = !m_args.m_visualizeFrustum; }
+    void ToggleFrustum() { m_args.m_visualizeFrustum = !m_args.m_visualizeFrustum; HandleUiToggleFrustum(); }
 
     void ToggleUpLock() { m_args.m_cameraUpLock = !m_args.m_cameraUpLock; }
     void ToggleAnimation()
@@ -151,6 +152,7 @@ private:
     struct FrameConstantData
     {
         DirectX::XMMATRIX g_view;
+        DirectX::XMFLOAT4 g_eyePos;
         DirectX::XMFLOAT4 g_lightDir;
         DirectX::XMFLOAT4 g_lightColor;     // RGB + specular intensity
         DirectX::XMFLOAT4 g_specColor;
@@ -161,10 +163,9 @@ private:
     FrameConstantData* m_pFrameConstantData; // left in the mapped state
     ComPtr<ID3D12Resource> m_frameConstantBuffer;
 
-    bool m_showFrustum{ false };
-    bool m_useDirectStorage{ false };
+    Gui* m_pGui;
+    Gui::ButtonChanges m_uiButtonChanges; // track changes in UI settings
 
-    class Gui* m_pGui;
     class TextureViewer* m_pTextureViewer;
     class BufferViewer* m_pMinMipMapViewer;
     class BufferViewer* m_pFeedbackViewer;
@@ -198,7 +199,6 @@ private:
 
     std::unique_ptr<class TileUpdateManager> m_pTileUpdateManager;
 
-    void DrainTiles();
     UINT DetermineMaxNumFeedbackResolves();
     void DrawObjects();   // draw all the objects
 
@@ -246,13 +246,17 @@ private:
     void StartStreamingLibrary();
     std::vector<StreamingHeap*> m_sharedHeaps;
 
-    void GatherStatistics(float in_cpuProcessFeedbackTime, float in_gpuProcessFeedbackTime);
+    void GatherStatistics();
     UINT m_startUploadCount{ 0 };
     float m_totalTileLatency{ 0 }; // per-tile upload latency. NOT the same as per-UpdateList
     Timer m_cpuTimer;
 
+    void HandleUIchanges();
+    bool WaitForAssetLoad();
+
     void StartScene();
-    void DrawUI(float in_cpuProcessFeedbackTime);
+    void DrawUI();
+    void HandleUiToggleFrustum();
 
     AssetUploader m_assetUploader;
 };

@@ -28,7 +28,7 @@
 #include "FileStreamer.h"
 #include "Timer.h"
 
-#include "UploadAllocator.h"
+#include "SimpleAllocator.h"
 
 //=======================================================================================
 //=======================================================================================
@@ -118,7 +118,8 @@ namespace Streaming
         UINT m_batchAllocIndex{ 0 }; // allocation optimization
 
         // structure for finding space to upload tiles
-        Streaming::UploadAllocator m_uploadAllocator;
+        Streaming::SimpleAllocator m_uploadAllocator;
+        Streaming::UploadBuffer m_uploadBuffer;
 
         void CopyThread();
         std::atomic<bool> m_copyThreadRunning{ false };

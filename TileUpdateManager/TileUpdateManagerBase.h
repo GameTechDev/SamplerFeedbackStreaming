@@ -69,43 +69,16 @@ namespace Streaming
     class TileUpdateManagerBase
     {
     public:
-        ID3D12Device8* GetDevice() const { return m_device.Get(); }
-
-        UINT GetNumSwapBuffers() const { return m_numSwapBuffers; }
-
-        // stop tracking this StreamingResource. Called by its destructor
-        void Remove(StreamingResourceBase* in_pResource)
-        {
-            ASSERT(!GetWithinFrame());
-            m_streamingResources.erase(std::remove(m_streamingResources.begin(), m_streamingResources.end(), in_pResource), m_streamingResources.end());
-            m_numStreamingResourcesChanged = true;
-        }
-
-        UploadBuffer& GetResidencyMap() { return m_residencyMap; }
-
-        Streaming::UpdateList* AllocateUpdateList(StreamingResourceBase* in_pStreamingResource);
-        void SubmitUpdateList(Streaming::UpdateList& in_updateList);
-        void FreeEmptyUpdateList(Streaming::UpdateList& in_updateList);
-
-        // a fence on the render (direct) queue used to determine when feedback has been written & resolved
-        UINT64 GetFrameFenceValue() const { return m_frameFenceValue; }
+        //--------------------------------------------
+        // are we between BeginFrame and EndFrame? useful for debugging
+        //--------------------------------------------
+        bool GetWithinFrame() const { return m_withinFrame; }
 
         //--------------------------------------------
         // force all outstanding commands to complete.
         // used internally when everthing must drain, e.g. to delete or create a StreamingResource
         //--------------------------------------------
         void Finish();
-
-        //--------------------------------------------
-        // are we between BeginFrame and EndFrame? useful for debugging
-        //--------------------------------------------
-        bool GetWithinFrame() const { return m_withinFrame; }
-
-        void NotifyPackedMips() { m_packedMipTransition = true; } // called when a StreamingResource has recieved its packed mips
-
-        ID3D12CommandQueue* GetMappingQueue() const;
-
-        void SetResidencyChanged() { m_residencyChangedFlag.Set(); }
 
     protected:
         TileUpdateManagerBase(
@@ -187,6 +160,7 @@ namespace Streaming
         RawCpuTimer m_cpuTimer;
         std::atomic<INT64> m_processFeedbackTime{ 0 }; // sum of cpu timer times since start
         INT64 m_previousFeedbackTime{ 0 }; // m_processFeedbackTime at time of last query
+        float m_processFeedbackFrameTime{ 0 }; // cpu time spent processing feedback for the most recent frame
 
         // are we between BeginFrame and EndFrame? useful for debugging
         std::atomic<bool> m_withinFrame{ false };
@@ -199,10 +173,11 @@ namespace Streaming
             std::vector<ComPtr<ID3D12CommandAllocator>> m_allocators;
         };
         std::vector<CommandList> m_commandLists;
-    private:
-        const UINT m_maxTileMappingUpdatesPerApiCall;
 
         ComPtr<ID3D12Device8> m_device;
+        Streaming::SynchronizationFlag m_residencyChangedFlag;
+    private:
+        const UINT m_maxTileMappingUpdatesPerApiCall;
 
         std::atomic<bool> m_threadsRunning{ false };
 
@@ -216,7 +191,6 @@ namespace Streaming
         void CreateMinMipMapView(D3D12_CPU_DESCRIPTOR_HANDLE in_descriptor);
 
         std::vector<UINT> m_residencyMapOffsets; // one for each StreamingResource sized for numswapbuffers min mip maps each
-        Streaming::SynchronizationFlag m_residencyChangedFlag;
     };
 }
 /*

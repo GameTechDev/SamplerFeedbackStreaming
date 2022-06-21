@@ -34,7 +34,6 @@
 
 //=============================================================================
 // Internal class that uploads texture data into a reserved resource
-// Takes a streamer. creates a HeapAllocator sized to match texture atlas
 //=============================================================================
 Streaming::DataUploader::DataUploader(
     ID3D12Device* in_pDevice,
@@ -43,8 +42,8 @@ Streaming::DataUploader::DataUploader(
     UINT in_maxTileMappingUpdatesPerApiCall // some HW/drivers seem to have a limit
 ) :
     m_updateLists(in_maxCopyBatches)
+    , m_updateListAllocator(in_maxCopyBatches)
     , m_stagingBufferSizeMB(in_stagingBufferSizeMB)
-    , m_updateListFreeCount(in_maxCopyBatches)
     , m_gpuTimer(in_pDevice, in_maxCopyBatches, D3D12GpuTimer::TimerType::Copy)
     , m_mappingUpdater(in_maxTileMappingUpdatesPerApiCall)
 {
@@ -197,10 +196,10 @@ void Streaming::DataUploader::StartThreads()
             {
                 FenceMonitorThread();
 
-                // check constructed this way so we can wake the thread to allow for exit
-                if (m_updateLists.size() == m_updateListFreeCount)
+                // if no outstanding work, sleep
+                if (0 == m_updateListAllocator.GetAllocated())
                 {
-                    m_monitorFenceFlag.Wait();
+                    m_fenceMonitorFlag.Wait();
                 }
             }
             DebugPrint(L"Destroyed Fence Monitor Thread\n");
@@ -215,7 +214,7 @@ void Streaming::DataUploader::StopThreads()
 
         // wake up threads so they can exit
         m_submitFlag.Set();
-        m_monitorFenceFlag.Set();
+        m_fenceMonitorFlag.Set();
 
         // stop submitting new work
         if (m_submitThread.joinable())
@@ -238,9 +237,10 @@ void Streaming::DataUploader::StopThreads()
 //-----------------------------------------------------------------------------
 void Streaming::DataUploader::FlushCommands()
 {
-    DebugPrint("DataUploader Flush ", m_updateListFreeCount.load(), "/", m_updateLists.size(), " batches freed\n");
-    while (m_updateListFreeCount.load() < m_updateLists.size())
+    DebugPrint("DataUploader waiting on ", m_updateListAllocator.GetAllocated(), " tasks to complete\n");
+    while (m_updateListAllocator.GetAllocated()) // wait so long as there is outstanding work
     {
+        m_fenceMonitorFlag.Set(); // (paranoia)
         _mm_pause();
     }
     // if this loop doesn't exit, then a race condition occurred while allocating/freeing updatelists
@@ -258,40 +258,44 @@ void Streaming::DataUploader::FlushCommands()
 //-----------------------------------------------------------------------------
 // tries to find an available UpdateList, may return null
 //-----------------------------------------------------------------------------
-Streaming::UpdateList* Streaming::DataUploader::AllocateUpdateList(Streaming::StreamingResourceBase* in_pStreamingResource)
+Streaming::UpdateList* Streaming::DataUploader::AllocateUpdateList(Streaming::StreamingResourceDU* in_pStreamingResource)
 {
     UpdateList* pUpdateList = nullptr;
 
-    // early out if there are none available
-    if (m_updateListFreeCount.load() > 0)
+    // Heuristic
+    // if all the updatelists are in-flight, do not allocate another updatelist until the free pool hits a watermark
+    if (m_updateListsEmpty)
     {
-        // there is definitely at least one updatelist that is STATE_FREE
-        m_updateListFreeCount.fetch_sub(1);
+        // FIXME: what should the watermark be? 25% seems to be a good trade-off of latency vs. BW
+        UINT w = (UINT)m_updateLists.size() / 4;
 
-        // treat the array as a ring buffer
-        // the next index is the most-likely to be available because it has had the most time to complete
-        const UINT numLists = (UINT)m_updateLists.size();
-        for (UINT i = 0; i < numLists; i++)
+        if (w > m_updateListAllocator.GetAvailable())
         {
-            m_updateListAllocIndex = (m_updateListAllocIndex + 1) % numLists;
-            auto& p = m_updateLists[m_updateListAllocIndex];
-
-            UpdateList::State expected = UpdateList::State::STATE_FREE;
-            if (p.m_executionState.compare_exchange_weak(expected, UpdateList::State::STATE_ALLOCATED))
-            {
-                pUpdateList = &p;
-                // it is only safe to clear the state within the allocating thread
-                p.Reset((Streaming::StreamingResourceDU*)in_pStreamingResource);
-
-                // start fence polling thread now
-                m_monitorFenceFlag.Set();
-                break;
-            }
+            return nullptr;
         }
-        // pUpdateList might be null: more than 1 thread can enter the loop with initial condition of 1 free updatelist
-        // m_updateListFreeCount > 0 is an optimization, not a guarantee.
-        // calling functions must handle nullptr returned
+        else
+        {
+            m_updateListsEmpty = false;
+        }
     }
+
+    if (m_updateListAllocator.GetAvailable())
+    {
+        UINT index = m_updateListAllocator.Allocate();
+        pUpdateList = &m_updateLists[index];
+        ASSERT(UpdateList::State::STATE_FREE == pUpdateList->m_executionState);
+
+        pUpdateList->Reset(in_pStreamingResource);
+        pUpdateList->m_executionState = UpdateList::State::STATE_ALLOCATED;
+
+        // start fence polling thread now
+        m_fenceMonitorFlag.Set();
+    }
+    else
+    {
+        m_updateListsEmpty = true;
+    }
+
     return pUpdateList;
 }
 
@@ -303,8 +307,10 @@ void Streaming::DataUploader::FreeUpdateList(Streaming::UpdateList& in_updateLis
     // NOTE: updatelist is deliberately not cleared until after allocation
     // otherwise there can be a race with the mapping thread
     in_updateList.m_executionState = UpdateList::State::STATE_FREE;
-    m_updateListFreeCount.fetch_add(1);
-    ASSERT(m_updateListFreeCount.load() <= m_updateLists.size());
+
+    // return the index to this updatelist to the pool
+    UINT i = UINT(&in_updateList - m_updateLists.data());
+    m_updateListAllocator.Free(i);
 }
 
 //-----------------------------------------------------------------------------

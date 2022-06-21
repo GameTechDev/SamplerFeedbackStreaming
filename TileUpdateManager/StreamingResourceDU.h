@@ -26,7 +26,7 @@
 
 #pragma once
 
-#include "StreamingResource.h"
+#include "StreamingResourceBase.h"
 #include "XeTexture.h"
 
 //-----------------------------------------------------------------

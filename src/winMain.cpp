@@ -173,7 +173,6 @@ void ParseCommandLine(CommandLineArgs& out_args)
     argParser.AddArg(L"-WindowWidth", out_args.m_windowWidth);
     argParser.AddArg(L"-WindowHeight", out_args.m_windowHeight);
     argParser.AddArg(L"-SampleCount", out_args.m_sampleCount);
-    argParser.AddArg(L"-TerrainSideSize", out_args.m_terrainSideSize);
     argParser.AddArg(L"-LodBias", out_args.m_lodBias);
 
     argParser.AddArg(L"-animationrate", out_args.m_animationRate);
@@ -492,12 +491,6 @@ void LoadConfigFile(CommandLineArgs& out_args)
                 if (root.isMember("sphereLong")) out_args.m_sphereLong = root["sphereLong"].asUInt();
                 if (root.isMember("sphereLat")) out_args.m_sphereLat = root["sphereLat"].asUInt();
 
-                if (root.isMember("terrainSideSize")) out_args.m_terrainSideSize = root["terrainSideSize"].asUInt();
-                if (root.isMember("heightScale")) out_args.m_heightScale = root["heightScale"].asFloat();
-                if (root.isMember("noiseScale")) out_args.m_noiseScale = root["noiseScale"].asFloat();
-                if (root.isMember("octaves")) out_args.m_numOctaves = root["octaves"].asUInt();
-                if (root.isMember("mountainSize")) out_args.m_mountainSize = root["mountainSize"].asFloat();
-
                 if (root.isMember("heapSizeTiles")) out_args.m_streamingHeapSize = root["heapSizeTiles"].asUInt();
                 if (root.isMember("numHeaps")) out_args.m_numHeaps = root["numHeaps"].asUInt();
                 if (root.isMember("maxTileUpdatesPerApiCall")) out_args.m_maxTileUpdatesPerApiCall = root["maxTileUpdatesPerApiCall"].asUInt();
@@ -521,6 +514,12 @@ void LoadConfigFile(CommandLineArgs& out_args)
 
                 if (root.isMember("waitForAssetLoad")) out_args.m_waitForAssetLoad = root["waitForAssetLoad"].asBool();
                 if (root.isMember("adapter")) out_args.m_adapterDescription = StrToWstr(root["adapter"].asString());
+
+                if (root.isMember("terrainSideSize")) out_args.m_terrainParams.m_terrainSideSize = root["terrainSideSize"].asUInt();
+                if (root.isMember("heightScale")) out_args.m_terrainParams.m_heightScale = root["heightScale"].asFloat();
+                if (root.isMember("noiseScale")) out_args.m_terrainParams.m_noiseScale = root["noiseScale"].asFloat();
+                if (root.isMember("octaves")) out_args.m_terrainParams.m_numOctaves = root["octaves"].asUInt();
+                if (root.isMember("mountainSize")) out_args.m_terrainParams.m_mountainSize = root["mountainSize"].asFloat();
             } // end if successful load
         } // end if file exists
     }

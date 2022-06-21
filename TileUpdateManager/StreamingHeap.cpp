@@ -218,3 +218,12 @@ ID3D12Resource* Streaming::Heap::ComputeCoordFromTileIndex(D3D12_TILED_RESOURCE_
 
     return pAtlas->ComputeCoordFromTileIndex(out_coord, in_index);
 }
+
+//-----------------------------------------------------------------------------
+// public API implementation
+//-----------------------------------------------------------------------------
+#include "SamplerFeedbackStreaming.h"
+UINT StreamingHeap::GetNumTilesAllocated()
+{
+    return GetAllocator().GetAllocated();
+}

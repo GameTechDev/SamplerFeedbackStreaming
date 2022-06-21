@@ -44,7 +44,7 @@
   // note a command list can only target a single resource
   // based on guidance around maximum outstanding SSD read requests: drives aren't expected to benefit from lots of queueing
   // more queueing is counter-productive, as copies might arrive after the target is no longer visible
-  "numStreamingBatches": 64,
+  "numStreamingBatches": 128,
 
   // affects size of gpu upload buffer, that is, staging between file read and gpu copy
   // uploads should move fast, so it should be hard to hit even a small value.

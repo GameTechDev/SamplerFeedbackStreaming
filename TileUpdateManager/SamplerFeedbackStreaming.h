@@ -43,8 +43,8 @@ Draw loop:
 
 #pragma once
 
-#include "TileUpdateManager.h"
-#include "StreamingResource.h"
+#include "TileUpdateManagerBase.h"
+#include "StreamingResourceBase.h"
 #include "StreamingHeap.h"
 
 //==================================================
@@ -57,10 +57,7 @@ class StreamingHeap : private Streaming::Heap
 public:
     virtual ~StreamingHeap() {}
 
-    UINT GetNumTilesAllocated()
-    {
-        return GetAllocator().GetNumAllocated();
-    }
+    UINT GetNumTilesAllocated();
 private:
     StreamingHeap() = delete;
     StreamingHeap(const StreamingHeap&) = delete;
@@ -97,18 +94,13 @@ public:
     // check if the packed mips are loaded. application likely will not want to use this texture before they have loaded
     bool GetPackedMipsResident() const;
 
-    // if an object isn't visible, set all refcounts to 0
-    // this will schedule all tiles to be evicted
+    // if a resource isn't visible, evict associated data
     // call any time
     void QueueEviction();
 
     ID3D12Resource* GetTiledResource() const;
 
     ID3D12Resource* GetMinMipMap() const;
-
-    // immediately evicts all except packed mips
-    // must NOT be called between BeginFrame() and EndFrame()
-    void ClearAllocations();
 
     //--------------------------------------------
     // for visualization
@@ -118,7 +110,6 @@ public:
 #if RESOLVE_TO_TEXTURE
     ID3D12Resource* GetResolvedFeedback();
 #endif
-    const D3D12_PACKED_MIP_INFO& GetPackedMipInfo() const;
 
     virtual ~StreamingResource();
 private:
@@ -210,13 +201,6 @@ public:
     CommandLists EndFrame();
 
     //--------------------------------------------
-    // force all outstanding commands to complete.
-    // NOTE: unlike EndFrame(), Finish() waits for all outstanding work to complete and stops (joins) all internal threads.
-    // Typically never have to call this explicitly.
-    //--------------------------------------------
-    void Finish();
-
-    //--------------------------------------------
     // choose DirectStorage vs. manual tile loading
     //--------------------------------------------
     void UseDirectStorage(bool in_useDS);
@@ -239,7 +223,7 @@ public:
     void SetVisualizationMode(UINT in_mode);
 
     float GetGpuStreamingTime() const;
-    float GetCpuProcessFeedbackTime(); // returns time since last query. expected usage is once per frame.
+    float GetCpuProcessFeedbackTime(); // approx. cpu time spent processing feedback last frame. expected usage is to average over many frames
 
     UINT GetTotalNumUploads() const;
     UINT GetTotalNumEvictions() const;

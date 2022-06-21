@@ -26,12 +26,20 @@
 
 #pragma once
 
-#include "CommandLineArgs.h"
-
 class TerrainGenerator
 {
 public:
-    TerrainGenerator(const CommandLineArgs& in_args);
+    struct Params
+    {
+        // terrain object parameters
+        UINT  m_terrainSideSize{ 256 };
+        float m_heightScale{ 50 };
+        float m_noiseScale{ 25 };
+        UINT  m_numOctaves{ 8 };
+        float m_mountainSize{ 4000 };
+    };
+
+    TerrainGenerator(const Params& in_args);
 
     struct Vertex
     {
@@ -39,13 +47,16 @@ public:
         DirectX::XMFLOAT3 normal;
         DirectX::XMFLOAT2 tex;
     };
+    UINT GetNumIndices() const { return m_numIndices; }
+    UINT GetIndexBufferSize() const { return UINT(m_numIndices * sizeof(UINT)); }
 
     void GenerateIndices(UINT* pResult);
     const std::vector<Vertex>& GetVertices() const { return m_vertices; }
 private:
+    UINT m_numIndices{ 0 };
     std::vector<DirectX::XMFLOAT2> m_noiseLattice;
     std::vector<Vertex> m_vertices;
-    const CommandLineArgs& m_args;
+    const Params& m_args;
 
     struct int2
     {
@@ -72,6 +83,9 @@ private:
     float Gaussian(float x, float width) { return exp(-(x * x) / width); }
 
     DirectX::XMVECTOR ComputeNormal(UINT vtx0, UINT vtx1, UINT vtx2) const;
+
+    void Add(DirectX::XMFLOAT3& out_a, DirectX::XMVECTOR in_b);
+    void Normalize(DirectX::XMFLOAT3& out_v);
 
     void GenerateVertices();
 };

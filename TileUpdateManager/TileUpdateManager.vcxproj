@@ -93,20 +93,19 @@
     <ClCompile Include="FileStreamer.cpp" />
     <ClCompile Include="FileStreamerDS.cpp" />
     <ClCompile Include="FileStreamerReference.cpp" />
-    <ClCompile Include="StreamingResourceExt.cpp" />
     <ClCompile Include="StreamingHeap.cpp" />
-    <ClCompile Include="HeapAllocator.cpp" />
     <ClCompile Include="InternalResources.cpp" />
     <ClCompile Include="MappingUpdater.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="StreamingResource.cpp" />
+    <ClCompile Include="StreamingResourceBase.cpp" />
     <ClCompile Include="StreamingResourceDU.cpp" />
     <ClCompile Include="TileUpdateManager.cpp" />
-    <ClCompile Include="TileUpdateManagerExt.cpp" />
+    <ClCompile Include="TileUpdateManagerBase.cpp" />
     <ClCompile Include="UpdateList.cpp" />
-    <ClCompile Include="UploadAllocator.cpp" />
+    <ClCompile Include="SimpleAllocator.cpp" />
     <ClCompile Include="XeTexture.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -115,19 +114,19 @@
     <ClInclude Include="FileStreamerDS.h" />
     <ClInclude Include="FileStreamerReference.h" />
     <ClInclude Include="SamplerFeedbackStreaming.h" />
+    <ClInclude Include="StreamingResourceBase.h" />
     <ClInclude Include="StreamingResourceDU.h" />
+    <ClInclude Include="TileUpdateManagerBase.h" />
+    <ClInclude Include="TileUpdateManagerSR.h" />
     <ClInclude Include="XetFileHeader.h" />
     <ClInclude Include="XeTexture.h" />
     <ClInclude Include="StreamingHeap.h" />
-    <ClInclude Include="HeapAllocator.h" />
     <ClInclude Include="InternalResources.h" />
     <ClInclude Include="MappingUpdater.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="Streaming.h" />
-    <ClInclude Include="StreamingResource.h" />
-    <ClInclude Include="TileUpdateManager.h" />
     <ClInclude Include="UpdateList.h" />
-    <ClInclude Include="UploadAllocator.h" />
+    <ClInclude Include="SimpleAllocator.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

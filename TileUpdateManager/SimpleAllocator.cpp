@@ -26,7 +26,7 @@
 
 #include "pch.h"
 
-#include "UploadAllocator.h"
+#include "SimpleAllocator.h"
 
 //-----------------------------------------------------------------------------
 // allocates simply by increasing/decreasing an index into an array of available indices
@@ -54,26 +54,6 @@ Streaming::SimpleAllocator::~SimpleAllocator()
 #endif
 }
 
-
-//-----------------------------------------------------------------------------
-// input is array sized to receive tile indices
-// returns false and does no allocations if there wasn't space
-//-----------------------------------------------------------------------------
-bool Streaming::SimpleAllocator::Allocate(std::vector<UINT>& out_indices, UINT in_numIndices)
-{
-    bool result = false;
-
-    if (m_index >= in_numIndices)
-    {
-        out_indices.resize(in_numIndices);
-        m_index -= in_numIndices;
-        memcpy(out_indices.data(), &m_heap[m_index], in_numIndices * sizeof(UINT));
-        result = true;
-    }
-
-    return result;
-}
-
 //-----------------------------------------------------------------------------
 // like above, but expects caller to have checked availability first and provided a safe destination
 //-----------------------------------------------------------------------------
@@ -82,17 +62,6 @@ void Streaming::SimpleAllocator::Allocate(UINT* out_pIndices, UINT in_numIndices
     ASSERT(m_index >= in_numIndices);
     m_index -= in_numIndices;
     memcpy(out_pIndices, &m_heap[m_index], in_numIndices * sizeof(UINT));
-}
-
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-void Streaming::SimpleAllocator::Free(const std::vector<UINT>& in_indices)
-{
-    UINT numIndices = (UINT)in_indices.size();
-    ASSERT(numIndices);
-    ASSERT((m_index + numIndices) <= (UINT)m_heap.size());
-    memcpy(&m_heap[m_index], in_indices.data(), sizeof(UINT) * numIndices);
-    m_index += numIndices;
 }
 
 //-----------------------------------------------------------------------------
@@ -106,36 +75,65 @@ void Streaming::SimpleAllocator::Free(const UINT* in_pIndices, UINT in_numIndice
 }
 
 //-----------------------------------------------------------------------------
-// UploadAllocator tracks tiles in an upload buffer
-// relies on objects to return their indices when they are done
+// allocates simply by increasing/decreasing an index into an array of available indices
 //-----------------------------------------------------------------------------
-Streaming::UploadAllocator::UploadAllocator(ID3D12Device* in_pDevice, UINT in_maxNumTiles) :
-    SimpleAllocator(in_maxNumTiles)
+Streaming::AllocatorMT::AllocatorMT(UINT in_numElements) :
+    m_ringBuffer(in_numElements), m_indices(in_numElements)
 {
-    const UINT uploadBufferSize = in_maxNumTiles * D3D12_TILED_RESOURCE_TILE_SIZE_IN_BYTES;
-    m_buffer.Allocate(in_pDevice, uploadBufferSize);
-    m_buffer.m_resource->SetName(L"UploadAllocator::m_buffer");
+    for (UINT i = 0; i < in_numElements; i++)
+    {
+        m_indices[i] = i;
+    }
+}
+
+Streaming::AllocatorMT::~AllocatorMT()
+{
+#ifdef _DEBUG
+    ASSERT(0 == GetAllocated());
+    // verify all indices accounted for and unique
+    std::sort(m_indices.begin(), m_indices.end());
+    for (UINT i = 0; i < (UINT)m_indices.size(); i++)
+    {
+        ASSERT(i == m_indices[i]);
+    }
+#endif
 }
 
 //-----------------------------------------------------------------------------
-// BufferAllocator tracks blocks in an buffer
-// relies on objects to return their indices when they are done
+// multi-threaded allocator (single allocator, single releaser)
 //-----------------------------------------------------------------------------
-Streaming::BufferAllocator::BufferAllocator(ID3D12Device* in_pDevice, UINT in_maxNumTiles, UINT in_blockSize) :
-    SimpleAllocator(in_maxNumTiles)
+void Streaming::AllocatorMT::Allocate(UINT* out_pIndices, UINT in_numIndices)
 {
-    UINT bufferSize = in_maxNumTiles * in_blockSize;
+    ASSERT(m_ringBuffer.GetAvailableToWrite() >= in_numIndices);
+    UINT baseIndex = m_ringBuffer.GetWriteIndex();
+    memcpy(out_pIndices, &m_indices[baseIndex], in_numIndices * sizeof(UINT));
+    m_ringBuffer.Allocate(in_numIndices);
+}
 
-    const auto heapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-    auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(bufferSize, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+void Streaming::AllocatorMT::Free(const UINT* in_pIndices, UINT in_numIndices)
+{
+    UINT baseIndex = m_ringBuffer.GetReadIndex();
+    memcpy(&m_indices[baseIndex], in_pIndices, in_numIndices * sizeof(UINT));
+    m_ringBuffer.Free(in_numIndices);
+}
 
-    in_pDevice->CreateCommittedResource(
-        &heapProperties,
-        D3D12_HEAP_FLAG_NONE,
-        &resourceDesc,
-        D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-        nullptr,
-        IID_PPV_ARGS(&m_buffer));
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+UINT Streaming::AllocatorMT::Allocate()
+{
+    UINT baseIndex = m_ringBuffer.GetWriteIndex();
+    UINT i = m_indices[baseIndex];
+    m_ringBuffer.Allocate();
+    return i;
+}
 
-    m_buffer->SetName(L"BufferAllocator::m_buffer");
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+void Streaming::AllocatorMT::Free(UINT i)
+{
+    UINT baseIndex = m_ringBuffer.GetReadIndex();
+    m_indices[baseIndex] = i;
+    m_ringBuffer.Free();
 }

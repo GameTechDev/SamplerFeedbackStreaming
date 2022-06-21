@@ -82,13 +82,13 @@ SceneObjects::BaseObject::BaseObject(
             UINT(Descriptors::HeapOffsetTexture)));
 
         // t1: min mip map
-        // the min mip view is "volatile" because it changes if the # of objects changes. it's re-created every frame for simplicity
+        // the min mip view descriptor is "volatile" because it changes if the # of objects changes.
         std::vector<CD3DX12_DESCRIPTOR_RANGE1> sharedRanges;
         sharedRanges.push_back(CD3DX12_DESCRIPTOR_RANGE1(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE | D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE, 0));
 
         // b0: constant buffers
         std::vector<CD3DX12_DESCRIPTOR_RANGE1> cbvRanges;
-        cbvRanges.push_back(CD3DX12_DESCRIPTOR_RANGE1(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC, 0));
+        cbvRanges.push_back(CD3DX12_DESCRIPTOR_RANGE1(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC_WHILE_SET_AT_EXECUTE, 0));
 
         // s0: sampler
         std::vector<CD3DX12_DESCRIPTOR_RANGE1> samplerRanges;
@@ -118,7 +118,7 @@ SceneObjects::BaseObject::BaseObject(
         rootParam.InitAsDescriptorTable((UINT)samplerRanges.size(), samplerRanges.data(), D3D12_SHADER_VISIBILITY_PIXEL);
         rootParameters[(UINT)RootSigParams::ParamSamplers] = rootParam;
 
-        UINT num32BitValues = sizeof(ModelConstantData) / 4;
+        UINT num32BitValues = sizeof(ModelConstantData) / sizeof(UINT32);
         rootParam.InitAsConstants(num32BitValues, 1, 0, D3D12_SHADER_VISIBILITY_ALL);
         rootParameters[(UINT)RootSigParams::Param32BitConstants] = rootParam;
 
@@ -244,15 +244,11 @@ std::wstring SceneObjects::BaseObject::GetAssetFullPath(const std::wstring& in_f
 //-------------------------------------------------------------------------
 //-------------------------------------------------------------------------
 void SceneObjects::BaseObject::SetModelConstants(ModelConstantData& out_modelConstantData,
-    const DirectX::XMMATRIX&, const DirectX::XMMATRIX&, const DirectX::XMMATRIX& in_viewInverse)
+    const DirectX::XMMATRIX&, const DirectX::XMMATRIX&)
 {
     out_modelConstantData.g_combinedTransform = m_combinedMatrix;
 
     out_modelConstantData.g_worldTransform = m_matrix;
-
-    DirectX::XMVECTOR vEyePt = in_viewInverse.r[3];
-
-    DirectX::XMStoreFloat4(&(out_modelConstantData.g_eyePos), vEyePt);
 
     out_modelConstantData.g_minmipmapWidth = m_pStreamingResource->GetMinMipMapWidth();
     out_modelConstantData.g_minmipmapHeight = m_pStreamingResource->GetMinMipMapHeight();
@@ -357,8 +353,8 @@ void SceneObjects::BaseObject::Draw(ID3D12GraphicsCommandList1* in_pCommandList,
         in_pCommandList->SetGraphicsRootDescriptorTable((UINT)SceneObjects::RootSigParams::ParamSamplers, in_drawParams.m_samplers);
 
         ModelConstantData modelConstantData{};
-        SetModelConstants(modelConstantData, in_drawParams.m_projection, in_drawParams.m_view, in_drawParams.m_viewInverse);
-        UINT num32BitValues = sizeof(ModelConstantData) / 4;
+        SetModelConstants(modelConstantData, in_drawParams.m_projection, in_drawParams.m_view);
+        UINT num32BitValues = sizeof(ModelConstantData) / sizeof(UINT32);
         in_pCommandList->SetGraphicsRoot32BitConstants((UINT)RootSigParams::Param32BitConstants, num32BitValues, &modelConstantData, 0);
 
         in_pCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -468,23 +464,19 @@ SceneObjects::Terrain::Terrain(const std::wstring& in_filename,
     D3D12_DEPTH_STENCIL_DESC depthStencilDesc = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
     CreatePipelineState(L"terrainPS.cso", L"terrainPS-FB.cso", L"terrainVS.cso", in_pDevice, in_sampleCount, rasterizerDesc, depthStencilDesc);
 
-    UINT numQuads = (in_args.m_terrainSideSize - 1) * (in_args.m_terrainSideSize - 1);
-
-    UINT numIndices = numQuads * 6;
     D3D12_INDEX_BUFFER_VIEW indexBufferView{};
     D3D12_VERTEX_BUFFER_VIEW vertexBufferView{};
 
     ID3D12Resource* pVertexBuffer{ nullptr };
     ID3D12Resource* pIndexBuffer{ nullptr };
 
-    TerrainGenerator mesh(in_args);
+    TerrainGenerator mesh(in_args.m_terrainParams);
 
     // build vertex buffer
     {
         auto& vertices = mesh.GetVertices();
 
-        UINT vertexBufferSize = UINT(vertices.size()) * sizeof(vertices[0]);
-
+        UINT vertexBufferSize = UINT(vertices.size() * sizeof(vertices[0]));
         const auto heapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
         const auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(vertexBufferSize);
         ThrowIfFailed(in_pDevice->CreateCommittedResource(
@@ -503,10 +495,8 @@ SceneObjects::Terrain::Terrain(const std::wstring& in_filename,
 
     // build index buffer
     {
-        UINT indexBufferSize = numIndices * sizeof(UINT);
-
         const auto heapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-        const auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(indexBufferSize);
+        const auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(mesh.GetIndexBufferSize());
         ThrowIfFailed(in_pDevice->CreateCommittedResource(
             &heapProperties,
             D3D12_HEAP_FLAG_NONE,
@@ -521,7 +511,7 @@ SceneObjects::Terrain::Terrain(const std::wstring& in_filename,
     }
 
     SetGeometry(pVertexBuffer, (UINT)mesh.GetVertices().size(), (UINT)sizeof(TerrainGenerator::Vertex),
-        pIndexBuffer, numIndices);
+        pIndexBuffer, mesh.GetNumIndices());
 }
 
 //=========================================================================
@@ -597,7 +587,7 @@ SceneObjects::Sky::Sky(const std::wstring& in_filename,
 //-------------------------------------------------------------------------
 //-------------------------------------------------------------------------
 void SceneObjects::Sky::SetModelConstants(ModelConstantData& out_modelConstantData,
-    const DirectX::XMMATRIX& in_projection, const DirectX::XMMATRIX& in_view, const DirectX::XMMATRIX&)
+    const DirectX::XMMATRIX& in_projection, const DirectX::XMMATRIX& in_view)
 {
     DirectX::XMMATRIX view = in_view;
     view.r[3] = DirectX::XMVectorSet(0, 0, 0, 1);

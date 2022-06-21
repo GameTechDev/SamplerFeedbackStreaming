@@ -27,7 +27,7 @@
 
 #include "StreamingResourceDU.h"
 #include "StreamingHeap.h"
-#include "TileUpdateManager.h"
+#include "TileUpdateManagerSR.h"
 
 //-----------------------------------------------------------------------------
 // can map the packed mips as soon as we have heap indices
@@ -70,7 +70,7 @@ void Streaming::StreamingResourceDU::NotifyCopyComplete(const std::vector<D3D12_
     for (const auto& t : in_coords)
     {
         ASSERT(TileMappingState::Residency::Loading == m_tileMappingState.GetResidency(t));
-        m_tileMappingState.SetResident(t);
+        m_tileMappingState.SetResidency(t, TileMappingState::Residency::Resident);
     }
 
     SetResidencyChanged();
@@ -85,7 +85,7 @@ void Streaming::StreamingResourceDU::NotifyEvicted(const std::vector<D3D12_TILED
     for (const auto& t : in_coords)
     {
         ASSERT(TileMappingState::Residency::Evicting == m_tileMappingState.GetResidency(t));
-        m_tileMappingState.SetNotResident(t);
+        m_tileMappingState.SetResidency(t, TileMappingState::Residency::NotResident);
     }
 
     SetResidencyChanged();

@@ -31,7 +31,6 @@ cbuffer ModelConstantData : register(b1)
 {
 	float4x4    g_combinedTransform;
 	float4x4    g_worldTransform;
-	float4 g_eyePos;
 
 	int2   g_minmipmapDim;
 	int    g_minmipmapOffset;
@@ -40,6 +39,7 @@ cbuffer ModelConstantData : register(b1)
 cbuffer FrameConstantData : register(b0)
 {
 	float4x4 g_view;
+	float4 g_eyePos;
 	float4 g_lightDir;
 	float4 g_lightColor;    // RGB + specular intensity
 	float4 g_specularColor;

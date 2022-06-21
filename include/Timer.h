@@ -205,5 +205,5 @@ public:
 private:
     std::vector<UINT64> m_values;
     UINT m_index{ 0 };
-    UINT64 m_sum; // if adding deltas, keep a running sum
+    UINT64 m_sum{ 0 }; // if adding deltas, keep a running sum
 };

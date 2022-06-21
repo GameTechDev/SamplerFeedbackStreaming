@@ -34,7 +34,7 @@
 #include "D3D12GpuTimer.h"
 #include "Timer.h"
 
-#include "TileUpdateManager.h"
+#include "SimpleAllocator.h"
 
 //==================================================
 // UploadBuffer keeps an upload buffer per swapchain backbuffer
@@ -44,6 +44,8 @@
 //==================================================
 namespace Streaming
 {
+    class StreamingResourceDU;
+
     class DataUploader
     {
     public:
@@ -62,18 +64,17 @@ namespace Streaming
 
         ID3D12CommandQueue* GetMappingQueue() const { return m_mappingCommandQueue.Get(); }
 
+        // return true if there is at least one update list in the FREE state
+        bool UpdateListAvailable() { return (0 != m_updateListAllocator.GetAvailable()); }
+
         // may return null. called by StreamingResource.
-        UpdateList* AllocateUpdateList(StreamingResourceBase* in_pStreamingResource);
+        UpdateList* AllocateUpdateList(StreamingResourceDU* in_pStreamingResource);
 
         // StreamingResource requests tiles to be uploaded
         void SubmitUpdateList(Streaming::UpdateList& in_updateList);
 
         // TUM requests file streamer to signal its fence after StreamingResources have queued tile uploads
         void SignalFileStreamer() { m_pFileStreamer->Signal(); }
-
-        // free updatelist after processing
-        // Streaming resource may call this (via TUM) if it allocates but doesn't use an updatelist
-        void FreeUpdateList(Streaming::UpdateList& in_updateList);
 
         enum class StreamerType
         {
@@ -108,13 +109,13 @@ namespace Streaming
         // pool of all updatelists
         // copy thread loops over these
         std::vector<UpdateList> m_updateLists;
+        Streaming::AllocatorMT m_updateListAllocator;
 
-        // early out: don't bother trying to allocate if nothing is available
-        // that is, it's O(1) to determine there are none available
-        std::atomic<UINT> m_updateListFreeCount;
+        // only the fence thread (which looks for final completion) frees UpdateLists
+        void FreeUpdateList(Streaming::UpdateList& in_updateList);
 
-        // pointer to next address to attempt allocation from
-        UINT m_updateListAllocIndex{ 0 };
+        // flag that all UpdateLists were allocated to indicate mitigation heuristic should engage
+        bool m_updateListsEmpty{ false };
 
         // object that performs UpdateTileMappings() requests
         Streaming::MappingUpdater m_mappingUpdater;
@@ -132,7 +133,7 @@ namespace Streaming
         // compromise solution is to keep this thread awake so long as there are live UpdateLists.
         void FenceMonitorThread();
         std::thread m_fenceMonitorThread;
-        Streaming::SynchronizationFlag m_monitorFenceFlag;
+        Streaming::SynchronizationFlag m_fenceMonitorFlag;
         RawCpuTimer* m_pFenceThreadTimer{ nullptr }; // init timer on the thread that uses it. can't really worry about thread migration.
 
         void StartThreads();
