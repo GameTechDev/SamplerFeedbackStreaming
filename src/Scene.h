@@ -151,11 +151,10 @@ private:
 
     struct FrameConstantData
     {
-        DirectX::XMMATRIX g_view;
-        DirectX::XMFLOAT4 g_eyePos;
-        DirectX::XMFLOAT4 g_lightDir;
-        DirectX::XMFLOAT4 g_lightColor;     // RGB + specular intensity
-        DirectX::XMFLOAT4 g_specColor;
+        DirectX::XMFLOAT4 g_eyePos;        // eye world position
+        DirectX::XMFLOAT4 g_lightDir;      // world space light direction
+        DirectX::XMFLOAT4 g_lightColor;    // RGB
+        DirectX::XMFLOAT4 g_specularColor; // RGB + specular intensity
 
         int g_visualizeFeedback;
     };

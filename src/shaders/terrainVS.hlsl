@@ -38,7 +38,6 @@ cbuffer ModelConstantData : register(b1)
 
 cbuffer FrameConstantData : register(b0)
 {
-	float4x4 g_view;
 	float4 g_eyePos;
 	float4 g_lightDir;
 	float4 g_lightColor;    // RGB + specular intensity
@@ -61,7 +60,7 @@ struct VS_OUT
 {
 	float4 pos        : SV_POSITION;
 	float3 normal	  : NORMAL;
-	float3 eyeToPoint : EYETOPOINT;
+	float3 worldPos   : WORLDPOS;
 	float2 tex        : TEX;
 };
 
@@ -74,10 +73,7 @@ VS_OUT vs(VS_IN input)
 	result.normal = normalize(mul((float3x3)g_worldTransform, input.normal));
 
 	// transform position into light coordinate frame (world)
-	float3 pos = mul(g_worldTransform, float4(input.pos, 1.0f)).xyz;
-
-	// direction from eye to pos
-	result.eyeToPoint = normalize(pos - g_eyePos.xyz);
+	result.worldPos = mul(g_worldTransform, float4(input.pos, 1.0f)).xyz;
 
 	result.tex = input.tex;
 	return result;

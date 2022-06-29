@@ -35,17 +35,16 @@ SamplerState g_sampler : register(s0);
 
 //-------------------------------------------------------------------------
 //-------------------------------------------------------------------------
-float3 evaluateLight(in float3 normal, in float3 eyeToPoint)
+float3 evaluateLight(in float3 normal, in float3 pos)
 {
-    float3 reflected = reflect(eyeToPoint, normal);
-
-    // directional light
-    float3 pointToLight = g_lightDir.xyz;
-
+    // directional light. from the point toward the light is the opposite direction.
+    float3 pointToLight = -g_lightDir.xyz;
     float diffuse = saturate(dot(pointToLight, normal));
 
+    float3 eyeToPoint = normalize(pos - g_eyePos.xyz);
+    float3 reflected = reflect(eyeToPoint, normal);
     float specDot = saturate(dot(reflected, pointToLight));
-    float specular = pow(specDot, 2 * g_lightColor.a);
+    float specular = pow(specDot, g_specularColor.a);
 
     float ambient = 0.1f;
 
@@ -69,11 +68,8 @@ float4 ps(VS_OUT input) : SV_TARGET0
 
     // clamp the streaming texture to the mip level specified in the min mip map
     float3 color = g_streamingTexture.Sample(g_sampler, input.tex, 0, mipLevel).rgb;
+    color *= evaluateLight(input.normal, input.worldPos);
 
-    float3 eyeToPoint = normalize(input.eyeToPoint);
-    color *= evaluateLight(input.normal, eyeToPoint);
-
-    // returns 0xff if no associated min mip, that is, no texel was touched last frame
     if ((g_visualizeFeedback) && (mipLevel < 16))
     {
         color = lerp(color, GetLodVisualizationColor(mipLevel), 0.3f);

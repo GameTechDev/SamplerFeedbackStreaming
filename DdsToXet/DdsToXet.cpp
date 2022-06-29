@@ -84,65 +84,26 @@ void Error(std::wstring in_s)
 //-----------------------------------------------------------------------------
 static DXGI_FORMAT GetFormatFromHeader(const DirectX::DDS_HEADER& in_ddsHeader)
 {
-    const auto& ddpf = in_ddsHeader.ddspf;
-    if (ddpf.flags & DDS_FOURCC)
+    DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;
+
+    if (in_ddsHeader.ddspf.flags & DDS_FOURCC)
     {
-        if (MAKEFOURCC('D', 'X', 'T', '1') == ddpf.fourCC)
-        {
-            return DXGI_FORMAT_BC1_UNORM;
-        }
-        if (MAKEFOURCC('D', 'X', 'T', '3') == ddpf.fourCC)
-        {
-            return DXGI_FORMAT_BC2_UNORM;
-        }
-        if (MAKEFOURCC('D', 'X', 'T', '5') == ddpf.fourCC)
-        {
-            return DXGI_FORMAT_BC3_UNORM;
-        }
-
-        // While pre-multiplied alpha isn't directly supported by the DXGI formats,
-        // they are basically the same as these BC formats so they can be mapped
-        if (MAKEFOURCC('D', 'X', 'T', '2') == ddpf.fourCC)
-        {
-            return DXGI_FORMAT_BC2_UNORM;
-        }
-        if (MAKEFOURCC('D', 'X', 'T', '4') == ddpf.fourCC)
-        {
-            return DXGI_FORMAT_BC3_UNORM;
-        }
-
-        if (MAKEFOURCC('A', 'T', 'I', '1') == ddpf.fourCC)
-        {
-            return DXGI_FORMAT_BC4_UNORM;
-        }
-        if (MAKEFOURCC('B', 'C', '4', 'U') == ddpf.fourCC)
-        {
-            return DXGI_FORMAT_BC4_UNORM;
-        }
-        if (MAKEFOURCC('B', 'C', '4', 'S') == ddpf.fourCC)
-        {
-            return DXGI_FORMAT_BC4_SNORM;
-        }
-
-        if (MAKEFOURCC('A', 'T', 'I', '2') == ddpf.fourCC)
-        {
-            return DXGI_FORMAT_BC5_UNORM;
-        }
-        if (MAKEFOURCC('B', 'C', '5', 'U') == ddpf.fourCC)
-        {
-            return DXGI_FORMAT_BC5_UNORM;
-        }
-        if (MAKEFOURCC('B', 'C', '5', 'S') == ddpf.fourCC)
-        {
-            return DXGI_FORMAT_BC5_SNORM;
-        }
-
-        // other formats?
+        UINT32 fourCC = in_ddsHeader.ddspf.fourCC;
+        if (DirectX::DDSPF_DXT1.fourCC == fourCC) { format = DXGI_FORMAT_BC1_UNORM; }
+        if (DirectX::DDSPF_DXT2.fourCC == fourCC) { format = DXGI_FORMAT_BC2_UNORM; }
+        if (DirectX::DDSPF_DXT3.fourCC == fourCC) { format = DXGI_FORMAT_BC2_UNORM; } 
+        if (DirectX::DDSPF_DXT4.fourCC == fourCC) { format = DXGI_FORMAT_BC3_UNORM; } 
+        if (DirectX::DDSPF_DXT5.fourCC == fourCC) { format = DXGI_FORMAT_BC3_UNORM; } 
+        if (MAKEFOURCC('A', 'T', 'I', '1') == fourCC) { format = DXGI_FORMAT_BC4_UNORM; }
+        if (MAKEFOURCC('A', 'T', 'I', '2') == fourCC) { format = DXGI_FORMAT_BC5_UNORM; }
+        if (MAKEFOURCC('B', 'C', '4', 'U') == fourCC) { format = DXGI_FORMAT_BC4_UNORM; }
+        if (MAKEFOURCC('B', 'C', '4', 'S') == fourCC) { format = DXGI_FORMAT_BC4_SNORM; }
+        if (MAKEFOURCC('B', 'C', '5', 'U') == fourCC) { format = DXGI_FORMAT_BC5_UNORM; }
+        if (MAKEFOURCC('B', 'C', '5', 'S') == fourCC) { format = DXGI_FORMAT_BC5_SNORM; }
     }
+    if (DXGI_FORMAT_UNKNOWN == format) { Error(L"Texture Format Unknown"); }
 
-    Error(L"Texture Format Unknown");
-
-    return DXGI_FORMAT_UNKNOWN;
+    return format;
 }
 
 //-----------------------------------------------------------------------------

@@ -266,6 +266,7 @@ void Scene::MoveView(int in_x, int in_y, int in_z)
     XMMATRIX translation = XMMatrixTranslation(x, y, z);
 
     m_viewMatrix = XMMatrixMultiply(m_viewMatrix, translation);
+    m_viewMatrixInverse = XMMatrixInverse(nullptr, m_viewMatrix);
 }
 
 //-----------------------------------------------------------------------------
@@ -996,8 +997,8 @@ void Scene::CreateConstantBuffers()
 
         m_pFrameConstantData->g_lightDir = XMFLOAT4(-0.538732767f, 0.787301660f, 0.299871892f, 0);
         XMStoreFloat4(&m_pFrameConstantData->g_lightDir, XMVector4Normalize(XMLoadFloat4(&m_pFrameConstantData->g_lightDir)));
-        m_pFrameConstantData->g_lightColor = XMFLOAT4(1, 1, 1, 40.0f);
-        m_pFrameConstantData->g_specColor = XMFLOAT4(1, 1, 1, 1);
+        m_pFrameConstantData->g_lightColor = XMFLOAT4(1, 1, 1, 1);
+        m_pFrameConstantData->g_specularColor = XMFLOAT4(1, 1, 1, 18.f);
 
         D3D12_CONSTANT_BUFFER_VIEW_DESC constantBufferView = {};
         constantBufferView.SizeInBytes = bufferSize;
@@ -1434,20 +1435,16 @@ void Scene::StartScene()
     m_commandList->RSSetScissorRects(1, &m_scissorRect);
 
     SetSampler();
-    m_pFrameConstantData->g_view = m_viewMatrix;
-    DirectX::XMVECTOR vEyePt = m_viewMatrixInverse.r[3];
-    DirectX::XMStoreFloat4(&m_pFrameConstantData->g_eyePos, vEyePt);
+    DirectX::XMStoreFloat4(&m_pFrameConstantData->g_eyePos, m_viewMatrixInverse.r[3]);
     m_pFrameConstantData->g_visualizeFeedback = m_args.m_visualizeMinMip;
 
     if (m_args.m_lightFromView)
     {
-        auto transposeView = DirectX::XMMatrixTranspose(m_viewMatrix);
-        DirectX::XMVECTOR lookDir = DirectX::XMVectorNegate(transposeView.r[2]);
-        m_pFrameConstantData->g_lightDir = (XMFLOAT4&)lookDir;
+        XMStoreFloat4(&m_pFrameConstantData->g_lightDir, m_viewMatrixInverse.r[2]);
     }
     else
     {
-        m_pFrameConstantData->g_lightDir = XMFLOAT4(-0.449135751f, 0.656364977f, 0.25f, 0);
+        m_pFrameConstantData->g_lightDir = XMFLOAT4(-0.538732767f, -0.787301660f, -0.299871892f, 0);
         XMStoreFloat4(&m_pFrameConstantData->g_lightDir, XMVector4Normalize(XMLoadFloat4(&m_pFrameConstantData->g_lightDir)));
     }
 }
