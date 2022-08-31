@@ -99,7 +99,7 @@ Streaming::TileUpdateManagerBase::~TileUpdateManagerBase()
 
 
 //-----------------------------------------------------------------------------
-// kick off thread that continuously streams tiles
+// kick off threads that continuously streams tiles
 // gives StreamingResources opportunities to update feedback
 //-----------------------------------------------------------------------------
 void Streaming::TileUpdateManagerBase::StartThreads()
@@ -115,113 +115,15 @@ void Streaming::TileUpdateManagerBase::StartThreads()
         {
             DebugPrint(L"Created Feedback Thread\n");
 
-            // NOTE: expects the streaming resource array size to be unchanged during thread lifetime
+            ProcessFeedbackThread();
 
-            // array of indices to resources that need tiles loaded/evicted
-            std::vector<UINT> staleResources;
-            staleResources.reserve(m_streamingResources.size());
-
-            // flags to prevent duplicates in the staleResources array
-            std::vector<BYTE> pending(m_streamingResources.size(), 0);
-
-            UINT64 previousFrameFenceValue = m_frameFenceValue;
-            while (m_threadsRunning)
-            {
-                // prioritize loading packed mips, as objects shouldn't be displayed until packed mips load
-                bool expected = true;
-                if (m_havePackedMipsToLoad.compare_exchange_weak(expected, false))
-                {
-                    for (auto p : m_streamingResources)
-                    {
-                        if (!p->InitPackedMips())
-                        {
-                            m_havePackedMipsToLoad = true;
-                        }
-                    }
-                    if (m_havePackedMipsToLoad)
-                    {
-                        continue; // still working on loading packed mips. don't move on to other streaming tasks yet.
-                    }
-                }
-
-                // DEBUG: verify that no streaming resources have been added/removed during thread lifetime
-                ASSERT(m_streamingResources.size() == pending.size());
-
-                UINT64 frameFenceValue = m_frameFence->GetCompletedValue();
-
-                // Only process feedback buffers once per frame
-                if (previousFrameFenceValue != frameFenceValue)
-                {
-                    previousFrameFenceValue = frameFenceValue;
-
-                    auto startTime = m_cpuTimer.GetTime();
-                    UINT j = 0;
-                    for (auto p : m_streamingResources)
-                    {
-                        // early exit, important for application exit or TUM::Finish() when adding/deleting objects
-                        if (!m_threadsRunning)
-                        {
-                            break;
-                        }
-
-                        p->ProcessFeedback(frameFenceValue);
-                        if (p->IsStale() && !pending[j])
-                        {
-                            staleResources.push_back(j);
-                            pending[j] = 1;
-                        }
-                        j++;
-                    }
-                    m_processFeedbackTime += UINT64(m_cpuTimer.GetTime() - startTime);
-                }
-
-                // continuously push uploads and evictions
-                bool uploadRequested = false;
-                for (UINT i = 0; i < staleResources.size(); )
-                {
-                    // exit loop if we ran out of UpdateLists or application exiting
-                    if ((!m_pDataUploader->UpdateListAvailable()) || (!m_threadsRunning))
-                    {
-                        break;
-                    }
-
-                    UINT resourceIndex = staleResources[i];
-                    auto p = m_streamingResources[resourceIndex];
-                    bool tilesQueued = p->QueueTiles();
-                    uploadRequested = uploadRequested || tilesQueued;
-
-                    // if all loads/evictions handled, remove from staleResource list
-                    if (!p->IsStale())
-                    {
-                        pending[resourceIndex] = 0; // clear the flag that prevents duplicates
-                        // compact the array by swapping this entry with the last
-                        staleResources[i] = staleResources.back();
-                        staleResources.resize(staleResources.size() - 1);
-                    }
-                    else
-                    {
-                        i++;
-                    }
-                }
-
-                // if uploads were queued, tell the file streamer to signal the corresponding fence
-                if (uploadRequested)
-                {
-                    m_pDataUploader->SignalFileStreamer();
-                }
-
-                // nothing to do? wait for next frame
-                if ((0 == staleResources.size()) && m_threadsRunning)
-                {
-                    m_processFeedbackFlag.Wait();
-                }
-            }
             DebugPrint(L"Destroyed ProcessFeedback Thread\n");
         });
 
     m_updateResidencyThread = std::thread([&]
         {
             DebugPrint(L"Created UpdateResidency Thread\n");
+
             // continuously modify residency maps as a result of gpu completion events
             // FIXME? probably not enough work to deserve it's own thread
             // Note that UpdateMinMipMap() exits quickly if nothing to do
@@ -236,6 +138,115 @@ void Streaming::TileUpdateManagerBase::StartThreads()
             }
             DebugPrint(L"Destroyed UpdateResidency Thread\n");
         });
+}
+
+//-----------------------------------------------------------------------------
+// per frame, call StreamingResource::ProcessFeedback()
+// expects the no change in # of streaming resources during thread lifetime
+//-----------------------------------------------------------------------------
+void Streaming::TileUpdateManagerBase::ProcessFeedbackThread()
+{
+    // array of indices to resources that need tiles loaded/evicted
+    std::vector<UINT> staleResources;
+    staleResources.reserve(m_streamingResources.size());
+
+    // flags to prevent duplicates in the staleResources array
+    std::vector<BYTE> pending(m_streamingResources.size(), 0);
+
+    UINT64 previousFrameFenceValue = m_frameFenceValue;
+    while (m_threadsRunning)
+    {
+        // prioritize loading packed mips, as objects shouldn't be displayed until packed mips load
+        bool expected = true;
+        if (m_havePackedMipsToLoad.compare_exchange_weak(expected, false))
+        {
+            for (auto p : m_streamingResources)
+            {
+                if (!p->InitPackedMips())
+                {
+                    m_havePackedMipsToLoad = true;
+                }
+            }
+            if (m_havePackedMipsToLoad)
+            {
+                Sleep(2);
+                continue; // still working on loading packed mips. don't move on to other streaming tasks yet.
+            }
+        }
+
+        // DEBUG: verify that no streaming resources have been added/removed during thread lifetime
+        ASSERT(m_streamingResources.size() == pending.size());
+
+        UINT64 frameFenceValue = m_frameFence->GetCompletedValue();
+
+        // Only process feedback buffers once per frame
+        if (previousFrameFenceValue != frameFenceValue)
+        {
+            previousFrameFenceValue = frameFenceValue;
+
+            auto startTime = m_cpuTimer.GetTime();
+            UINT j = 0;
+            for (auto p : m_streamingResources)
+            {
+                // early exit, important for application exit or TUM::Finish() when adding/deleting objects
+                if (!m_threadsRunning)
+                {
+                    break;
+                }
+
+                p->ProcessFeedback(frameFenceValue);
+                if (p->IsStale() && !pending[j])
+                {
+                    staleResources.push_back(j);
+                    pending[j] = 1;
+                }
+                j++;
+            }
+            // add the amount of time we just spent processing feedback for a single frame
+            m_processFeedbackTime += UINT64(m_cpuTimer.GetTime() - startTime);
+        }
+
+        // push uploads and evictions for stale resources
+        bool uploadRequested = false; // remember if any work was queued so we can signal afterwards
+        UINT newStaleSize = 0; // track number of stale resources, then resize the array to the updated number
+        for (UINT i = 0; i < staleResources.size(); i++)
+        {
+
+            UINT resourceIndex = staleResources[i];
+            auto p = m_streamingResources[resourceIndex];
+
+            if (m_pDataUploader->UpdateListAvailable() && m_threadsRunning)
+            {
+                uploadRequested = p->QueueTiles() || uploadRequested;
+            }
+
+            // if all loads/evictions handled, remove from staleResource list
+            if (p->IsStale())
+            {
+                // compact, removing non-stale resource indices while retaining oldest-first ordering
+                staleResources[newStaleSize] = resourceIndex;
+                newStaleSize++;
+            }
+            else
+            {
+                pending[resourceIndex] = 0; // clear the flag that prevents duplicates
+            }
+        }
+
+        staleResources.resize(newStaleSize);
+
+        // if uploads were queued, tell the file streamer to signal the corresponding fence
+        if (uploadRequested)
+        {
+            m_pDataUploader->SignalFileStreamer();
+        }
+
+        // nothing to do? wait for next frame
+        if ((0 == staleResources.size()) && m_threadsRunning)
+        {
+            m_processFeedbackFlag.Wait();
+        }
+    }
 }
 
 //-----------------------------------------------------------------------------

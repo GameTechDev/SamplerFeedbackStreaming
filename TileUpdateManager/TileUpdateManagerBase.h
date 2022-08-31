@@ -134,6 +134,7 @@ namespace Streaming
         std::atomic<bool> m_havePackedMipsToLoad{ false };
 
         void StartThreads();
+        void ProcessFeedbackThread();
 
         //---------------------------------------------------------------------------
         // TUM creates 2 command lists to be executed Before & After application draw
