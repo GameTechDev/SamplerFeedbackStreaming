@@ -48,9 +48,12 @@ Draw loop:
 #include <memory>
 #include <thread>
 
+#include "SamplerFeedbackStreaming.h"
 #include "D3D12GpuTimer.h"
 #include "Timer.h"
 #include "Streaming.h" // for ComPtr
+
+#define COPY_RESIDENCY_MAPS 0
 
 //=============================================================================
 // manager for tiled resources
@@ -58,7 +61,6 @@ Draw loop:
 // performs asynchronous copies
 // use this to create the StreamingResource
 //=============================================================================
-struct TileUpdateManagerDesc; // defined in SamplerFeedbackStreaming.h
 namespace Streaming
 {
     class StreamingResourceBase;
@@ -66,13 +68,30 @@ namespace Streaming
     class Heap;
     struct UpdateList;
 
-    class TileUpdateManagerBase
+    class TileUpdateManagerBase : public ::TileUpdateManager
     {
     public:
-        //--------------------------------------------
-        // are we between BeginFrame and EndFrame? useful for debugging
-        //--------------------------------------------
-        bool GetWithinFrame() const { return m_withinFrame; }
+        //-----------------------------------------------------------------
+        // external APIs
+        //-----------------------------------------------------------------
+        virtual void Destroy() override;
+        virtual StreamingHeap* CreateStreamingHeap(UINT in_maxNumTilesHeap) override;
+        virtual StreamingResource* CreateStreamingResource(const std::wstring& in_filename, StreamingHeap* in_pHeap) override;
+        virtual void BeginFrame(ID3D12DescriptorHeap* in_pDescriptorHeap, D3D12_CPU_DESCRIPTOR_HANDLE in_minmipmapDescriptorHandle) override;
+        virtual void QueueFeedback(StreamingResource* in_pResource, D3D12_GPU_DESCRIPTOR_HANDLE in_gpuDescriptor) override;
+        virtual CommandLists EndFrame() override;
+        virtual void UseDirectStorage(bool in_useDS) override;
+        virtual bool GetWithinFrame() const  override { return m_withinFrame; }
+        virtual float GetGpuTime() const override;
+        virtual void SetVisualizationMode(UINT in_mode) override;
+        virtual float GetGpuStreamingTime() const override;
+        virtual float GetCpuProcessFeedbackTime() override;
+        virtual UINT GetTotalNumUploads() const override;
+        virtual UINT GetTotalNumEvictions() const override;
+        virtual float GetTotalTileCopyLatency() const override;
+        //-----------------------------------------------------------------
+        // end external APIs
+        //-----------------------------------------------------------------
 
         //--------------------------------------------
         // force all outstanding commands to complete.
@@ -80,7 +99,6 @@ namespace Streaming
         //--------------------------------------------
         void Finish();
 
-    protected:
         TileUpdateManagerBase(
             // query resource for tiling properties. use its device to create internal resources
             ID3D12Device8* in_pDevice,
@@ -93,15 +111,35 @@ namespace Streaming
         virtual ~TileUpdateManagerBase();
 
     protected:
+        ComPtr<ID3D12Device8> m_device;
+
+        const UINT m_numSwapBuffers;
+
+        // track the objects that this resource created
+        // used to discover which resources have been updated within a frame
+        std::vector<StreamingResourceBase*> m_streamingResources;
+        UINT64 m_frameFenceValue{ 0 };
+
+        std::unique_ptr<Streaming::DataUploader> m_pDataUploader;
+
+        // each StreamingResource writes current uploaded tile state to min mip map, separate data for each frame
+        // internally, use a single buffer containing all the residency maps
+        Streaming::UploadBuffer m_residencyMap;
+
+        Streaming::SynchronizationFlag m_residencyChangedFlag;
+
+        // allocating/deallocating StreamingResources requires reallocation of shared resources
+        bool m_numStreamingResourcesChanged{ false };
+
+        std::atomic<bool> m_packedMipTransition{ false }; // flag that we need to transition a resource due to packed mips
+
+    private:
         // direct queue is used to monitor progress of render frames so we know when feedback buffers are ready to be used
         ComPtr<ID3D12CommandQueue> m_directCommandQueue;
 
         // the frame fence is used to optimize readback of feedback by StreamingResource
         // only read back the feedback after the frame that writes to it has completed
         ComPtr<ID3D12Fence> m_frameFence;
-        UINT64 m_frameFenceValue{ 0 };
-
-        const UINT m_numSwapBuffers;
 
         struct FeedbackReadback
         {
@@ -110,24 +148,10 @@ namespace Streaming
         };
         std::vector<FeedbackReadback> m_feedbackReadbacks;
 
-        std::unique_ptr<Streaming::DataUploader> m_pDataUploader;
-
         // packed-mip transition barriers
         Streaming::BarrierList m_packedMipTransitionBarriers;
 
-        // track the objects that this resource created
-        // used to discover which resources have been updated within a frame
-        std::vector<StreamingResourceBase*> m_streamingResources;
-
-        // each StreamingResource writes current uploaded tile state to min mip map, separate data for each frame
-        // internally, use a single buffer containing all the residency maps
-        Streaming::UploadBuffer m_residencyMap;
         ComPtr<ID3D12Resource> m_residencyMapLocal; // GPU copy of residency state
-
-        // allocating/deallocating StreamingResources requires reallocation of shared resources
-        bool m_numStreamingResourcesChanged{ false };
-
-        std::atomic<bool> m_packedMipTransition{ false }; // flag that we need to transition a resource due to packed mips
 
         Streaming::SynchronizationFlag m_processFeedbackFlag;
 
@@ -175,9 +199,6 @@ namespace Streaming
         };
         std::vector<CommandList> m_commandLists;
 
-        ComPtr<ID3D12Device8> m_device;
-        Streaming::SynchronizationFlag m_residencyChangedFlag;
-    private:
         const UINT m_maxTileMappingUpdatesPerApiCall;
 
         std::atomic<bool> m_threadsRunning{ false };

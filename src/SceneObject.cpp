@@ -161,7 +161,7 @@ SceneObjects::BaseObject::BaseObject(
 
         // The tile update manager queries the streaming texture for its tile dimensions
         // The feedback resource will be allocated with a mip region size matching the tile size
-        m_pStreamingResource = std::unique_ptr<StreamingResource>(in_pTileUpdateManager->CreateStreamingResource(in_filename, in_pStreamingHeap));
+        m_pStreamingResource = in_pTileUpdateManager->CreateStreamingResource(in_filename, in_pStreamingHeap);
 
         // sampler feedback view
         CD3DX12_CPU_DESCRIPTOR_HANDLE feedbackHandle(in_srvBaseCPU, (UINT)Descriptors::HeapOffsetFeedback, m_srvUavCbvDescriptorSize);

@@ -24,39 +24,45 @@
 //
 //*********************************************************
 
-// Implementation of the few methods required for the ::TileUpdateManager public (external) interface
+//=============================================================================
+// Implementation of the ::TileUpdateManager public (external) interface
+//=============================================================================
 
 #include "pch.h"
 
-#include "SamplerFeedbackStreaming.h"
-
+#include "TileUpdateManagerBase.h"
+#include "TileUpdateManagerSR.h"
+#include "StreamingResourceBase.h"
 #include "DataUploader.h"
-#include "InternalResources.h" // RESOLVE_TO_TEXTURE defined here.
+#include "StreamingHeap.h"
 
-#define COPY_RESIDENCY_MAPS 0
-
-//=============================================================================
+//--------------------------------------------
 // instantiate streaming library
-//=============================================================================
-TileUpdateManager::TileUpdateManager(
+//--------------------------------------------
+TileUpdateManager* TileUpdateManager::Create(
     // query resource for tiling properties. use its device to create internal resources
     ID3D12Device8* in_pDevice,
 
     // the Direct command queue the application is using to render, which TUM monitors to know when new feedback is ready
     ID3D12CommandQueue* in_pDirectCommandQueue,
 
-    const TileUpdateManagerDesc& in_desc) : TileUpdateManagerBase(in_pDevice, in_pDirectCommandQueue, in_desc)
+    const TileUpdateManagerDesc& in_desc)
 {
-    UseDirectStorage(in_desc.m_useDirectStorage);
+    auto p = new Streaming::TileUpdateManagerBase(in_pDevice, in_pDirectCommandQueue, in_desc);
+    p->UseDirectStorage(in_desc.m_useDirectStorage);
+    return p;
 }
 
-TileUpdateManager::~TileUpdateManager() {}
+void Streaming::TileUpdateManagerBase::Destroy()
+{
+    delete this;
+}
 
 //--------------------------------------------
 // Create a heap used by 1 or more StreamingResources
 // parameter is number of 64KB tiles to manage
 //--------------------------------------------
-StreamingHeap* TileUpdateManager::CreateStreamingHeap(UINT in_maxNumTilesHeap)
+StreamingHeap* Streaming::TileUpdateManagerBase::CreateStreamingHeap(UINT in_maxNumTilesHeap)
 {
     auto pStreamingHeap = new Streaming::Heap(m_pDataUploader->GetMappingQueue(), in_maxNumTilesHeap);
     return (StreamingHeap*)pStreamingHeap;
@@ -65,13 +71,13 @@ StreamingHeap* TileUpdateManager::CreateStreamingHeap(UINT in_maxNumTilesHeap)
 //--------------------------------------------
 // Create StreamingResources using a common TileUpdateManager
 //--------------------------------------------
-StreamingResource* TileUpdateManager::CreateStreamingResource(const std::wstring& in_filename, StreamingHeap* in_pHeap)
+StreamingResource* Streaming::TileUpdateManagerBase::CreateStreamingResource(const std::wstring& in_filename, StreamingHeap* in_pHeap)
 {
     // if threads are running, stop them. they have state that depends on knowing the # of StreamingResources
     Finish();
 
     Streaming::FileHandle* pFileHandle = m_pDataUploader->OpenFile(in_filename);
-    auto pRsrc = new Streaming::StreamingResourceBase(in_filename, pFileHandle, (Streaming::TileUpdateManagerSR*)this, in_pHeap);
+    auto pRsrc = new Streaming::StreamingResourceBase(in_filename, pFileHandle, (Streaming::TileUpdateManagerSR*)this, (Streaming::Heap*)in_pHeap);
     m_streamingResources.push_back(pRsrc);
     m_numStreamingResourcesChanged = true;
 
@@ -81,18 +87,10 @@ StreamingResource* TileUpdateManager::CreateStreamingResource(const std::wstring
 }
 
 //-----------------------------------------------------------------------------
-// when debugging, useful to know if between TUM:Begin/End Frame
-//-----------------------------------------------------------------------------
-bool TileUpdateManager::GetWithinFrame() const
-{
-    return TileUpdateManagerBase::GetWithinFrame();
-}
-
-//-----------------------------------------------------------------------------
 // set which file streaming system to use
 // will reset even if previous setting was the same. so?
 //-----------------------------------------------------------------------------
-void TileUpdateManager::UseDirectStorage(bool in_useDS)
+void Streaming::TileUpdateManagerBase::UseDirectStorage(bool in_useDS)
 {
     Finish();
     auto streamerType = Streaming::DataUploader::StreamerType::Reference;
@@ -114,7 +112,7 @@ void TileUpdateManager::UseDirectStorage(bool in_useDS)
 //-----------------------------------------------------------------------------
 // note to self to create Clear() and Resolve() commands during EndFrame()
 //-----------------------------------------------------------------------------
-void TileUpdateManager::QueueFeedback(StreamingResource* in_pResource, D3D12_GPU_DESCRIPTOR_HANDLE in_gpuDescriptor)
+void Streaming::TileUpdateManagerBase::QueueFeedback(StreamingResource* in_pResource, D3D12_GPU_DESCRIPTOR_HANDLE in_gpuDescriptor)
 {
     auto pResource = (Streaming::StreamingResourceBase*)in_pResource;
 
@@ -143,7 +141,7 @@ void TileUpdateManager::QueueFeedback(StreamingResource* in_pResource, D3D12_GPU
 // returns (approximate) cpu time for processing feedback in the previous frame
 // since processing happens asynchronously, this time should be averaged
 //-----------------------------------------------------------------------------
-float TileUpdateManager::GetCpuProcessFeedbackTime()
+float Streaming::TileUpdateManagerBase::GetCpuProcessFeedbackTime()
 {
     return m_processFeedbackFrameTime;
 }
@@ -151,14 +149,14 @@ float TileUpdateManager::GetCpuProcessFeedbackTime()
 //-----------------------------------------------------------------------------
 // performance and visualization
 //-----------------------------------------------------------------------------
-float TileUpdateManager::GetGpuStreamingTime() const { return m_pDataUploader->GetGpuStreamingTime(); }
-float TileUpdateManager::GetTotalTileCopyLatency() const { return m_pDataUploader->GetApproximateTileCopyLatency(); }
+float Streaming::TileUpdateManagerBase::GetGpuStreamingTime() const { return m_pDataUploader->GetGpuStreamingTime(); }
+float Streaming::TileUpdateManagerBase::GetTotalTileCopyLatency() const { return m_pDataUploader->GetApproximateTileCopyLatency(); }
 
 // the total time the GPU spent resolving feedback during the previous frame
-float TileUpdateManager::GetGpuTime() const { return m_gpuTimerResolve.GetTimes()[m_renderFrameIndex].first; }
-UINT TileUpdateManager::GetTotalNumUploads() const { return m_pDataUploader->GetTotalNumUploads(); }
-UINT TileUpdateManager::GetTotalNumEvictions() const { return m_pDataUploader->GetTotalNumEvictions(); }
-void TileUpdateManager::SetVisualizationMode(UINT in_mode)
+float Streaming::TileUpdateManagerBase::GetGpuTime() const { return m_gpuTimerResolve.GetTimes()[m_renderFrameIndex].first; }
+UINT Streaming::TileUpdateManagerBase::GetTotalNumUploads() const { return m_pDataUploader->GetTotalNumUploads(); }
+UINT Streaming::TileUpdateManagerBase::GetTotalNumEvictions() const { return m_pDataUploader->GetTotalNumEvictions(); }
+void Streaming::TileUpdateManagerBase::SetVisualizationMode(UINT in_mode)
 {
     ASSERT(!GetWithinFrame());
     Finish();
@@ -174,7 +172,7 @@ void TileUpdateManager::SetVisualizationMode(UINT in_mode)
 // Call this method once for each TileUpdateManager that shares heap/upload buffers
 // expected to be called once per frame, before anything is drawn.
 //-----------------------------------------------------------------------------
-void TileUpdateManager::BeginFrame(ID3D12DescriptorHeap* in_pDescriptorHeap,
+void Streaming::TileUpdateManagerBase::BeginFrame(ID3D12DescriptorHeap* in_pDescriptorHeap,
     D3D12_CPU_DESCRIPTOR_HANDLE in_minmipmapDescriptorHandle)
 {
     ASSERT(!GetWithinFrame());
@@ -220,7 +218,7 @@ void TileUpdateManager::BeginFrame(ID3D12DescriptorHeap* in_pDescriptorHeap,
 // Call this method once corresponding to BeginFrame()
 // expected to be called once per frame, after everything was drawn.
 //-----------------------------------------------------------------------------
-TileUpdateManager::CommandLists TileUpdateManager::EndFrame()
+TileUpdateManager::CommandLists Streaming::TileUpdateManagerBase::EndFrame()
 {
     ASSERT(GetWithinFrame());
     // NOTE: we are "within frame" until the end of EndFrame()

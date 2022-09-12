@@ -45,19 +45,21 @@ DDS_HEADER_DXT10 structure
 Streaming::XeTexture::XeTexture(const std::wstring& in_fileName)
 {
     std::ifstream inFile(in_fileName.c_str(), std::ios::binary);
+    if (inFile.fail()) { Error(in_fileName + L" File doesn't exist (?)"); }
+
     inFile.read((char*)&m_fileHeader, sizeof(m_fileHeader));
-    if (!inFile.good()) { Error(in_fileName + L"Unexpected Error"); }
+    if (!inFile.good()) { Error(in_fileName + L" Unexpected Error reading header"); }
 
     if (m_fileHeader.m_magic != XetFileHeader::GetMagic()) { Error(in_fileName + L" Not a valid XET file"); }
     if (m_fileHeader.m_version != XetFileHeader::GetVersion()) { Error(in_fileName + L" Incorrect XET version"); }
 
     m_subresourceInfo.resize(m_fileHeader.m_ddsHeader.mipMapCount);
     inFile.read((char*)m_subresourceInfo.data(), m_subresourceInfo.size() * sizeof(m_subresourceInfo[0]));
-    if (!inFile.good()) { Error(in_fileName + L"Unexpected Error"); }
+    if (!inFile.good()) { Error(in_fileName + L" Unexpected Error reading subresource info"); }
 
     m_tileOffsets.resize(m_fileHeader.m_mipInfo.m_numTilesForStandardMips + 1); // plus 1 for the packed mips offset & size
     inFile.read((char*)m_tileOffsets.data(), m_tileOffsets.size() * sizeof(m_tileOffsets[0]));
-    if (!inFile.good()) { Error(in_fileName + L"Unexpected Error"); }
+    if (!inFile.good()) { Error(in_fileName + L" Unexpected Error reading packed mip info"); }
 }
 
 //-----------------------------------------------------------------------------

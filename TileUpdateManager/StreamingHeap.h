@@ -28,6 +28,7 @@
 
 #include "Streaming.h" // for ComPtr
 #include "SimpleAllocator.h"
+#include "SamplerFeedbackStreaming.h"
 
 //==================================================
 // Streaming Heap wraps the D3D heap, Allocator, and Atlas
@@ -60,9 +61,18 @@ namespace Streaming
 
     // Heap to hold tiles for 1 or more resources
     // contains atlases for the format(s) of the resources
-    class Heap
+    class Heap : public ::StreamingHeap
     {
     public:
+        //-----------------------------------------------------------------
+        // external APIs
+        //-----------------------------------------------------------------
+        virtual void Destroy() override;
+        virtual UINT GetNumTilesAllocated() const override { return m_heapAllocator.GetAllocated(); }
+        //-----------------------------------------------------------------
+        // end external APIs
+        //-----------------------------------------------------------------
+
         Heap(ID3D12CommandQueue* in_pQueue, UINT in_maxNumTilesHeap);
         virtual ~Heap();
 
@@ -72,6 +82,7 @@ namespace Streaming
         ID3D12Resource* ComputeCoordFromTileIndex(D3D12_TILED_RESOURCE_COORDINATE& out_coord, UINT in_index, const DXGI_FORMAT in_format);
         ID3D12Heap* GetHeap() const { return m_tileHeap.Get(); }
         SimpleAllocator& GetAllocator() { return m_heapAllocator; }
+
     private:
         SimpleAllocator m_heapAllocator;
 

@@ -36,6 +36,7 @@ Usage:
 Draw loop:
 1. BeginFrame() with the TileUpdateManager (TUM)
 2. Draw your assets using the streaming textures, min-mip-map, and sampler feedback SRVs
+    Optionally call TUM::QueueFeedback() to get sampler feedback for this draw.
     SRVs can be created using StreamingResource methods
 3. EndFrame() (with the TUM) returns 2 command lists: beforeDraw and afterDraw
 4. ExecuteCommandLists() with [beforeDraw, yourCommandList, afterDraw] command lists.
@@ -43,83 +44,69 @@ Draw loop:
 
 #pragma once
 
-#include "TileUpdateManagerBase.h"
-#include "StreamingResourceBase.h"
-#include "StreamingHeap.h"
+// FIXME: resolve to buffer only supported in Win11 and some insider versions of Win10
+// When resolving to texture, must copy to cpu-readable buffer from gpu texture (which cannot be in the readback heap)
+// Setting this to 0 resolves directly to cpu-readable buffer
+#define RESOLVE_TO_TEXTURE 1
 
 //==================================================
 // a streaming resource is associated with a single heap (in this implementation)
 // multiple streaming resources can use the same heap
 // TileUpdateManager is used to create these
 //==================================================
-class StreamingHeap : private Streaming::Heap
+struct StreamingHeap
 {
-public:
-    virtual ~StreamingHeap() {}
+    virtual void Destroy() = 0;
 
-    UINT GetNumTilesAllocated();
-private:
-    StreamingHeap() = delete;
-    StreamingHeap(const StreamingHeap&) = delete;
-    StreamingHeap(StreamingHeap&&) = delete;
-    StreamingHeap& operator=(const StreamingHeap&) = delete;
-    StreamingHeap& operator=(StreamingHeap&&) = delete;
-
-    // required to cast to base class
-    friend class TileUpdateManager;
+    virtual UINT GetNumTilesAllocated() const = 0;
 };
 
 //=============================================================================
 // a fine-grained streaming, tiled resource
 // TileUpdateManager is used to create these
 //=============================================================================
-class StreamingResource : private Streaming::StreamingResourceBase
+struct StreamingResource
 {
-public:
+    virtual void Destroy() = 0;
+
     //--------------------------------------------
     // applications need access to the resources to create descriptors
     //--------------------------------------------
-    void CreateFeedbackView(ID3D12Device* in_pDevice, D3D12_CPU_DESCRIPTOR_HANDLE in_descriptor);
-    void CreateStreamingView(ID3D12Device* in_pDevice, D3D12_CPU_DESCRIPTOR_HANDLE in_descriptor);
+    virtual void CreateFeedbackView(ID3D12Device* in_pDevice, D3D12_CPU_DESCRIPTOR_HANDLE in_descriptor) = 0;
+    virtual void CreateStreamingView(ID3D12Device* in_pDevice, D3D12_CPU_DESCRIPTOR_HANDLE in_descriptor) = 0;
 
     // shader reading min-mip-map buffer will want its dimensions
-    UINT GetMinMipMapWidth() const;
-    UINT GetMinMipMapHeight() const;
+    virtual UINT GetMinMipMapWidth() const = 0;
+    virtual UINT GetMinMipMapHeight() const = 0;
 
     // shader reading min-mip-map buffer will need an offset into the min-mip-map (residency map)
     // NOTE: all min mip maps are stored in a single buffer. offset into the buffer.
-    // this saves a massive amount of GPU memory, since each min mip map is much smaller than 64KB
-    UINT GetMinMipMapOffset() const;
+    virtual UINT GetMinMipMapOffset() const = 0;
 
     // check if the packed mips are loaded. application likely will not want to use this texture before they have loaded
-    bool GetPackedMipsResident() const;
+    virtual bool GetPackedMipsResident() const = 0;
 
     // if a resource isn't visible, evict associated data
     // call any time
-    void QueueEviction();
+    virtual void QueueEviction() = 0;
 
-    ID3D12Resource* GetTiledResource() const;
+    virtual ID3D12Resource* GetTiledResource() const = 0;
 
-    ID3D12Resource* GetMinMipMap() const;
+    virtual ID3D12Resource* GetMinMipMap() const = 0;
 
     //--------------------------------------------
     // for visualization
     //--------------------------------------------
     // number of tiles reserved (not necessarily committed) for this resource
-    UINT GetNumTilesVirtual() const;
+    virtual UINT GetNumTilesVirtual() const = 0;
 #if RESOLVE_TO_TEXTURE
-    ID3D12Resource* GetResolvedFeedback();
+    virtual ID3D12Resource* GetResolvedFeedback() const = 0;
 #endif
-
-    virtual ~StreamingResource();
-private:
-    StreamingResource() = delete;
-    StreamingResource(const StreamingResource&) = delete;
-    StreamingResource(StreamingResource&&) = delete;
-    StreamingResource& operator=(const StreamingResource&) = delete;
-    StreamingResource& operator=(StreamingResource&&) = delete;
 };
 
+//=============================================================================
+// describe TileUpdateManager (default values are recommended)
+//=============================================================================
 struct TileUpdateManagerDesc
 {
     // maximum number of in-flight batches
@@ -143,10 +130,12 @@ struct TileUpdateManagerDesc
     bool m_useDirectStorage{ false };
 };
 
-class TileUpdateManager : private Streaming::TileUpdateManagerBase
+//=============================================================================
+// manages all the streaming resources
+//=============================================================================
+struct TileUpdateManager
 {
-public:
-    TileUpdateManager(
+    static TileUpdateManager* Create(
         // query resource for tiling properties. use its device to create internal resources
         ID3D12Device8* in_pDevice,
 
@@ -155,18 +144,18 @@ public:
 
         const TileUpdateManagerDesc& in_desc);
 
-    virtual ~TileUpdateManager();
+    virtual void Destroy() = 0;
 
     //--------------------------------------------
     // Create a heap used by 1 or more StreamingResources
     // parameter is number of 64KB tiles to manage
     //--------------------------------------------
-    StreamingHeap* CreateStreamingHeap(UINT in_maxNumTilesHeap);
+    virtual StreamingHeap* CreateStreamingHeap(UINT in_maxNumTilesHeap) = 0;
 
     //--------------------------------------------
     // Create StreamingResources using a common TileUpdateManager
     //--------------------------------------------
-    StreamingResource* CreateStreamingResource(const std::wstring& in_filename, StreamingHeap* in_pHeap);
+    virtual StreamingResource* CreateStreamingResource(const std::wstring& in_filename, StreamingHeap* in_pHeap) = 0;
 
     //--------------------------------------------
     // Call BeginFrame() first,
@@ -176,12 +165,12 @@ public:
     //    (which only happens if StreamingResources are created/destroyed)
     // NOTE: the root signature should set the associated descriptor range as descriptor and data volatile
     //--------------------------------------------
-    void BeginFrame(ID3D12DescriptorHeap* in_pDescriptorHeap, D3D12_CPU_DESCRIPTOR_HANDLE in_minmipmapDescriptorHandle);
+    virtual void BeginFrame(ID3D12DescriptorHeap* in_pDescriptorHeap, D3D12_CPU_DESCRIPTOR_HANDLE in_minmipmapDescriptorHandle) = 0;
 
     // application must explicitly request feedback for each resource each frame
     // this allows the application to limit how much time is spent on feedback, or stop processing e.g. for off-screen objects
     // descriptor required to create Clear() and Resolve() commands
-    void QueueFeedback(StreamingResource* in_pResource, D3D12_GPU_DESCRIPTOR_HANDLE in_gpuDescriptor);
+    virtual void QueueFeedback(StreamingResource* in_pResource, D3D12_GPU_DESCRIPTOR_HANDLE in_gpuDescriptor) = 0;
 
     //--------------------------------------------
     // Call EndFrame() last, paired with each BeginFrame() and after all draw commands
@@ -198,39 +187,34 @@ public:
         ID3D12CommandList* m_beforeDrawCommands;
         ID3D12CommandList* m_afterDrawCommands;
     };
-    CommandLists EndFrame();
+    virtual CommandLists EndFrame() = 0;
 
     //--------------------------------------------
     // choose DirectStorage vs. manual tile loading
     //--------------------------------------------
-    void UseDirectStorage(bool in_useDS);
+    virtual void UseDirectStorage(bool in_useDS) = 0;
 
     //--------------------------------------------
     // are we between BeginFrame and EndFrame? useful for debugging
     //--------------------------------------------
-    bool GetWithinFrame() const;
+    virtual bool GetWithinFrame() const = 0;
 
     //--------------------------------------------
     // GPU time for resolving feedback buffers last frame
     // use this to time-limit gpu feedback processing
     // to determine per-resolve time, divide this time by the number of QueueFeedback() calls during the frame
     //--------------------------------------------
-    float GetGpuTime() const;
+    virtual float GetGpuTime() const = 0;
 
     //--------------------------------------------
     // for visualization
     //--------------------------------------------
-    void SetVisualizationMode(UINT in_mode);
+    virtual void SetVisualizationMode(UINT in_mode) = 0;
 
-    float GetGpuStreamingTime() const;
-    float GetCpuProcessFeedbackTime(); // approx. cpu time spent processing feedback last frame. expected usage is to average over many frames
+    virtual float GetGpuStreamingTime() const = 0;
+    virtual float GetCpuProcessFeedbackTime() = 0; // approx. cpu time spent processing feedback last frame. expected usage is to average over many frames
 
-    UINT GetTotalNumUploads() const;
-    UINT GetTotalNumEvictions() const;
-    float GetTotalTileCopyLatency() const;
-private:
-    TileUpdateManager(const TileUpdateManager&) = delete;
-    TileUpdateManager(TileUpdateManager&&) = delete;
-    TileUpdateManager& operator=(const TileUpdateManager&) = delete;
-    TileUpdateManager& operator=(TileUpdateManager&&) = delete;
+    virtual UINT GetTotalNumUploads() const = 0;
+    virtual UINT GetTotalNumEvictions() const = 0;
+    virtual float GetTotalTileCopyLatency() const = 0;
 };

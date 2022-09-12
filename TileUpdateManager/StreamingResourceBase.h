@@ -35,6 +35,7 @@ Base class for StreamingResource
 #include <d3d12.h>
 #include <string>
 
+#include "SamplerFeedbackStreaming.h"
 #include "InternalResources.h"
 
 namespace Streaming
@@ -49,10 +50,26 @@ namespace Streaming
     // unpacked mips are dynamically loaded/evicted, preserving a min-mip-map
     // packed mips are not evicted from the heap (as little as 1 tile for a 16k x 16k texture)
     //=============================================================================
-    class StreamingResourceBase
+    class StreamingResourceBase : public ::StreamingResource
     {
     public:
-        // share heap & other resources with another TileUpdateManager
+        //-----------------------------------------------------------------
+        // external APIs
+        //-----------------------------------------------------------------
+        virtual void Destroy() override;
+        virtual void CreateFeedbackView(ID3D12Device* in_pDevice, D3D12_CPU_DESCRIPTOR_HANDLE in_descriptor) override;
+        virtual void CreateStreamingView(ID3D12Device* in_pDevice, D3D12_CPU_DESCRIPTOR_HANDLE in_descriptor) override;
+        virtual UINT GetMinMipMapWidth() const override;
+        virtual UINT GetMinMipMapHeight() const override;
+        virtual UINT GetMinMipMapOffset() const override;
+        virtual bool GetPackedMipsResident() const override;
+        virtual void QueueEviction() override;
+        virtual ID3D12Resource* GetMinMipMap() const override;
+        virtual UINT GetNumTilesVirtual() const override;
+        //-----------------------------------------------------------------
+        // end external APIs
+        //-----------------------------------------------------------------
+
         StreamingResourceBase(
             // method that will fill a tile-worth of bits, for streaming
             const std::wstring& in_filename,
@@ -97,11 +114,11 @@ namespace Streaming
         void ReadbackFeedback(ID3D12GraphicsCommandList* out_pCmdList);
 
         // TUM needs this for barrier before/after copy
-        ID3D12Resource* GetResolvedFeedback() { return m_resources->GetResolvedFeedback(); }
+        ID3D12Resource* GetResolvedFeedback() const override { return m_resources->GetResolvedFeedback(); }
 #endif
 
         // TUM needs this for barrier on packed mips
-        ID3D12Resource* GetTiledResource() const { return m_resources->GetTiledResource(); }
+        ID3D12Resource* GetTiledResource() const override { return m_resources->GetTiledResource(); }
 
         //-------------------------------------
         // end called by TUM::EndFrame()
@@ -142,10 +159,7 @@ namespace Streaming
         std::unique_ptr<Streaming::XeTexture> m_pTextureFileInfo;
         std::unique_ptr<Streaming::InternalResources> m_resources;
         std::unique_ptr<Streaming::FileHandle> m_pFileHandle;
-        const std::wstring m_filename;
         Streaming::Heap* m_pHeap{ nullptr };
-
-        void SetResidencyChanged();
 
         // packed mip status
         enum class PackedMipStatus : UINT32
@@ -157,6 +171,14 @@ namespace Streaming
             RESIDENT           // mapped, loaded, and transitioned to pixel shader resource
         };
         PackedMipStatus m_packedMipStatus{ PackedMipStatus::UNINITIALIZED };
+
+        UINT m_packedMipsUncompressedSize{ 0 };
+
+        // bytes for packed mips
+        std::vector<BYTE> m_packedMips;
+        std::vector<UINT> m_packedMipHeapIndices;
+
+        Streaming::TileUpdateManagerSR* m_pTileUpdateManager;
 
         //==================================================
         // TileMappingState keeps reference counts and heap indices for resources in a min-mip-map
@@ -223,9 +245,19 @@ namespace Streaming
         };
         TileMappingState m_tileMappingState;
 
-        Streaming::TileUpdateManagerSR* m_pTileUpdateManager;
+        void SetResidencyChanged();
 
-        std::vector<UINT> m_packedMipHeapIndices;
+        //--------------------------------------------------------
+        // for public interface
+        //--------------------------------------------------------
+        UINT m_residencyMapOffsetBase{ 0 };
+
+        // used by QueueEviction()
+        std::atomic<bool> m_setZeroRefCounts{ false };
+
+    private:
+
+        const std::wstring m_filename;
 
         // do not immediately decmap:
         // need to withhold until in-flight command buffers have completed
@@ -253,11 +285,6 @@ namespace Streaming
         //--------------------------------------------------------
         // for public interface
         //--------------------------------------------------------
-        UINT m_residencyMapOffsetBase{ 0 };
-
-        // used by QueueEviction()
-        std::atomic<bool> m_setZeroRefCounts{ false };
-
         // minimum mip level referred to by this tile
         // this tile "holds references" to this mip level and all mips greater than this value
         // with a 16kx16k limit, DX will never see 255 mip levels. but, we want a byte so we can modify cache-coherently
@@ -269,10 +296,6 @@ namespace Streaming
         UINT8 m_maxMip;
         std::vector<BYTE, Streaming::AlignedAllocator<BYTE>> m_minMipMap; // local version of min mip map, rectified in UpdateMinMipMap()
 
-        // bytes for packed mips
-        std::vector<BYTE> m_packedMips;
-        UINT m_packedMipsUncompressedSize{ 0 };
-    private:
         // non-packed mip copy complete notification
         std::atomic<bool> m_tileResidencyChanged{ false };
 

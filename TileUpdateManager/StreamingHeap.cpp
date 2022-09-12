@@ -29,6 +29,14 @@
 #include "StreamingHeap.h"
 
 //-----------------------------------------------------------------------------
+// call destructor on derived object
+//-----------------------------------------------------------------------------
+void Streaming::Heap::Destroy()
+{
+    delete this;
+}
+
+//-----------------------------------------------------------------------------
 // create an "atlas" texture that covers the entire heap
 //-----------------------------------------------------------------------------
 Streaming::Atlas::Atlas(ID3D12Heap* in_pHeap, ID3D12CommandQueue* in_pQueue,
@@ -217,13 +225,4 @@ ID3D12Resource* Streaming::Heap::ComputeCoordFromTileIndex(D3D12_TILED_RESOURCE_
     ASSERT(pAtlas);
 
     return pAtlas->ComputeCoordFromTileIndex(out_coord, in_index);
-}
-
-//-----------------------------------------------------------------------------
-// public API implementation
-//-----------------------------------------------------------------------------
-#include "SamplerFeedbackStreaming.h"
-UINT StreamingHeap::GetNumTilesAllocated()
-{
-    return GetAllocator().GetAllocated();
 }

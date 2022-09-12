@@ -24,28 +24,32 @@
 //
 //*********************************************************
 
-// Implementation of the few methods required for the ::StreamingResource public (external) interface
+// Implementation of the few methods required for the ::StreamingResourceBase public (external) interface
 
 #include "pch.h"
 
-#include "SamplerFeedbackStreaming.h"
+#include "StreamingResourceBase.h"
 #include "TileUpdateManagerSR.h"
 
 //-----------------------------------------------------------------------------
+// public interface to destroy object
 //-----------------------------------------------------------------------------
-StreamingResource::~StreamingResource() {}
+void Streaming::StreamingResourceBase::Destroy()
+{
+    delete this;
+}
 
 //-----------------------------------------------------------------------------
 // create views of resources used directly by the application
 //-----------------------------------------------------------------------------
-void StreamingResource::CreateFeedbackView(ID3D12Device* in_pDevice, D3D12_CPU_DESCRIPTOR_HANDLE in_descriptorHandle)
+void Streaming::StreamingResourceBase::CreateFeedbackView(ID3D12Device* in_pDevice, D3D12_CPU_DESCRIPTOR_HANDLE in_descriptorHandle)
 {
     in_pDevice->CopyDescriptorsSimple(1, in_descriptorHandle,
         m_resources->GetClearUavHeap()->GetCPUDescriptorHandleForHeapStart(),
         D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 }
 
-void StreamingResource::CreateStreamingView(ID3D12Device* in_pDevice, D3D12_CPU_DESCRIPTOR_HANDLE in_descriptorHandle)
+void Streaming::StreamingResourceBase::CreateStreamingView(ID3D12Device* in_pDevice, D3D12_CPU_DESCRIPTOR_HANDLE in_descriptorHandle)
 {
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
     srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
@@ -58,7 +62,7 @@ void StreamingResource::CreateStreamingView(ID3D12Device* in_pDevice, D3D12_CPU_
 
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
-ID3D12Resource* StreamingResource::GetMinMipMap() const
+ID3D12Resource* Streaming::StreamingResourceBase::GetMinMipMap() const
 {
     return m_pTileUpdateManager->GetResidencyMap().GetResource();
 }
@@ -66,12 +70,12 @@ ID3D12Resource* StreamingResource::GetMinMipMap() const
 //-----------------------------------------------------------------------------
 // shader reading min-mip-map buffer will want its dimensions
 //-----------------------------------------------------------------------------
-UINT StreamingResource::GetMinMipMapWidth() const
+UINT Streaming::StreamingResourceBase::GetMinMipMapWidth() const
 {
     return GetNumTilesWidth();
 }
 
-UINT StreamingResource::GetMinMipMapHeight() const
+UINT Streaming::StreamingResourceBase::GetMinMipMapHeight() const
 {
     return GetNumTilesHeight();
 }
@@ -80,7 +84,7 @@ UINT StreamingResource::GetMinMipMapHeight() const
 // IMPORTANT: all min mip maps are stored in a single buffer. offset into the buffer.
 // this saves a massive amount of GPU memory, since each min mip map is much smaller than 64KB
 //-----------------------------------------------------------------------------
-UINT StreamingResource::GetMinMipMapOffset() const
+UINT Streaming::StreamingResourceBase::GetMinMipMapOffset() const
 {
     return m_residencyMapOffsetBase; 
 }
@@ -88,7 +92,7 @@ UINT StreamingResource::GetMinMipMapOffset() const
 //-----------------------------------------------------------------------------
 // // check if the packed mips are loaded. application likely will not want to use this texture before they have loaded
 //-----------------------------------------------------------------------------
-bool StreamingResource::GetPackedMipsResident() const
+bool Streaming::StreamingResourceBase::GetPackedMipsResident() const
 {
     return (PackedMipStatus::RESIDENT == m_packedMipStatus) || (PackedMipStatus::NEEDS_TRANSITION == m_packedMipStatus);
 }
@@ -97,30 +101,14 @@ bool StreamingResource::GetPackedMipsResident() const
 // if an object isn't visible, set all refcounts to 0
 // this will schedule all tiles to be evicted
 //-----------------------------------------------------------------------------
-void StreamingResource::QueueEviction()
+void Streaming::StreamingResourceBase::QueueEviction()
 {
     m_setZeroRefCounts = true;
 }
 
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
-UINT StreamingResource::GetNumTilesVirtual() const
+UINT Streaming::StreamingResourceBase::GetNumTilesVirtual() const
 {
     return m_resources->GetNumTilesVirtual();
 }
-
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-ID3D12Resource* StreamingResource::GetTiledResource() const
-{
-    return m_resources->GetTiledResource();
-}
-
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-#if RESOLVE_TO_TEXTURE
-ID3D12Resource* StreamingResource::GetResolvedFeedback()
-{
-    return m_resources->GetResolvedFeedback();
-}
-#endif

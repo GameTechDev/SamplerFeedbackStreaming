@@ -26,13 +26,11 @@
 
 #include "pch.h"
 
-#include "SamplerFeedbackStreaming.h"  // required for TileUpdateManagerDesc
+#include "TileUpdateManagerBase.h"
 #include "DataUploader.h"
 #include "StreamingResourceBase.h"
 #include "XeTexture.h"
 #include "StreamingHeap.h"
-
-#define COPY_RESIDENCY_MAPS 0
 
 //=============================================================================
 // constructor for streaming library base class
@@ -359,3 +357,4 @@ void Streaming::TileUpdateManagerBase::CreateMinMipMapView(D3D12_CPU_DESCRIPTOR_
     m_device->CreateShaderResourceView(m_residencyMap.GetResource(), &srvDesc, in_descriptorHandle);
 #endif
 }
+

@@ -66,7 +66,10 @@ namespace SceneObjects
     class BaseObject
     {
     public:
-        virtual ~BaseObject() {}
+        virtual ~BaseObject()
+        {
+            m_pStreamingResource->Destroy();
+        }
 
         bool GetPackedMipsPresent() const { return m_pStreamingResource->GetPackedMipsResident(); }
 
@@ -83,7 +86,7 @@ namespace SceneObjects
         ID3D12Resource* GetResolvedFeedback() const { return m_pStreamingResource->GetResolvedFeedback(); }
 #endif
 
-        StreamingResource* GetStreamingResource() const { return m_pStreamingResource.get(); }
+        StreamingResource* GetStreamingResource() const { return m_pStreamingResource; }
 
         void CopyGeometry(const BaseObject* in_pObjectForSharedHeap);
 
@@ -123,7 +126,7 @@ namespace SceneObjects
             const DirectX::XMMATRIX& in_projection,
             const DirectX::XMMATRIX& in_view);
 
-        std::unique_ptr<StreamingResource> m_pStreamingResource;
+        StreamingResource* m_pStreamingResource{ nullptr };
 
         void CreatePipelineState(
             const wchar_t* in_ps, const wchar_t* in_psFB, const wchar_t* in_vs,

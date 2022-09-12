@@ -234,8 +234,10 @@ Scene::~Scene()
 
     for (auto h : m_sharedHeaps)
     {
-        delete h;
+        h->Destroy();
     }
+
+    m_pTileUpdateManager->Destroy();
 }
 
 //-----------------------------------------------------------------------------
@@ -662,7 +664,7 @@ void Scene::StartStreamingLibrary()
     tumDesc.m_addAliasingBarriers = m_args.m_addAliasingBarriers;
     tumDesc.m_useDirectStorage = m_args.m_useDirectStorage;
 
-    m_pTileUpdateManager = std::make_unique<TileUpdateManager>(m_device.Get(), m_commandQueue.Get(), tumDesc);
+    m_pTileUpdateManager = TileUpdateManager::Create(m_device.Get(), m_commandQueue.Get(), tumDesc);
     
     // create 1 or more heaps to contain our StreamingResources
     for (UINT i = 0; i < m_args.m_numHeaps; i++)
@@ -801,13 +803,13 @@ void Scene::LoadSpheres()
             if ((nullptr == m_pSky) && (m_args.m_skyTexture.size())) // only 1 sky
             {
                 auto tf = m_args.m_mediaDir + L"\\\\" + m_args.m_skyTexture;
-                m_pSky = new SceneObjects::Sky(tf, m_pTileUpdateManager.get(), pHeap, m_device.Get(), m_assetUploader, m_args.m_sampleCount, descCPU);
+                m_pSky = new SceneObjects::Sky(tf, m_pTileUpdateManager, pHeap, m_device.Get(), m_assetUploader, m_args.m_sampleCount, descCPU);
                 o = m_pSky;
             }
 
             else if (nullptr == m_pTerrainSceneObject)
             {
-                m_pTerrainSceneObject = new SceneObjects::Terrain(m_args.m_terrainTexture, m_pTileUpdateManager.get(), pHeap, m_device.Get(), m_args.m_sampleCount, descCPU, m_args, m_assetUploader);
+                m_pTerrainSceneObject = new SceneObjects::Terrain(m_args.m_terrainTexture, m_pTileUpdateManager, pHeap, m_device.Get(), m_args.m_sampleCount, descCPU, m_args, m_assetUploader);
                 m_terrainObjectIndex = objectIndex;
                 o = m_pTerrainSceneObject;
             }
@@ -818,12 +820,12 @@ void Scene::LoadSpheres()
                 if (nullptr == m_pEarth)
                 {
                     sphereProperties.m_mirrorU = false;
-                    o = new SceneObjects::Planet(textureFilename, m_pTileUpdateManager.get(), pHeap, m_device.Get(), m_assetUploader, m_args.m_sampleCount, descCPU, sphereProperties);
+                    o = new SceneObjects::Planet(textureFilename, m_pTileUpdateManager, pHeap, m_device.Get(), m_assetUploader, m_args.m_sampleCount, descCPU, sphereProperties);
                     m_pEarth = o;
                 }
                 else
                 {
-                    o = new SceneObjects::Planet(textureFilename, m_pTileUpdateManager.get(), pHeap, m_device.Get(), descCPU, m_pEarth);
+                    o = new SceneObjects::Planet(textureFilename, m_pTileUpdateManager, pHeap, m_device.Get(), descCPU, m_pEarth);
                 }
                 o->GetModelMatrix() = SetSphereMatrix();
             }
@@ -841,12 +843,12 @@ void Scene::LoadSpheres()
                 if (nullptr == m_pFirstSphere)
                 {
                     sphereProperties.m_mirrorU = true;
-                    o = new SceneObjects::Planet(textureFilename, m_pTileUpdateManager.get(), pHeap, m_device.Get(), m_assetUploader, m_args.m_sampleCount, descCPU, sphereProperties);
+                    o = new SceneObjects::Planet(textureFilename, m_pTileUpdateManager, pHeap, m_device.Get(), m_assetUploader, m_args.m_sampleCount, descCPU, sphereProperties);
                     m_pFirstSphere = o;
                 }
                 else
                 {
-                    o = new SceneObjects::Planet(textureFilename, m_pTileUpdateManager.get(), pHeap, m_device.Get(), descCPU, m_pFirstSphere);
+                    o = new SceneObjects::Planet(textureFilename, m_pTileUpdateManager, pHeap, m_device.Get(), descCPU, m_pFirstSphere);
                 }
                 o->GetModelMatrix() = SetSphereMatrix();
             }
@@ -895,9 +897,6 @@ void Scene::LoadSpheres()
             m_numSpheresLoaded--;
         }
     }
-
-    // check the non-streaming uploader to see if anything needs to be uploaded or any memory can be freed
-    m_assetUploader.WaitForUploads(m_commandQueue.Get(), m_commandList.Get());
 }
 
 //-----------------------------------------------------------------------------
@@ -1665,6 +1664,9 @@ bool Scene::Draw()
     // prepare for new commands (need an open command list for LoadSpheres)
     m_commandAllocators[m_frameIndex]->Reset();
     m_commandList->Reset((ID3D12CommandAllocator*)m_commandAllocators[m_frameIndex].Get(), nullptr);
+
+    // check the non-streaming uploader to see if anything needs to be uploaded or any memory can be freed
+    m_assetUploader.WaitForUploads(m_commandQueue.Get(), m_commandList.Get());
 
     m_renderThreadTimes.Set(RenderEvents::FrameBegin);
 

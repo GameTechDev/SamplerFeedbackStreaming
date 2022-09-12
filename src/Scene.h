@@ -196,7 +196,7 @@ private:
     ComPtr<ID3D12DescriptorHeap> m_samplerHeap;
     void SetSampler();
 
-    std::unique_ptr<class TileUpdateManager> m_pTileUpdateManager;
+    struct TileUpdateManager* m_pTileUpdateManager{ nullptr };
 
     UINT DetermineMaxNumFeedbackResolves();
     void DrawObjects();   // draw all the objects
