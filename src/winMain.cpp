@@ -84,6 +84,9 @@ struct MouseState
     bool m_dragging{ false };
 } g_mouseState;
 
+// load arguments from a config file
+void LoadConfigFile(std::wstring& in_configFileName, CommandLineArgs& out_args);
+
 //-----------------------------------------------------------------------------
 // apply limits arguments
 // e.g. # spheres, path to terrain texture
@@ -161,13 +164,14 @@ void AdjustArguments(CommandLineArgs& out_args)
 }
 
 //-----------------------------------------------------------------------------
+// arguments are consumed in-order
+// config.json is always consumed. expanse -config foo.cfg will overwrite previously configured parameters
 //-----------------------------------------------------------------------------
 void ParseCommandLine(CommandLineArgs& out_args)
 {
     ArgParser argParser;
 
-    // this one argument affects a global:
-    argParser.AddArg(L"-config", L"Config File", g_configFileName);
+    argParser.AddArg(L"-config", [&]() { auto f = ArgParser::GetNextArg(); LoadConfigFile(f, out_args); }, L"Config File");
 
     argParser.AddArg(L"-fullScreen", out_args.m_startFullScreen);
     argParser.AddArg(L"-WindowWidth", out_args.m_windowWidth);
@@ -192,30 +196,30 @@ void ParseCommandLine(CommandLineArgs& out_args)
     argParser.AddArg(L"-earthTexture", out_args.m_earthTexture);
     argParser.AddArg(L"-mediaDir", out_args.m_mediaDir);
     argParser.AddArg(L"-anisotropy", out_args.m_anisotropy);
-    argParser.AddArg(L"-lightFromView", L"Light direction is look direction", out_args.m_lightFromView);
+    argParser.AddArg(L"-lightFromView", out_args.m_lightFromView, L"Light direction is look direction");
 
     argParser.AddArg(L"-cameraRate", out_args.m_cameraAnimationRate);
     argParser.AddArg(L"-rollerCoaster", out_args.m_cameraRollerCoaster);
     argParser.AddArg(L"-paintMixer", out_args.m_cameraPaintMixer);
 
-    argParser.AddArg(L"-visualizeMinMip", [&]() { out_args.m_visualizeMinMip = true; });
+    argParser.AddArg(L"-visualizeMinMip", [&]() { out_args.m_visualizeMinMip = true; }, out_args.m_visualizeMinMip);
     argParser.AddArg(L"-hideFeedback", out_args.m_showFeedbackMaps);
-    argParser.AddArg(L"-hideUI", [&]() { out_args.m_showUI = false; });
-    argParser.AddArg(L"-miniUI", [&]() { out_args.m_uiModeMini = true; });
+    argParser.AddArg(L"-hideUI", [&]() { out_args.m_showUI = false; }, false, L"start with no visible UI");
+    argParser.AddArg(L"-miniUI", [&]() { out_args.m_uiModeMini = true; }, false, L"start with mini");
     argParser.AddArg(L"-updateAll", out_args.m_updateEveryObjectEveryFrame);
-    argParser.AddArg(L"-addAliasingBarriers", L"Add per-draw aliasing barriers to assist PIX analysis", out_args.m_addAliasingBarriers);
+    argParser.AddArg(L"-addAliasingBarriers", out_args.m_addAliasingBarriers, L"Add per-draw aliasing barriers to assist PIX analysis");
 
     argParser.AddArg(L"-timingStart", out_args.m_timingStartFrame);
     argParser.AddArg(L"-timingStop", out_args.m_timingStopFrame);
     argParser.AddArg(L"-timingFileFrames", out_args.m_timingFrameFileName);
     argParser.AddArg(L"-exitImageFile", out_args.m_exitImageFileName);
 
-    argParser.AddArg(L"-waitForAssetLoad", L"stall animation & statistics until assets have minimally loaded", out_args.m_waitForAssetLoad);
-    argParser.AddArg(L"-adapter", L"find an adapter containing this string in the description, ignoring case", out_args.m_adapterDescription);
+    argParser.AddArg(L"-waitForAssetLoad", out_args.m_waitForAssetLoad, L"stall animation & statistics until assets have minimally loaded");
+    argParser.AddArg(L"-adapter", out_args.m_adapterDescription, L"find an adapter containing this string in the description, ignoring case");
 
-    argParser.AddArg(L"-directStorage", L"force enable DirectStorage", [&]() { out_args.m_useDirectStorage = true; });
-    argParser.AddArg(L"-directStorageOff", L"force disable DirectStorage", [&]() { out_args.m_useDirectStorage = false; });
-    argParser.AddArg(L"-stagingSizeMB", L"DirectStorage staging buffer size", out_args.m_stagingSizeMB);
+    argParser.AddArg(L"-directStorage", [&]() { out_args.m_useDirectStorage = true; }, L"force enable DirectStorage");
+    argParser.AddArg(L"-directStorageOff", [&]() { out_args.m_useDirectStorage = false; }, L"force disable DirectStorage");
+    argParser.AddArg(L"-stagingSizeMB", out_args.m_stagingSizeMB, L"DirectStorage staging buffer size");
     argParser.Parse();
 }
 
@@ -441,88 +445,86 @@ std::wstring StrToWstr(const std::string& in)
     return w.str();
 }
 
-void LoadConfigFile(CommandLineArgs& out_args)
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+void LoadConfigFile(std::wstring& in_configFileName, CommandLineArgs& out_args)
 {
     bool success = false;
 
-    const UINT exeStrLen = 1024;
-    WCHAR exeStr[exeStrLen];
-    GetModuleFileName(NULL, exeStr, exeStrLen);
-    std::wstring filePath;
-    if (0 == GetLastError())
+    WCHAR buffer[MAX_PATH];
+    GetModuleFileName(nullptr, buffer, MAX_PATH);
+    std::filesystem::path filePath(buffer);
+    filePath.remove_filename().append(in_configFileName);
+    if (std::filesystem::exists(filePath))
     {
-        filePath = exeStr;
-        auto lastSlash = filePath.find_last_of(L"/\\");
-        filePath = filePath.substr(0, lastSlash + 1) + g_configFileName;
-        if (std::filesystem::exists(filePath))
+        ConfigurationParser parser;
+        success = parser.Read(filePath);
+
+        if (success)
         {
-            ConfigurationParser parser;
-            success = parser.Read(filePath);
+            const auto& root = parser.GetRoot();
 
-            if (success)
-            {
-                const auto& root = parser.GetRoot();
+            if (root.isMember("fullScreen")) out_args.m_startFullScreen = root["fullScreen"].asBool();
+            if (root.isMember("vsync")) out_args.m_vsyncEnabled = root["vsync"].asBool();
+            if (root.isMember("windowWidth")) out_args.m_windowWidth = root["windowWidth"].asUInt();
+            if (root.isMember("windowHeight")) out_args.m_windowHeight = root["windowHeight"].asUInt();
+            if (root.isMember("sampleCount")) out_args.m_sampleCount = root["sampleCount"].asUInt();
+            if (root.isMember("lodBias")) out_args.m_lodBias = root["lodBias"].asFloat();
+            if (root.isMember("anisotropy")) out_args.m_anisotropy = root["anisotropy"].asUInt();
 
-                if (root.isMember("fullScreen")) out_args.m_startFullScreen = root["fullScreen"].asBool();
-                if (root.isMember("vsync")) out_args.m_vsyncEnabled = root["vsync"].asBool();
-                if (root.isMember("windowWidth")) out_args.m_windowWidth = root["windowWidth"].asUInt();
-                if (root.isMember("windowHeight")) out_args.m_windowHeight = root["windowHeight"].asUInt();
-                if (root.isMember("sampleCount")) out_args.m_sampleCount = root["sampleCount"].asUInt();
-                if (root.isMember("lodBias")) out_args.m_lodBias = root["lodBias"].asFloat();
-                if (root.isMember("anisotropy")) out_args.m_anisotropy = root["anisotropy"].asUInt();
+            if (root.isMember("directStorage")) out_args.m_useDirectStorage = root["directStorage"].asBool();
+            if (root.isMember("stagingSizeMB")) out_args.m_stagingSizeMB = root["stagingSizeMB"].asUInt();
 
-                if (root.isMember("directStorage")) out_args.m_useDirectStorage = root["directStorage"].asBool();
-                if (root.isMember("stagingSizeMB")) out_args.m_stagingSizeMB = root["stagingSizeMB"].asUInt();
+            if (root.isMember("animationrate")) out_args.m_animationRate = root["animationrate"].asFloat();
+            if (root.isMember("cameraRate")) out_args.m_cameraAnimationRate = root["cameraRate"].asFloat();
+            if (root.isMember("rollerCoaster")) out_args.m_cameraRollerCoaster = root["rollerCoaster"].asBool();
+            if (root.isMember("paintMixer")) out_args.m_cameraRollerCoaster = root["paintMixer"].asBool();
 
-                if (root.isMember("animationrate")) out_args.m_animationRate = root["animationrate"].asFloat();
-                if (root.isMember("cameraRate")) out_args.m_cameraAnimationRate = root["cameraRate"].asFloat();
-                if (root.isMember("rollerCoaster")) out_args.m_cameraRollerCoaster = root["rollerCoaster"].asBool();
-                if (root.isMember("paintMixer")) out_args.m_cameraRollerCoaster = root["paintMixer"].asBool();
+            if (root.isMember("texture")) out_args.m_textureFilename = StrToWstr(root["texture"].asString());
+            if (root.isMember("mediaDir")) out_args.m_mediaDir = StrToWstr(root["mediaDir"].asString());
+            if (root.isMember("terrainTexture")) out_args.m_terrainTexture = StrToWstr(root["terrainTexture"].asString());
+            if (root.isMember("skyTexture")) out_args.m_skyTexture = StrToWstr(root["skyTexture"].asString());
+            if (root.isMember("earthTexture")) out_args.m_earthTexture = StrToWstr(root["earthTexture"].asString());
+            if (root.isMember("maxNumObjects")) out_args.m_maxNumObjects = root["maxNumObjects"].asUInt();
+            if (root.isMember("numSpheres")) out_args.m_numSpheres = root["numSpheres"].asUInt();
+            if (root.isMember("lightFromView")) out_args.m_lightFromView = root["lightFromView"].asBool();
 
-                if (root.isMember("texture")) out_args.m_textureFilename = StrToWstr(root["texture"].asString());
-                if (root.isMember("mediaDir")) out_args.m_mediaDir = StrToWstr(root["mediaDir"].asString());
-                if (root.isMember("terrainTexture")) out_args.m_terrainTexture = StrToWstr(root["terrainTexture"].asString());
-                if (root.isMember("skyTexture")) out_args.m_skyTexture = StrToWstr(root["skyTexture"].asString());
-                if (root.isMember("earthTexture")) out_args.m_earthTexture = StrToWstr(root["earthTexture"].asString());
-                if (root.isMember("maxNumObjects")) out_args.m_maxNumObjects = root["maxNumObjects"].asUInt();
-                if (root.isMember("numSpheres")) out_args.m_numSpheres = root["numSpheres"].asUInt();
-                if (root.isMember("lightFromView")) out_args.m_lightFromView = root["lightFromView"].asBool();
+            if (root.isMember("sphereLong")) out_args.m_sphereLong = root["sphereLong"].asUInt();
+            if (root.isMember("sphereLat")) out_args.m_sphereLat = root["sphereLat"].asUInt();
 
-                if (root.isMember("sphereLong")) out_args.m_sphereLong = root["sphereLong"].asUInt();
-                if (root.isMember("sphereLat")) out_args.m_sphereLat = root["sphereLat"].asUInt();
+            if (root.isMember("heapSizeTiles")) out_args.m_streamingHeapSize = root["heapSizeTiles"].asUInt();
+            if (root.isMember("numHeaps")) out_args.m_numHeaps = root["numHeaps"].asUInt();
+            if (root.isMember("maxTileUpdatesPerApiCall")) out_args.m_maxTileUpdatesPerApiCall = root["maxTileUpdatesPerApiCall"].asUInt();
+            if (root.isMember("numStreamingBatches")) out_args.m_numStreamingBatches = root["numStreamingBatches"].asUInt();
 
-                if (root.isMember("heapSizeTiles")) out_args.m_streamingHeapSize = root["heapSizeTiles"].asUInt();
-                if (root.isMember("numHeaps")) out_args.m_numHeaps = root["numHeaps"].asUInt();
-                if (root.isMember("maxTileUpdatesPerApiCall")) out_args.m_maxTileUpdatesPerApiCall = root["maxTileUpdatesPerApiCall"].asUInt();
-                if (root.isMember("numStreamingBatches")) out_args.m_numStreamingBatches = root["numStreamingBatches"].asUInt();
+            if (root.isMember("maxFeedbackTime")) out_args.m_maxGpuFeedbackTimeMs = root["maxFeedbackTime"].asFloat();
 
-                if (root.isMember("maxFeedbackTime")) out_args.m_maxGpuFeedbackTimeMs = root["maxFeedbackTime"].asFloat();
+            if (root.isMember("visualizeMinMip")) out_args.m_visualizeMinMip = root["visualizeMinMip"].asBool();
+            if (root.isMember("hideFeedback")) out_args.m_showFeedbackMaps = !root["hideFeedback"].asBool();
 
-                if (root.isMember("visualizeMinMip")) out_args.m_visualizeMinMip = root["visualizeMinMip"].asBool();
-                if (root.isMember("hideFeedback")) out_args.m_showFeedbackMaps = !root["hideFeedback"].asBool();
+            if (root.isMember("hideUI")) out_args.m_showUI = !root["hideUI"].asBool();
+            if (root.isMember("miniUI")) out_args.m_uiModeMini = root["miniUI"].asBool();
 
-                if (root.isMember("hideUI")) out_args.m_showUI = !root["hideUI"].asBool();
-                if (root.isMember("miniUI")) out_args.m_uiModeMini = root["miniUI"].asBool();
+            if (root.isMember("addAliasingBarriers")) out_args.m_addAliasingBarriers = root["addAliasingBarriers"].asBool();
+            if (root.isMember("updateAll")) out_args.m_updateEveryObjectEveryFrame = root["updateAll"].asBool();
 
-                if (root.isMember("addAliasingBarriers")) out_args.m_addAliasingBarriers = root["addAliasingBarriers"].asBool();
-                if (root.isMember("updateAll")) out_args.m_updateEveryObjectEveryFrame = root["updateAll"].asBool();
+            if (root.isMember("timingStart")) out_args.m_timingStartFrame = root["timingStart"].asUInt();
+            if (root.isMember("timingStop")) out_args.m_timingStopFrame = root["timingStop"].asUInt();
+            if (root.isMember("timingFileFrames")) out_args.m_timingFrameFileName = StrToWstr(root["timingFileFrames"].asString());
+            if (root.isMember("exitImageFile")) out_args.m_exitImageFileName = StrToWstr(root["exitImage"].asString());
 
-                if (root.isMember("timingStart")) out_args.m_timingStartFrame = root["timingStart"].asUInt();
-                if (root.isMember("timingStop")) out_args.m_timingStopFrame = root["timingStop"].asUInt();
-                if (root.isMember("timingFileFrames")) out_args.m_timingFrameFileName = StrToWstr(root["timingFileFrames"].asString());
-                if (root.isMember("exitImageFile")) out_args.m_exitImageFileName = StrToWstr(root["exitImage"].asString());
+            if (root.isMember("waitForAssetLoad")) out_args.m_waitForAssetLoad = root["waitForAssetLoad"].asBool();
+            if (root.isMember("adapter")) out_args.m_adapterDescription = StrToWstr(root["adapter"].asString());
 
-                if (root.isMember("waitForAssetLoad")) out_args.m_waitForAssetLoad = root["waitForAssetLoad"].asBool();
-                if (root.isMember("adapter")) out_args.m_adapterDescription = StrToWstr(root["adapter"].asString());
+            if (root.isMember("terrainSideSize")) out_args.m_terrainParams.m_terrainSideSize = root["terrainSideSize"].asUInt();
+            if (root.isMember("heightScale")) out_args.m_terrainParams.m_heightScale = root["heightScale"].asFloat();
+            if (root.isMember("noiseScale")) out_args.m_terrainParams.m_noiseScale = root["noiseScale"].asFloat();
+            if (root.isMember("octaves")) out_args.m_terrainParams.m_numOctaves = root["octaves"].asUInt();
+            if (root.isMember("mountainSize")) out_args.m_terrainParams.m_mountainSize = root["mountainSize"].asFloat();
 
-                if (root.isMember("terrainSideSize")) out_args.m_terrainParams.m_terrainSideSize = root["terrainSideSize"].asUInt();
-                if (root.isMember("heightScale")) out_args.m_terrainParams.m_heightScale = root["heightScale"].asFloat();
-                if (root.isMember("noiseScale")) out_args.m_terrainParams.m_noiseScale = root["noiseScale"].asFloat();
-                if (root.isMember("octaves")) out_args.m_terrainParams.m_numOctaves = root["octaves"].asUInt();
-                if (root.isMember("mountainSize")) out_args.m_terrainParams.m_mountainSize = root["mountainSize"].asFloat();
-            } // end if successful load
-        } // end if file exists
-    }
+            if (root.isMember("threadPriority")) out_args.m_threadPriority = root["threadPriority"].asInt();
+        } // end if successful load
+    } // end if file exists
 
     if (!success)
     {
@@ -546,17 +548,9 @@ int WINAPI WinMain(
     _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
 #endif
 
-    // get the config file name
-    // we want "?" returns all commands, but will have to re-parse so command lines override config file settings
-    // have to use a temporary args, or booleans will be toggled twice
-    CommandLineArgs tmpArgs;
-    ParseCommandLine(tmpArgs);
-
-    // load config file using config file acquired above
     CommandLineArgs args;
-    LoadConfigFile(args);
+    LoadConfigFile(g_configFileName, args);
 
-    // re-parse because we want command lines to override config file
     ParseCommandLine(args);
 
     // apply limits and other constraints

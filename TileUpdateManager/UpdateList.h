@@ -53,7 +53,7 @@ namespace Streaming
             STATE_SUBMITTED,             // start file i/o (DS) if necessary. if mapping only, go directly to notify
 
             STATE_UPLOADING,             // make sure the copy fence is valid, since copying and mapping can be concurrent
-            STATE_COPY_PENDING,          // check for gpu complete (copy fence value is valid)
+            STATE_MAP_PENDING,           // check for mapping complete
 
             STATE_PACKED_MAPPING,        // wait for packed mips to be mapped before uploading
             STATE_PACKED_COPY_PENDING    // wait for upload of packed mips to complete

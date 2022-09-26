@@ -75,7 +75,7 @@ void Streaming::SimpleAllocator::Free(const UINT* in_pIndices, UINT in_numIndice
 }
 
 //-----------------------------------------------------------------------------
-// allocates simply by increasing/decreasing an index into an array of available indices
+// uses a lockless ringbuffer so allocate can be on a different thread than free
 //-----------------------------------------------------------------------------
 Streaming::AllocatorMT::AllocatorMT(UINT in_numElements) :
     m_ringBuffer(in_numElements), m_indices(in_numElements)

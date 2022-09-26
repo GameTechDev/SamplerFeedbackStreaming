@@ -52,6 +52,7 @@ m_numSwapBuffers(in_desc.m_swapChainBufferCount)
 , m_commandLists((UINT)CommandListName::Num)
 , m_maxTileMappingUpdatesPerApiCall(in_desc.m_maxTileMappingUpdatesPerApiCall)
 , m_addAliasingBarriers(in_desc.m_addAliasingBarriers)
+, m_threadPriority(in_desc.m_threadPriority)
 {
     ASSERT(D3D12_COMMAND_LIST_TYPE_DIRECT == in_pDirectCommandQueue->GetDesc().Type);
 
@@ -62,7 +63,12 @@ m_numSwapBuffers(in_desc.m_swapChainBufferCount)
         in_pDevice,
         in_desc.m_maxNumCopyBatches,
         in_desc.m_stagingBufferSizeMB,
-        in_desc.m_maxTileMappingUpdatesPerApiCall);
+        in_desc.m_maxTileMappingUpdatesPerApiCall,
+        m_threadPriority);
+
+    // FIXME: what should the watermark be? 25% seems to be a good trade-off of latency vs. BW
+    // this watermark applies to # of UpdateLists, each of which may contain multiple tiles to upload
+    m_updateListWatermark = std::max((UINT)1, in_desc.m_maxNumCopyBatches / 8);
 
     const UINT numAllocators = m_numSwapBuffers;
     for (UINT c = 0; c < (UINT)CommandListName::Num; c++)
@@ -109,22 +115,15 @@ void Streaming::TileUpdateManagerBase::StartThreads()
 
     m_threadsRunning = true;
 
+    // process sampler feedback buffers, generate upload and eviction commands
     m_processFeedbackThread = std::thread([&]
         {
-            DebugPrint(L"Created Feedback Thread\n");
-
             ProcessFeedbackThread();
-
-            DebugPrint(L"Destroyed ProcessFeedback Thread\n");
         });
 
+    // modify residency maps as a result of gpu completion events
     m_updateResidencyThread = std::thread([&]
         {
-            DebugPrint(L"Created UpdateResidency Thread\n");
-
-            // continuously modify residency maps as a result of gpu completion events
-            // FIXME? probably not enough work to deserve it's own thread
-            // Note that UpdateMinMipMap() exits quickly if nothing to do
             while (m_threadsRunning)
             {
                 m_residencyChangedFlag.Wait();
@@ -134,8 +133,10 @@ void Streaming::TileUpdateManagerBase::StartThreads()
                     p->UpdateMinMipMap();
                 }
             }
-            DebugPrint(L"Destroyed UpdateResidency Thread\n");
         });
+
+    Streaming::SetThreadPriority(m_processFeedbackThread, m_threadPriority);
+    Streaming::SetThreadPriority(m_updateResidencyThread, m_threadPriority);
 }
 
 //-----------------------------------------------------------------------------
@@ -167,7 +168,6 @@ void Streaming::TileUpdateManagerBase::ProcessFeedbackThread()
             }
             if (m_havePackedMipsToLoad)
             {
-                Sleep(2);
                 continue; // still working on loading packed mips. don't move on to other streaming tasks yet.
             }
         }
@@ -205,17 +205,20 @@ void Streaming::TileUpdateManagerBase::ProcessFeedbackThread()
         }
 
         // push uploads and evictions for stale resources
-        bool uploadRequested = false; // remember if any work was queued so we can signal afterwards
+        UINT uploadRequested = 0; // remember if any work was queued so we can signal afterwards
         UINT newStaleSize = 0; // track number of stale resources, then resize the array to the updated number
+
+        // apply heuristic to prevent "storms" of small batches of submissions
+        bool canUpload = (m_pDataUploader->GetNumUpdateListsAvailable() > m_updateListWatermark) && m_threadsRunning;
+
         for (UINT i = 0; i < staleResources.size(); i++)
         {
-
             UINT resourceIndex = staleResources[i];
             auto p = m_streamingResources[resourceIndex];
 
-            if (m_pDataUploader->UpdateListAvailable() && m_threadsRunning)
+            if (canUpload && m_pDataUploader->GetNumUpdateListsAvailable())
             {
-                uploadRequested = p->QueueTiles() || uploadRequested;
+                uploadRequested += p->QueueTiles();
             }
 
             // if all loads/evictions handled, remove from staleResource list
@@ -237,6 +240,7 @@ void Streaming::TileUpdateManagerBase::ProcessFeedbackThread()
         if (uploadRequested)
         {
             m_pDataUploader->SignalFileStreamer();
+            // DebugPrint(uploadRequested, "\n"); // # tiles requested for a single fence
         }
 
         // nothing to do? wait for next frame
@@ -270,13 +274,11 @@ void Streaming::TileUpdateManagerBase::Finish()
         if (m_processFeedbackThread.joinable())
         {
             m_processFeedbackThread.join();
-            DebugPrint(L"JOINED ProcessFeedback Thread\n");
         }
 
         if (m_updateResidencyThread.joinable())
         {
             m_updateResidencyThread.join();
-            DebugPrint(L"JOINED UpdateResidency Thread\n");
         }
 
         // now we are no longer producing work for the DataUploader, so its commands can be drained

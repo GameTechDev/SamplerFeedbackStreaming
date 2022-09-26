@@ -105,6 +105,16 @@ namespace Streaming
         bool m_flag{ false };
     };
 
+    inline void SetThreadPriority(std::thread& in_thread, int in_priority)
+    {
+        if (in_priority)
+        {
+            THREAD_POWER_THROTTLING_STATE throttlingState{ THREAD_POWER_THROTTLING_CURRENT_VERSION, THREAD_POWER_THROTTLING_EXECUTION_SPEED, 0 };
+            if (-1 == in_priority) { throttlingState.StateMask = THREAD_POWER_THROTTLING_EXECUTION_SPEED; } // speed, speed = prefer e cores
+            ::SetThreadInformation(in_thread.native_handle(), ThreadPowerThrottling, &throttlingState, sizeof(throttlingState));
+        }
+    }
+
     //==================================================
     // unused
     //==================================================

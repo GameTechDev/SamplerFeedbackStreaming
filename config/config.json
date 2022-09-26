@@ -62,5 +62,9 @@
   "heightScale": 50,
   "noiseScale": 25,
   "octaves": 8,
-  "mountainSize": 4000
+  "mountainSize": 4000,
+
+  // applied to all internal threads: submit, fenceMonitor, processFeedback, updateResidency
+  // 1 prefers P cores, -1 prefers E cores. 0 is normal.
+  "threadPriority": 0
 }

@@ -133,8 +133,8 @@ namespace Streaming
         void ProcessFeedback(UINT64 in_frameFenceCompletedValue);
 
         // try to load/evict tiles. only queue evictions once per frame.
-        // return true if tile upload requested
-        bool QueueTiles();
+        // returns # tiles requested for upload
+        UINT QueueTiles();
 
         bool IsStale()
         {
@@ -326,7 +326,7 @@ namespace Streaming
         // only push evictions to DataUploader once per rendered frame (i.e. "on the next frame")
         void QueuePendingTileEvictions(Streaming::UpdateList* out_pUpdateList);
 
-        void QueuePendingTileLoads(Streaming::UpdateList* out_pUpdateList); // returns # tiles queued
+        UINT QueuePendingTileLoads(Streaming::UpdateList* out_pUpdateList); // returns # tiles queued
 
         void LoadPackedMips();
 

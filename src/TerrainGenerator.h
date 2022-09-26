@@ -66,7 +66,7 @@ private:
 
         friend int2 operator+(const int2& lhs, const int2& rhs)
         {
-            return int2(lhs.x + rhs.x, lhs.y + rhs.y);;
+            return int2(lhs.x + rhs.x, lhs.y + rhs.y);
         }
     };
     float Noise(DirectX::XMFLOAT2 scaledLocation);

@@ -63,7 +63,7 @@ Streaming::StreamingResourceBase::StreamingResourceBase(
     , m_filename(in_filename)
 {
     m_pTextureFileInfo = std::make_unique<Streaming::XeTexture>(in_filename);
-    m_resources = std::make_unique<Streaming::InternalResources>(in_pTileUpdateManager->GetDevice(), m_pTextureFileInfo.get(), in_pTileUpdateManager->GetNumSwapBuffers());
+    m_resources = std::make_unique<Streaming::InternalResources>(in_pTileUpdateManager->GetDevice(), m_pTextureFileInfo.get(), (UINT)m_queuedFeedback.size());
     m_tileMappingState.Init(m_resources->GetPackedMipInfo().NumStandardMips, m_resources->GetTiling());
 
     // no packed mips. odd, but possible. no need to check/update this variable again.
@@ -493,9 +493,9 @@ void Streaming::StreamingResourceBase::AbandonPendingLoads()
 //
 // note: queues as many new tiles as possible
 //-----------------------------------------------------------------------------
-bool Streaming::StreamingResourceBase::QueueTiles()
+UINT Streaming::StreamingResourceBase::QueueTiles()
 {
-    bool uploadRequested = false;
+    UINT uploadRequested = 0;
 
     UINT numEvictions = (UINT)m_pendingEvictions.GetReadyToEvict().size();
     UINT numLoads = (UINT)m_pendingTileLoads.size();
@@ -513,8 +513,7 @@ bool Streaming::StreamingResourceBase::QueueTiles()
         // queue as many new tiles as possible
         if (numLoads && m_pHeap->GetAllocator().GetAvailable())
         {
-            uploadRequested = true;
-            QueuePendingTileLoads(&scratchUL);
+            uploadRequested = QueuePendingTileLoads(&scratchUL);
             numLoads = (UINT)m_pendingTileLoads.size();
         }
 
@@ -522,12 +521,9 @@ bool Streaming::StreamingResourceBase::QueueTiles()
         if (scratchUL.m_coords.size() || scratchUL.m_evictCoords.size())
         {
             // calling function checked for availability, so UL allocation must succeed
-            UpdateList* pUpdateList = nullptr;
-            while (nullptr == pUpdateList) // paranoia
-            {
-                pUpdateList = m_pTileUpdateManager->AllocateUpdateList(this);
-                ASSERT(pUpdateList);
-            }
+            UpdateList* pUpdateList = m_pTileUpdateManager->AllocateUpdateList(this);
+            ASSERT(pUpdateList);
+
             pUpdateList->m_coords.swap(scratchUL.m_coords);
             pUpdateList->m_heapIndices.swap(scratchUL.m_heapIndices);
             pUpdateList->m_evictCoords.swap(scratchUL.m_evictCoords);
@@ -627,7 +623,7 @@ void Streaming::StreamingResourceBase::QueuePendingTileEvictions(Streaming::Upda
 // FIFO order: work from the front of the array
 // NOTE: greedy, takes every available UpdateList if it can
 //-----------------------------------------------------------------------------
-void Streaming::StreamingResourceBase::QueuePendingTileLoads(Streaming::UpdateList* out_pUpdateList)
+UINT Streaming::StreamingResourceBase::QueuePendingTileLoads(Streaming::UpdateList* out_pUpdateList)
 {
     ASSERT(out_pUpdateList);
     ASSERT(m_pHeap->GetAllocator().GetAvailable());
@@ -686,6 +682,8 @@ void Streaming::StreamingResourceBase::QueuePendingTileLoads(Streaming::UpdateLi
     {
         m_pendingTileLoads.erase(m_pendingTileLoads.begin() + skippedIndex, m_pendingTileLoads.begin() + numConsumed);
     }
+
+    return numConsumed;
 }
 
 //-----------------------------------------------------------------------------
@@ -838,8 +836,6 @@ void Streaming::StreamingResourceBase::EvictionDelay::Rescue(const Streaming::St
 //-----------------------------------------------------------------------------
 void Streaming::StreamingResourceBase::LoadPackedMips()
 {
-    // FIXME: future file format should contain padded packed mips to allow DS to load directly from disk to GPU
-
     UINT numBytes = 0;
     UINT offset = m_pTextureFileInfo->GetPackedMipFileOffset(&numBytes, &m_packedMipsUncompressedSize);
     m_packedMips.resize(numBytes);
@@ -921,7 +917,7 @@ void Streaming::StreamingResourceBase::ClearFeedback(ID3D12GraphicsCommandList* 
 void Streaming::StreamingResourceBase::ResolveFeedback(ID3D12GraphicsCommandList1* out_pCmdList)
 {
     // move to next readback index
-    m_readbackIndex = (m_readbackIndex + 1) % m_pTileUpdateManager->GetNumSwapBuffers();
+    m_readbackIndex = (m_readbackIndex + 1) % m_queuedFeedback.size();
 
     // remember that feedback was queued, and which frame it was queued in.
     auto& f = m_queuedFeedback[m_readbackIndex];

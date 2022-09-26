@@ -27,7 +27,6 @@
 
 #include "AssetUploader.h"
 #include "DebugHelper.h"
-#include "d3dx12.h"
 
 using Microsoft::WRL::ComPtr;
 
@@ -35,8 +34,8 @@ using Microsoft::WRL::ComPtr;
 //-----------------------------------------------------------------------------
 void AssetUploader::Init(ID3D12Device* in_pDevice)
 {
-	ComPtr<IDStorageFactory> factory;
-	ThrowIfFailed(DStorageGetFactory(IID_PPV_ARGS(&factory)));
+    ComPtr<IDStorageFactory> factory;
+    ThrowIfFailed(DStorageGetFactory(IID_PPV_ARGS(&factory)));
 
     DSTORAGE_QUEUE_DESC queueDesc{};
     queueDesc.Capacity = DSTORAGE_MAX_QUEUE_CAPACITY;
@@ -61,27 +60,38 @@ AssetUploader::Request::Request(ID3D12Resource* in_pDstResource,
     auto desc = in_pDstResource->GetDesc();
     ASSERT(D3D12_RESOURCE_DIMENSION_BUFFER == desc.Dimension);
 
-    m_data.resize(GetRequiredIntermediateSize(in_pDstResource, 0, desc.MipLevels));
+    UINT64 numBytes = 0;
+    ComPtr<ID3D12Device> device;
+    in_pDstResource->GetDevice(IID_PPV_ARGS(&device));
+    device->GetCopyableFootprints(&desc, 0, desc.MipLevels, 0, nullptr, nullptr, nullptr, &numBytes);
+    m_data.resize(numBytes);
 }
 
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
-void AssetUploader::SubmitRequest(Request* in_pRequest)
+void AssetUploader::SubmitRequest(
+    ID3D12Resource* in_pResource,
+    const void* in_pData, const size_t in_dataSize,
+    D3D12_RESOURCE_STATES in_before, D3D12_RESOURCE_STATES in_after)
 {
-    ASSERT(D3D12_RESOURCE_DIMENSION_BUFFER == in_pRequest->GetResource()->GetDesc().Dimension);
-    m_requests.push_back(in_pRequest);
+    ASSERT(D3D12_RESOURCE_DIMENSION_BUFFER == in_pResource->GetDesc().Dimension);
+
+    Request* pRequest = new Request(in_pResource, in_before, in_after);
+    auto numBytes = std::min(pRequest->GetBuffer().size(), in_dataSize);
+    memcpy(pRequest->GetBuffer().data(), in_pData, numBytes);
 
     DSTORAGE_REQUEST request = {};
-    request.UncompressedSize = (UINT32)in_pRequest->GetBuffer().size();
+    request.UncompressedSize = (UINT32)pRequest->GetBuffer().size();
     request.Options.SourceType = DSTORAGE_REQUEST_SOURCE_MEMORY;
     request.Options.DestinationType = DSTORAGE_REQUEST_DESTINATION_BUFFER;
-    request.Source.Memory.Source = in_pRequest->GetBuffer().data();
+    request.Source.Memory.Source = pRequest->GetBuffer().data();
     request.Source.Memory.Size = request.UncompressedSize; // uncompressed upload
     request.Destination.Buffer.Offset = 0;
     request.Destination.Buffer.Size = request.Source.Memory.Size;
-    request.Destination.Buffer.Resource = in_pRequest->GetResource();
+    request.Destination.Buffer.Resource = pRequest->GetResource();
 
     m_memoryQueue->EnqueueRequest(&request);
+    m_requests.push_back(pRequest);
 }
 
 //-----------------------------------------------------------------------------
@@ -133,7 +143,7 @@ void AssetUploader::WaitForUploads(ID3D12CommandQueue* in_pDependentQueue, ID3D1
             barriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(p->GetResource(), p->GetBefore(), p->GetAfter()));
         }
         in_pCommandList->ResourceBarrier((UINT)barriers.size(), barriers.data());
-        
+
         // don't delete in-flight scratch data until commands complete
         m_inFlight.swap(m_requests);
     }

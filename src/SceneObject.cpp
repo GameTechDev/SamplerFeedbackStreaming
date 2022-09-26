@@ -390,9 +390,8 @@ void SceneObjects::CreateSphereResources(
             nullptr,
             IID_PPV_ARGS(out_ppVertexBuffer)));
 
-        auto* pRequest = new AssetUploader::Request(*out_ppVertexBuffer, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
-        memcpy(pRequest->GetBuffer().data(), sphereVerts.data(), vertexBufferSize);
-        in_assetUploader.SubmitRequest(pRequest);
+        in_assetUploader.SubmitRequest(*out_ppVertexBuffer, sphereVerts.data(), vertexBufferSize,
+            D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
     }
 
     // build index buffer
@@ -409,9 +408,8 @@ void SceneObjects::CreateSphereResources(
             nullptr,
             IID_PPV_ARGS(out_ppIndexBuffer)));
 
-        auto* pRequest = new AssetUploader::Request(*out_ppIndexBuffer, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER);
-        memcpy(pRequest->GetBuffer().data(), sphereIndices.data(), indexBufferSize);
-        in_assetUploader.SubmitRequest(pRequest);
+        in_assetUploader.SubmitRequest(*out_ppIndexBuffer, sphereIndices.data(), indexBufferSize,
+            D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER);
     }
 }
 
@@ -487,10 +485,8 @@ SceneObjects::Terrain::Terrain(const std::wstring& in_filename,
             nullptr,
             IID_PPV_ARGS(&pVertexBuffer)));
 
-        AssetUploader::Request* pRequest = new AssetUploader::Request(pVertexBuffer, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
-        // mesh generator contains an array. would have been nice to swap, but it doesn't work that way
-        memcpy(pRequest->GetBuffer().data(), mesh.GetVertices().data(), vertexBufferSize);
-        in_assetUploader.SubmitRequest(pRequest);
+        in_assetUploader.SubmitRequest(pVertexBuffer, mesh.GetVertices().data(), vertexBufferSize,
+            D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
     }
 
     // build index buffer
@@ -505,9 +501,11 @@ SceneObjects::Terrain::Terrain(const std::wstring& in_filename,
             nullptr,
             IID_PPV_ARGS(&pIndexBuffer)));
 
-        AssetUploader::Request* pRequest = new AssetUploader::Request(pIndexBuffer, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER);
-        mesh.GenerateIndices((UINT*)pRequest->GetBuffer().data());
-        in_assetUploader.SubmitRequest(pRequest);
+        std::vector<BYTE> indices(mesh.GetIndexBufferSize());
+        mesh.GenerateIndices((UINT*)indices.data());
+        
+        in_assetUploader.SubmitRequest(pIndexBuffer, indices.data(), indices.size(),
+            D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER);
     }
 
     SetGeometry(pVertexBuffer, (UINT)mesh.GetVertices().size(), (UINT)sizeof(TerrainGenerator::Vertex),

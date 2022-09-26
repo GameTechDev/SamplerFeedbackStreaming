@@ -29,20 +29,20 @@
 //-------------------------------------------------------------------------
 cbuffer ModelConstantData : register(b1)
 {
-	float4x4    g_combinedTransform;
-	float4x4    g_worldTransform;
+    float4x4    g_combinedTransform;
+    float4x4    g_worldTransform;
 
-	int2   g_minmipmapDim;
-	int    g_minmipmapOffset;
+    int2   g_minmipmapDim;
+    int    g_minmipmapOffset;
 };
 
 cbuffer FrameConstantData : register(b0)
 {
-	float4 g_eyePos;
-	float4 g_lightDir;
-	float4 g_lightColor;    // RGB + specular intensity
-	float4 g_specularColor;
-	bool g_visualizeFeedback;
+    float4 g_eyePos;
+    float4 g_lightDir;
+    float4 g_lightColor;    // RGB + specular intensity
+    float4 g_specularColor;
+    bool g_visualizeFeedback;
 };
 
 //-------------------------------------------------------------------------
@@ -51,30 +51,30 @@ cbuffer FrameConstantData : register(b0)
 
 struct VS_IN
 {
-	float3 pos        : POS;
-	float3 normal     : NORMAL;
-	float2 tex        : TEX;
+    float3 pos        : POS;
+    float3 normal     : NORMAL;
+    float2 tex        : TEX;
 };
 
 struct VS_OUT
 {
-	float4 pos        : SV_POSITION;
-	float3 normal	  : NORMAL;
-	float3 worldPos   : WORLDPOS;
-	float2 tex        : TEX;
+    float4 pos        : SV_POSITION;
+    float3 normal     : NORMAL;
+    float3 worldPos   : WORLDPOS;
+    float2 tex        : TEX;
 };
 
 VS_OUT vs(VS_IN input)
 {
-	VS_OUT result;
-	result.pos = mul(g_combinedTransform, float4(input.pos, 1.0f));
-	
-	// rotate normal into light coordinate frame (world)
-	result.normal = normalize(mul((float3x3)g_worldTransform, input.normal));
+    VS_OUT result;
+    result.pos = mul(g_combinedTransform, float4(input.pos, 1.0f));
 
-	// transform position into light coordinate frame (world)
-	result.worldPos = mul(g_worldTransform, float4(input.pos, 1.0f)).xyz;
+    // rotate normal into light coordinate frame (world)
+    result.normal = normalize(mul((float3x3)g_worldTransform, input.normal));
 
-	result.tex = input.tex;
-	return result;
+    // transform position into light coordinate frame (world)
+    result.worldPos = mul(g_worldTransform, float4(input.pos, 1.0f)).xyz;
+
+    result.tex = input.tex;
+    return result;
 }

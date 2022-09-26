@@ -121,6 +121,7 @@ namespace Streaming
         UINT64 m_frameFenceValue{ 0 };
 
         std::unique_ptr<Streaming::DataUploader> m_pDataUploader;
+        UINT m_updateListWatermark{ 1 }; // heuristic to prevent "storms" of small batch submissions
 
         // each StreamingResource writes current uploaded tile state to min mip map, separate data for each frame
         // internally, use a single buffer containing all the residency maps
@@ -202,6 +203,8 @@ namespace Streaming
         const UINT m_maxTileMappingUpdatesPerApiCall;
 
         std::atomic<bool> m_threadsRunning{ false };
+
+        const int m_threadPriority{ 0 };
 
         // a thread to process feedback (when available) and queue tile loads / evictions to datauploader
         std::thread m_processFeedbackThread;

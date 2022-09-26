@@ -1,73 +1,10 @@
 {
-  "fullScreen": false,
-  "vsync": false,
-  "windowWidth": 1280,
-  "windowHeight": 800,
-  "sampleCount": 4, // multisample anti-aliasing
-  "lodBias": 0, // sampler bias. positive is blurrier
-  "anisotropy": 4, // sampler anisotropy
-
-  "directStorage": true, // use directstorage vs. dedicated thread with ReadFile() and CopyTiles()
-  "stagingSizeMB": 256, // size of the staging buffer for DirectStorage or reference streaming code
-
-  "addAliasingBarriers": false, //// adds a barrier for each streaming resource: alias(nullptr, pResource)
-
-  "adapter": "", // in a multi-adapter system, searches description for substring ignoring case e.g. "intel"
-
-  "animationrate": 0, // rotation of individual objects
-  "cameraRate": 0, // camera motion rate
-  "rollerCoaster": false, // fly through, vs. orbiting, planets
-
-  "mediaDir": "media", // media directory
-  "texture": "", // setting this overrides all textures, invalidates mediadir
-  "skyTexture": "", // add a sky sphere. path relative to mediadir
-  "earthTexture": "", // when this texture is encountered, treat it as spherically projected (no uv mirror)
-  "terrainTexture": "4kTiles.xet", // use this texture only for the terrain, no planets
-  "maxNumObjects": 985, // maximum total number of objects in the scene
-  "numSpheres": 0, // number of objects besides the terrain
-  "lightFromView": false, // light direction is look direction
-
-  "maxFeedbackTime": 5.0, // maximum milliseconds for GPU to resolve feedback
-
-  "visualizeMinMip": false, // color overlayed onto texture by PS corresponding to mip level
-  "hideFeedback": false, // hide the terrain feedback windows
-  "hideUI": false, // hide the UI
-  "miniUI": false, // use "lite" UI (bandwidth & heap occupancy only)
-
-  "updateAll": false, // update feedback for every object every frame
+  // heap fragmentation can be mitigated by using very small heaps
+  // can lead to artifacts when the small heaps fill, preventing new tile loads for a given resource
 
   "heapSizeTiles": 512, // size for each heap. 64KB per tile * 512 tiles -> 32MB heap
   "numHeaps": 127, // number of heaps. streaming resources will be distributed among heaps
-  "maxTileUpdatesPerApiCall": 512, // limit to # tiles passed to D3D12 UpdateTileMappings()
 
-  // maximum number of in-flight command lists
-  // note a command list can only target a single resource
-  // based on guidance around maximum outstanding SSD read requests: drives aren't expected to benefit from lots of queueing
-  // more queueing is counter-productive, as copies might arrive after the target is no longer visible
-  "numStreamingBatches": 128,
-
-  // affects size of gpu upload buffer, that is, staging between file read and gpu copy
-  // uploads should move fast, so it should be hard to hit even a small value.
-  // NOTE: do consider # tiles in flight, that is # command lists * avg # copies per command list
-  //       e.g. 128 command lists * 32 copies each would be 4096 tiles in flight
-  // 1024 would be a 64MB upload buffer. Suggested 16-32MB.
-  "maxTilesInFlight": 512,
-
-  "waitForAssetLoad": false,
-
-  "timingStart": 0, // start recording statistics this frame
-  "timingStop": 0, // stop recording statistics this frame
-  "timingFileFrames": "", // file name for per-frame statistics. no statistics unless set. ".csv" will be appended
-  "exitImageFile": "", // if set, outputs final image on exit. extension (e.g. .png) will be appended
-
-  // sphere geometry
-  "sphereLong": 64, // # steps vertically. must be even
-  "sphereLat": 65, // # steps around. must be odd
-
-  // terrain (heightmap) geometry
-  "terrainSideSize": 128, // resolution of terrain vertex buffer, e.g. 256x256 grid
-  "heightScale": 50,
-  "noiseScale": 25,
-  "octaves": 8,
-  "mountainSize": 4000
+  // exceeding the limit can result in crash on some hardware
+  "maxTileUpdatesPerApiCall": 512 // limit to # tiles passed to D3D12 UpdateTileMappings()
 }

@@ -207,6 +207,7 @@ void Streaming::FileStreamerReference::LoadTexture(Streaming::FileStreamerRefere
             // align # bytes read
             UINT alignment = FileStreamerReference::MEDIA_SECTOR_SIZE - 1;
             numBytes = (numBytes + alignment) & ~(alignment);
+            o.Offset &= ~alignment; // rewind the offset to alignment
 
             ::ReadFile(pFileHandle, pDst, numBytes, nullptr, &o);
         }

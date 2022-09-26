@@ -37,15 +37,16 @@
 //=============================================================================
 Streaming::DataUploader::DataUploader(
     ID3D12Device* in_pDevice,
-    UINT in_maxCopyBatches,                 // maximum number of batches
-    UINT in_stagingBufferSizeMB,            // upload buffer size
-    UINT in_maxTileMappingUpdatesPerApiCall // some HW/drivers seem to have a limit
-) :
+    UINT in_maxCopyBatches,                  // maximum number of batches
+    UINT in_stagingBufferSizeMB,             // upload buffer size
+    UINT in_maxTileMappingUpdatesPerApiCall, // some HW/drivers seem to have a limit
+    int in_threadPriority) :
     m_updateLists(in_maxCopyBatches)
     , m_updateListAllocator(in_maxCopyBatches)
     , m_stagingBufferSizeMB(in_stagingBufferSizeMB)
     , m_gpuTimer(in_pDevice, in_maxCopyBatches, D3D12GpuTimer::TimerType::Copy)
     , m_mappingUpdater(in_maxTileMappingUpdatesPerApiCall)
+    , m_threadPriority(in_threadPriority)
 {
     // copy queue just for UpdateTileMappings() on reserved resources
     {
@@ -175,13 +176,11 @@ void Streaming::DataUploader::StartThreads()
 
     m_submitThread = std::thread([&]
         {
-            DebugPrint(L"Created Submit Thread\n");
             while (m_threadsRunning)
             {
                 m_submitFlag.Wait();
                 SubmitThread();
             }
-            DebugPrint(L"Destroyed Submit Thread\n");
         });
 
     // launch thread to monitor fences
@@ -191,7 +190,6 @@ void Streaming::DataUploader::StartThreads()
             RawCpuTimer fenceMonitorThread;
             m_pFenceThreadTimer = &fenceMonitorThread;
 
-            DebugPrint(L"Created Fence Monitor Thread\n");
             while (m_threadsRunning)
             {
                 FenceMonitorThread();
@@ -202,8 +200,10 @@ void Streaming::DataUploader::StartThreads()
                     m_fenceMonitorFlag.Wait();
                 }
             }
-            DebugPrint(L"Destroyed Fence Monitor Thread\n");
         });
+
+    Streaming::SetThreadPriority(m_submitThread, m_threadPriority);
+    Streaming::SetThreadPriority(m_fenceMonitorThread, m_threadPriority);
 }
 
 void Streaming::DataUploader::StopThreads()
@@ -220,14 +220,12 @@ void Streaming::DataUploader::StopThreads()
         if (m_submitThread.joinable())
         {
             m_submitThread.join();
-            DebugPrint(L"JOINED Submit Thread\n");
         }
 
         // finish up any remaining work
         if (m_fenceMonitorThread.joinable())
         {
             m_fenceMonitorThread.join();
-            DebugPrint(L"JOINED Fence Monitor Thread\n");
         }
     }
 }
@@ -262,23 +260,6 @@ Streaming::UpdateList* Streaming::DataUploader::AllocateUpdateList(Streaming::St
 {
     UpdateList* pUpdateList = nullptr;
 
-    // Heuristic
-    // if all the updatelists are in-flight, do not allocate another updatelist until the free pool hits a watermark
-    if (m_updateListsEmpty)
-    {
-        // FIXME: what should the watermark be? 25% seems to be a good trade-off of latency vs. BW
-        UINT w = (UINT)m_updateLists.size() / 4;
-
-        if (w > m_updateListAllocator.GetAvailable())
-        {
-            return nullptr;
-        }
-        else
-        {
-            m_updateListsEmpty = false;
-        }
-    }
-
     if (m_updateListAllocator.GetAvailable())
     {
         UINT index = m_updateListAllocator.Allocate();
@@ -290,10 +271,6 @@ Streaming::UpdateList* Streaming::DataUploader::AllocateUpdateList(Streaming::St
 
         // start fence polling thread now
         m_fenceMonitorFlag.Set();
-    }
-    else
-    {
-        m_updateListsEmpty = true;
     }
 
     return pUpdateList;
@@ -342,7 +319,7 @@ void Streaming::DataUploader::SubmitUpdateList(Streaming::UpdateList& in_updateL
 //-----------------------------------------------------------------------------
 void Streaming::DataUploader::FenceMonitorThread()
 {
-    bool loadTextures = false;
+    bool loadPackedMips = false;
     for (auto& updateList : m_updateLists)
     {
         // assign a start time to every in-flight update list. this will give us an upper bound on latency.
@@ -371,7 +348,7 @@ void Streaming::DataUploader::FenceMonitorThread()
                     updateList.m_pStreamingResource->GetTextureFileInfo()->GetCompressionFormat());
                 updateList.m_executionState = UpdateList::State::STATE_PACKED_COPY_PENDING;
 
-                loadTextures = true;
+                loadPackedMips = true;
             }
             break;
 
@@ -387,26 +364,21 @@ void Streaming::DataUploader::FenceMonitorThread()
             break;
 
         case UpdateList::State::STATE_UPLOADING:
-            // there can be a race where mapping completes before the CPU has written the copy fence
-            // if the copy fence has been set, there may be a pending copy, so signal the FileStreamer.
-            if (updateList.m_copyFenceValid)
-            {
-                updateList.m_executionState = UpdateList::State::STATE_COPY_PENDING;
-            }
-            break;
+            ASSERT(0 != updateList.GetNumStandardUpdates());
 
-        case UpdateList::State::STATE_COPY_PENDING:
+            // only check copy fence if the fence has been set (avoid race condition)
+            if ((updateList.m_copyFenceValid) && (m_pFileStreamer->GetCompleted(updateList)))
+            {
+                updateList.m_executionState = UpdateList::State::STATE_MAP_PENDING;
+            }
+            else
+            {
+                break;
+            }
+            [[fallthrough]];
+
+        case UpdateList::State::STATE_MAP_PENDING:
         {
-            // standard updates? check if copy complete
-            if (updateList.GetNumStandardUpdates())
-            {
-                if (!m_pFileStreamer->GetCompleted(updateList))
-                {
-                    // copy hasn't completed
-                    break;
-                }
-            }
-
             // standard updates or mapping only? check if mapping complete
             if (updateList.m_mappingFenceValue > m_mappingFence->GetCompletedValue())
             {
@@ -443,7 +415,7 @@ void Streaming::DataUploader::FenceMonitorThread()
         }
     } // end loop over updatelists
 
-    if (loadTextures)
+    if (loadPackedMips)
     {
         SubmitTextureLoads();
     }
@@ -477,27 +449,28 @@ void Streaming::DataUploader::SubmitThread()
             if (updateList.GetNumEvictions())
             {
                 m_mappingUpdater.UnMap(GetMappingQueue(), updateList.m_pStreamingResource->GetTiledResource(), updateList.m_evictCoords);
+
+                // this will skip the uploading state unless there are uploads
+                updateList.m_executionState = UpdateList::State::STATE_MAP_PENDING;
             }
 
             // map standard tiles
+            // can upload and evict in a single UpdateList
             if (updateList.GetNumStandardUpdates())
             {
-                updateList.m_executionState = UpdateList::State::STATE_UPLOADING;
-
                 m_mappingUpdater.Map(GetMappingQueue(),
                     updateList.m_pStreamingResource->GetTiledResource(),
                     updateList.m_pStreamingResource->GetHeap()->GetHeap(),
                     updateList.m_coords, updateList.m_heapIndices);
+
+                updateList.m_executionState = UpdateList::State::STATE_UPLOADING;
             }
-            else if (updateList.GetNumEvictions())
-            {
-                // if no uploads, skip the uploading state
-                updateList.m_executionState = UpdateList::State::STATE_COPY_PENDING;
-            }
-            else // must be mapping packed mips
+
+            // no uploads or evictions? must be mapping packed mips
+            else if (0 == updateList.GetNumEvictions())
             {
                 updateList.m_pStreamingResource->MapPackedMips(GetMappingQueue());
-                // special state for packed mips: mapping must happen before copying
+
                 updateList.m_executionState = UpdateList::State::STATE_PACKED_MAPPING;
             }
         }

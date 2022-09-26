@@ -111,4 +111,6 @@ struct CommandLineArgs
     UINT m_sphereLat{ 111 };  // # steps around. must be odd
 
     TerrainGenerator::Params m_terrainParams;
+
+    int m_threadPriority{ 0 }; // applies to internal threads
 };

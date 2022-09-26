@@ -53,7 +53,8 @@ namespace Streaming
             ID3D12Device* in_pDevice,
             UINT in_maxCopyBatches,                     // maximum number of batches
             UINT in_stagingBufferSizeMB,                // upload buffer size
-            UINT in_maxTileMappingUpdatesPerApiCall     // some HW/drivers seem to have a limit
+            UINT in_maxTileMappingUpdatesPerApiCall,    // some HW/drivers seem to have a limit
+            int in_threadPriority
         );
         ~DataUploader();
 
@@ -64,8 +65,7 @@ namespace Streaming
 
         ID3D12CommandQueue* GetMappingQueue() const { return m_mappingCommandQueue.Get(); }
 
-        // return true if there is at least one update list in the FREE state
-        bool UpdateListAvailable() { return (0 != m_updateListAllocator.GetAvailable()); }
+        UINT GetNumUpdateListsAvailable() const { return m_updateListAllocator.GetAvailable(); }
 
         // may return null. called by StreamingResource.
         UpdateList* AllocateUpdateList(StreamingResourceDU* in_pStreamingResource);
@@ -114,9 +114,6 @@ namespace Streaming
         // only the fence thread (which looks for final completion) frees UpdateLists
         void FreeUpdateList(Streaming::UpdateList& in_updateList);
 
-        // flag that all UpdateLists were allocated to indicate mitigation heuristic should engage
-        bool m_updateListsEmpty{ false };
-
         // object that performs UpdateTileMappings() requests
         Streaming::MappingUpdater m_mappingUpdater;
 
@@ -139,6 +136,7 @@ namespace Streaming
         void StartThreads();
         void StopThreads();
         std::atomic<bool> m_threadsRunning{ false };
+        const int m_threadPriority{ 0 };
 
         // DS memory queue used just for loading packed mips when the file doesn't include padding
         // separate memory queue means needing a second fence - can't wait across DS queues

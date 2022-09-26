@@ -126,6 +126,10 @@ struct TileUpdateManagerDesc
     // However, performance analysis tools like to know about changes to resources
     bool m_addAliasingBarriers{ false };
 
+    // applied to all internal threads: submit, fenceMonitor, processFeedback, updateResidency
+    // 1 prefers P cores, -1 prefers E cores. 0 is normal.
+    int m_threadPriority{ 0 };
+
     // false: use internal file streaming system. true: use Microsoft DirectStorage
     bool m_useDirectStorage{ false };
 };

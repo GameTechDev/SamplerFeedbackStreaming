@@ -54,7 +54,7 @@ FrustumViewer::FrustumViewer(ID3D12Device* in_pDevice,
         };
 
         // pad to avoid debug messages
-        Vertex vertices[32]
+        Vertex vertices[]
         {
             {0, 0, 0},
             {-1, -1, 1},
@@ -76,9 +76,8 @@ FrustumViewer::FrustumViewer(ID3D12Device* in_pDevice,
             nullptr,
             IID_PPV_ARGS(&m_vertexBuffer)));
 
-        auto pRequest = new AssetUploader::Request(m_vertexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
-        memcpy(pRequest->GetBuffer().data(), vertices, vertexBufferSize);
-        in_assetUploader.SubmitRequest(pRequest);
+        in_assetUploader.SubmitRequest(m_vertexBuffer.Get(), vertices, vertexBufferSize,
+            D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
 
         m_vertexBufferView.SizeInBytes = vertexBufferSize;
         m_vertexBufferView.StrideInBytes = sizeof(Vertex);
@@ -110,9 +109,8 @@ FrustumViewer::FrustumViewer(ID3D12Device* in_pDevice,
             nullptr,
             IID_PPV_ARGS(&m_indexBuffer)));
 
-        auto pRequest = new AssetUploader::Request(m_indexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER);
-        memcpy(pRequest->GetBuffer().data(), indices, indexBufferSize);
-        in_assetUploader.SubmitRequest(pRequest);
+        in_assetUploader.SubmitRequest(m_indexBuffer.Get(), indices, indexBufferSize,
+            D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER);
 
         m_indexBufferView.SizeInBytes = indexBufferSize;
         m_indexBufferView.Format = DXGI_FORMAT_R16_UINT;
