@@ -662,6 +662,7 @@ void Scene::StartStreamingLibrary()
     tumDesc.m_maxTileMappingUpdatesPerApiCall = m_args.m_maxTileUpdatesPerApiCall;
     tumDesc.m_swapChainBufferCount = SharedConstants::SWAP_CHAIN_BUFFER_COUNT;
     tumDesc.m_addAliasingBarriers = m_args.m_addAliasingBarriers;
+    tumDesc.m_minNumUploadRequests = m_args.m_minNumUploadRequests;
     tumDesc.m_useDirectStorage = m_args.m_useDirectStorage;
 
     m_pTileUpdateManager = TileUpdateManager::Create(m_device.Get(), m_commandQueue.Get(), tumDesc);
@@ -1216,6 +1217,7 @@ void Scene::GatherStatistics()
     // these numbers are approximately a measure of the number of operations during the last frame
     const UINT numEvictions = m_pTileUpdateManager->GetTotalNumEvictions();
     const UINT numUploads = m_pTileUpdateManager->GetTotalNumUploads();
+    static UINT numSubmits = 0;
 
     m_numEvictionsPreviousFrame = numEvictions - m_numTotalEvictions;
     m_numUploadsPreviousFrame = numUploads - m_numTotalUploads;
@@ -1228,12 +1230,16 @@ void Scene::GatherStatistics()
         (m_frameNumber > m_args.m_timingStartFrame) &&
         (m_frameNumber <= m_args.m_timingStopFrame))
     {
+        UINT latestNumSubmits = m_pTileUpdateManager->GetTotalNumSubmits();
+        UINT numSubmitsLastFrame = latestNumSubmits - numSubmits;
+        numSubmits = latestNumSubmits;
+
         m_csvFile->Append(m_renderThreadTimes, m_updateFeedbackTimes,
             m_numUploadsPreviousFrame, m_numEvictionsPreviousFrame,
-            m_prevNumFeedbackObjects[m_frameIndex],
             // Note: these may be off by 1 frame, but probably good enough
             m_pTileUpdateManager->GetCpuProcessFeedbackTime(),
-            m_gpuProcessFeedbackTime);
+            m_gpuProcessFeedbackTime, m_prevNumFeedbackObjects[m_frameIndex],
+            numSubmitsLastFrame);
 
         if (m_frameNumber == m_args.m_timingStopFrame)
         {
@@ -1248,7 +1254,13 @@ void Scene::GatherStatistics()
             DebugPrint(L"Gathering final statistics before exiting\n");
 
             m_csvFile->WriteEvents(m_hwnd, m_args);
-            *m_csvFile << measuredNumUploads << " " << measuredTime << " " << mbps << " " << approximatePerTileLatency << " uploads|seconds|bandwidth|latency_ms\n";
+            *m_csvFile
+                << measuredNumUploads
+                << " " << measuredTime
+                << " " << mbps
+                << " " << approximatePerTileLatency
+                << " " << m_pTileUpdateManager->GetTotalNumSubmits() - m_startSubmitCount
+                << " uploads|seconds|bandwidth|latency_ms|#submits\n";
             m_csvFile->close();
             m_csvFile = nullptr;
         }
@@ -1265,7 +1277,9 @@ void Scene::GatherStatistics()
     // start timing and gathering uploads from the very beginning of the timed region
     if (m_args.m_timingFrameFileName.size() && (m_frameNumber == m_args.m_timingStartFrame))
     {
+        numSubmits = m_pTileUpdateManager->GetTotalNumSubmits();
         m_startUploadCount = m_pTileUpdateManager->GetTotalNumUploads();
+        m_startSubmitCount = m_pTileUpdateManager->GetTotalNumSubmits();
         m_totalTileLatency = m_pTileUpdateManager->GetTotalTileCopyLatency();
         m_cpuTimer.Start();
     }

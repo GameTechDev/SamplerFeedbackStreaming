@@ -741,7 +741,9 @@ void Streaming::StreamingResourceBase::UpdateMinMipMap()
                 while (s > 0)
                 {
                     s--;
-                    if (TileMappingState::Residency::Resident == m_tileMappingState.GetResidency(x >> s, y >> s, s))
+                    if ((TileMappingState::Residency::Resident == m_tileMappingState.GetResidency(x >> s, y >> s, s)) &&
+                        // do not include a tile that may be evicted (resident with 0 refcount is candidate for eviction)
+                        (0 != m_tileMappingState.GetRefCount(x >> s, y >> s, s)))
                     {
                         minMip = s;
                     }

@@ -66,14 +66,16 @@ public:
         const RenderEventList& in_renderList,
         const UpdateEventList& in_updateList,
         UINT in_numUploads, UINT in_numEvictions,
-        UINT in_numFeedbackResolves,
         float in_cpuProcessFeedbackTime,
-        float in_gpuProcessFeedbackTime)
+        float in_gpuProcessFeedbackTime,
+        UINT in_numFeedbackResolves, UINT in_numSubmits)
     {
         m_events.push_back({
-            in_renderList.GetLatest(), in_updateList.GetLatest(),
+            in_renderList.GetLatest(),
+            in_updateList.GetLatest(),
             in_numUploads, in_numEvictions,
-            in_cpuProcessFeedbackTime, in_gpuProcessFeedbackTime, in_numFeedbackResolves });
+            in_cpuProcessFeedbackTime, in_gpuProcessFeedbackTime,
+            in_numFeedbackResolves, in_numSubmits });
     }
 
     void WriteEvents(HWND in_hWnd, const CommandLineArgs& in_args);
@@ -89,6 +91,7 @@ private:
         float m_cpuFeedbackTime;
         float m_gpuFeedbackTime;
         UINT m_numGpuFeedbackResolves;
+        UINT m_numSubmits;
     };
 
     std::vector<FrameEvents> m_events;
@@ -130,7 +133,7 @@ inline void FrameEventTracing::WriteEvents(HWND in_hWnd, const CommandLineArgs& 
 
     *this << "\nTimers (ms)\n"
         << "-----------------------------------------------------------------------------------------------------------\n"
-        << "cpu_draw TUM::EndFrame exec_cmd_list wait_present total_frame_time evictions copies cpu_feedback feedback_resolve num_resolves\n"
+        << "cpu_draw TUM::EndFrame exec_cmd_list wait_present total_frame_time evictions copies cpu_feedback feedback_resolve num_resolves num_submits\n"
         << "-----------------------------------------------------------------------------------------------------------\n";
 
     for (auto& e : m_events)
@@ -154,6 +157,7 @@ inline void FrameEventTracing::WriteEvents(HWND in_hWnd, const CommandLineArgs& 
             << " " << e.m_cpuFeedbackTime * 1000
             << " " << e.m_gpuFeedbackTime * 1000
             << " " << e.m_numGpuFeedbackResolves
+            << " " << e.m_numSubmits
 
             << std::endl;
     }

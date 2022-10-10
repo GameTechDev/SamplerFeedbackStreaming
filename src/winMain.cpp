@@ -185,7 +185,6 @@ void ParseCommandLine(CommandLineArgs& out_args)
 
     argParser.AddArg(L"-heapSizeTiles", out_args.m_streamingHeapSize);
     argParser.AddArg(L"-numHeaps", out_args.m_numHeaps);
-    argParser.AddArg(L"-maxTileUpdatesPerApiCall", out_args.m_maxTileUpdatesPerApiCall);
 
     argParser.AddArg(L"-maxFeedbackTime", out_args.m_maxGpuFeedbackTimeMs);
 
@@ -203,9 +202,9 @@ void ParseCommandLine(CommandLineArgs& out_args)
     argParser.AddArg(L"-paintMixer", out_args.m_cameraPaintMixer);
 
     argParser.AddArg(L"-visualizeMinMip", [&]() { out_args.m_visualizeMinMip = true; }, out_args.m_visualizeMinMip);
-    argParser.AddArg(L"-hideFeedback", out_args.m_showFeedbackMaps);
+    argParser.AddArg(L"-hideFeedback", [&]() { out_args.m_showFeedbackMaps = false; }, false, L"start with no feedback viewer");
     argParser.AddArg(L"-hideUI", [&]() { out_args.m_showUI = false; }, false, L"start with no visible UI");
-    argParser.AddArg(L"-miniUI", [&]() { out_args.m_uiModeMini = true; }, false, L"start with mini");
+    argParser.AddArg(L"-miniUI", [&]() { out_args.m_uiModeMini = true; }, false, L"start with mini UI");
     argParser.AddArg(L"-updateAll", out_args.m_updateEveryObjectEveryFrame);
     argParser.AddArg(L"-addAliasingBarriers", out_args.m_addAliasingBarriers, L"Add per-draw aliasing barriers to assist PIX analysis");
 
@@ -496,6 +495,7 @@ void LoadConfigFile(std::wstring& in_configFileName, CommandLineArgs& out_args)
             if (root.isMember("numHeaps")) out_args.m_numHeaps = root["numHeaps"].asUInt();
             if (root.isMember("maxTileUpdatesPerApiCall")) out_args.m_maxTileUpdatesPerApiCall = root["maxTileUpdatesPerApiCall"].asUInt();
             if (root.isMember("numStreamingBatches")) out_args.m_numStreamingBatches = root["numStreamingBatches"].asUInt();
+            if (root.isMember("minNumUploadRequests")) out_args.m_minNumUploadRequests = root["minNumUploadRequests"].asUInt();
 
             if (root.isMember("maxFeedbackTime")) out_args.m_maxGpuFeedbackTimeMs = root["maxFeedbackTime"].asFloat();
 

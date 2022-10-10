@@ -100,14 +100,16 @@ private:
         {
             for (auto& c : m_arg) { c = ::towlower(c); }
         }
-        void TestEqual(std::wstring in_arg)
+        bool TestEqual(std::wstring in_arg)
         {
             for (auto& c : in_arg) { c = ::towlower(c); }
+            bool found = false;
             if (m_arg == in_arg)
             {
                 m_func();
-                m_arg.clear(); // this argument has been consumed
+                found = true; // this argument has been consumed
             }
+            return found;
         }
     private:
         std::wstring m_arg;
@@ -188,7 +190,7 @@ inline void ArgParser::Parse()
         std::wstring s = GetNextArg();
         for (auto& arg : m_args)
         {
-            arg.TestEqual(s);
+            if (arg.TestEqual(s)) { break; }
         }
     }
 }

@@ -8,7 +8,11 @@
   "anisotropy": 4, // sampler anisotropy
 
   "directStorage": true, // use directstorage vs. dedicated thread with ReadFile() and CopyTiles()
-  "stagingSizeMB": 256, // size of the staging buffer for DirectStorage or reference streaming code
+  "stagingSizeMB": 128, // size of the staging buffer for DirectStorage or reference streaming code
+
+  // maximum number of in-flight batches of uploads
+  "numStreamingBatches": 128,
+  "minNumUploadRequests": 1999, // # tiles. heuristic to reduce frequency of Submit() calls
 
   "addAliasingBarriers": false, //// adds a barrier for each streaming resource: alias(nullptr, pResource)
 
@@ -30,7 +34,7 @@
   "maxFeedbackTime": 5.0, // maximum milliseconds for GPU to resolve feedback
 
   "visualizeMinMip": false, // color overlayed onto texture by PS corresponding to mip level
-  "hideFeedback": false, // hide the terrain feedback windows
+  "hideFeedback": true, // hide the terrain feedback windows
   "hideUI": false, // hide the UI
   "miniUI": false, // use "lite" UI (bandwidth & heap occupancy only)
 
@@ -39,12 +43,6 @@
   "heapSizeTiles": 24576, // size for each heap. 64KB per tile * 16384 tiles -> 1GB heap
   "numHeaps": 1, // number of heaps. objects will be distributed among heaps
   "maxTileUpdatesPerApiCall": 4096, // limit to # tiles passed to D3D12 UpdateTileMappings()
-
-  // maximum number of in-flight command lists
-  // note a command list can only target a single resource
-  // based on guidance around maximum outstanding SSD read requests: drives aren't expected to benefit from lots of queueing
-  // more queueing is counter-productive, as copies might arrive after the target is no longer visible
-  "numStreamingBatches": 128,
 
   "waitForAssetLoad": false,
 

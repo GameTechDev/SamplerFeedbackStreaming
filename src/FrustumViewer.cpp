@@ -72,12 +72,12 @@ FrustumViewer::FrustumViewer(ID3D12Device* in_pDevice,
             &heapProperties,
             D3D12_HEAP_FLAG_NONE,
             &resourceDesc,
-            D3D12_RESOURCE_STATE_COPY_DEST,
+            D3D12_RESOURCE_STATE_COMMON,
             nullptr,
             IID_PPV_ARGS(&m_vertexBuffer)));
 
         in_assetUploader.SubmitRequest(m_vertexBuffer.Get(), vertices, vertexBufferSize,
-            D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+            D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
 
         m_vertexBufferView.SizeInBytes = vertexBufferSize;
         m_vertexBufferView.StrideInBytes = sizeof(Vertex);
@@ -105,12 +105,12 @@ FrustumViewer::FrustumViewer(ID3D12Device* in_pDevice,
             &heapProperties,
             D3D12_HEAP_FLAG_NONE,
             &resourceDesc,
-            D3D12_RESOURCE_STATE_COPY_DEST,
+            D3D12_RESOURCE_STATE_COMMON,
             nullptr,
             IID_PPV_ARGS(&m_indexBuffer)));
 
         in_assetUploader.SubmitRequest(m_indexBuffer.Get(), indices, indexBufferSize,
-            D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER);
+            D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_INDEX_BUFFER);
 
         m_indexBufferView.SizeInBytes = indexBufferSize;
         m_indexBufferView.Format = DXGI_FORMAT_R16_UINT;

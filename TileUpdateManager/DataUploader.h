@@ -144,10 +144,9 @@ namespace Streaming
         ComPtr<IDStorageFactory> m_dsFactory;
         ComPtr<IDStorageQueue> m_memoryQueue;
         ComPtr<ID3D12Fence> m_memoryFence;
-        UINT64 m_memoryFenceValue{ 1 };
-        UINT64 LoadTexture(ID3D12Resource* in_pResource, UINT in_firstSubresource,
-            const std::vector<BYTE>& in_paddedData, UINT in_uncompressedSize, UINT32 in_compressionFormat);
-        void SubmitTextureLoads();
+        UINT64 m_memoryFenceValue{ 0 };
+        void LoadTextureFromMemory(UpdateList& out_updateList);
+        void SubmitTextureLoadsFromMemory();
 
         //-------------------------------------------
         // statistics

@@ -247,6 +247,7 @@ private:
 
     void GatherStatistics();
     UINT m_startUploadCount{ 0 };
+    UINT m_startSubmitCount{ 0 };
     float m_totalTileLatency{ 0 }; // per-tile upload latency. NOT the same as per-UpdateList
     Timer m_cpuTimer;
 

@@ -278,97 +278,129 @@ void Gui::Draw(ID3D12GraphicsCommandList* in_pCommandList,
     ImGui_ImplWin32_NewFrame();
     ImGui::NewFrame();
 
-    ImVec2 v(0, 0);
-
     // use maximum height until we calculate height
     ImVec2 windowSize(m_width, (float)in_args.m_windowHeight);
-
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.f);
-
     ImGui::Begin("SamplerFeedbackStreaming", 0, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar);
-
     ImGui::SetWindowFontScale(1.f);
-    ImGui::SetWindowPos(v);
+    {
+        ImVec2 v(0, 0);
+        ImGui::SetWindowPos(v);
+    }
     ImGui::SetWindowSize(windowSize);
-
     ImGui::Text(m_adapterDescription.data());
 
-    ImGui::SliderFloat("Spin", &in_args.m_animationRate, 0, 2.0f);
-    ImGui::SliderFloat("Camera", &in_args.m_cameraAnimationRate, 0, 2.0f);
-    ImGui::Checkbox("Roller Coaster (when camera > 0)", &in_args.m_cameraRollerCoaster);
+    const UINT indent = 20;
 
-    ImGui::SliderFloat("Bias", &in_args.m_lodBias, -2.0f, 4.0f);
+    //---------------------------------------------------------------------
+    // animation properties. affects bandwidth
+    //---------------------------------------------------------------------
+    {
+        ImGui::SliderFloat("Spin", &in_args.m_animationRate, 0, 2.0f);
+        ImGui::SliderFloat("Camera", &in_args.m_cameraAnimationRate, 0, 2.0f);
+        ImGui::Indent(indent);
+        ImGui::Checkbox("Roller Coaster", &in_args.m_cameraRollerCoaster);
+        ImGui::Unindent(indent);
+    }
 
-    ImGui::SliderFloat("Feedback ms", &in_args.m_maxGpuFeedbackTimeMs, 0, 30);
-    
-    const char* visualizationModes[] = { "Texture", "Color = Mip", "Random Tile Color" };
-    out_buttonChanges.m_visualizationChange = ImGui::Combo("Visualize", &in_args.m_dataVisualizationMode, visualizationModes, _countof(visualizationModes));
+    //---------------------------------------------------------------------
+    // live statistics
+    //---------------------------------------------------------------------
+    {
+        DrawLineGraph(m_bandwidthHistory, m_bandwidthHistoryIndex, ImVec2(m_width, 50.0f));
+        // GPU timers
+        ImGui::Text("GPU ms: Feedback |   Draw");
+        ImGui::Text("         %7.2f | %6.3f",
+            in_drawParams.m_gpuFeedbackTime * 1000.f,
+            in_drawParams.m_gpuDrawTime * 1000.f);
+        // CPU timers
+        ImGui::Separator();
+        ImGui::Text("CPU ms: Feedback |  Draw  |  Frame");
+        ImGui::Text("         %7.2f | %6.2f | %6.2f",
+            in_drawParams.m_cpuFeedbackTime * 1000.f, in_drawParams.m_cpuDrawTime * 1000.f,
+            (1000.f * m_cpuTimer.GetSecondsFromDelta(m_cpuTimes.GetRange())) / (float)m_cpuTimes.GetNumEntries());
+    }
 
-    ImGui::Checkbox("Color MinMip", &in_args.m_visualizeMinMip);
-    ImGui::Checkbox("Uploads Enabled", &in_args.m_enableTileUpdates);
-    out_buttonChanges.m_frustumToggle = ImGui::Checkbox("Lock Frustum", &in_args.m_visualizeFrustum);
-    ImGui::Checkbox("Update Every Object Every Frame", &in_args.m_updateEveryObjectEveryFrame);
-    ImGui::Checkbox("VSync", &in_args.m_vsyncEnabled);
-    ImGui::Checkbox("Lock \"Up\" Dir", &in_args.m_cameraUpLock);
-    ImGui::SliderInt("Num Objects", &in_args.m_numSpheres, 0, (int)in_args.m_maxNumObjects);
-
-    out_buttonChanges.m_directStorageToggle = ImGui::Checkbox("DirectStorage", &in_args.m_useDirectStorage);
-
+    //---------------------------------------------------------------------
+    // heap statistics
+    //---------------------------------------------------------------------
     ImGui::Separator();
-    if (ImGui::Button("Reset Settings")) { in_args = m_initialArgs; }
-
-    // GPU timers
-    ImGui::Separator();
-    ImGui::Text("GPU ms: Feedback |   Draw");
-    ImGui::Text("         %7.2f | %6.3f",
-        in_drawParams.m_gpuFeedbackTime * 1000.f,
-        in_drawParams.m_gpuDrawTime * 1000.f);
-
-    // CPU timers
-    ImGui::Separator();
-    ImGui::Text("CPU ms: Feedback |  Draw  |  Frame");
-
-    float cpuAverageTime = m_cpuTimer.GetSecondsFromDelta(m_cpuTimes.GetRange()) / (float)m_cpuTimes.GetNumEntries();
-
-    ImGui::Text("         %7.2f | %6.2f | %6.2f",
-        in_drawParams.m_cpuFeedbackTime * 1000.f, in_drawParams.m_cpuDrawTime * 1000.f,
-        cpuAverageTime * 1000.f);
-
-    DrawLineGraph(m_bandwidthHistory, m_bandwidthHistoryIndex, ImVec2(m_width, 50.0f));
-
     ImGui::Text("Reserved KB: %d", (in_drawParams.m_numTilesVirtual * 64));
     ImGui::Text("Committed KB: %d (%.2f %%)", (in_drawParams.m_numTilesCommitted * 64), 100.f * float(in_drawParams.m_numTilesCommitted) / float(in_drawParams.m_numTilesVirtual));
 
-    float percentOccupied = float(in_drawParams.m_numTilesCommitted) / float(in_drawParams.m_totalHeapSize);
-    ImGui::Text("Heap Occupancy KB: %.2f%% of %d", 100.f * percentOccupied, (in_drawParams.m_totalHeapSize * 64));
-
+    ImGui::Text("Heap Occupancy KB: %.2f%% of %d",
+        100.f * float(in_drawParams.m_numTilesCommitted) / float(in_drawParams.m_totalHeapSize), (in_drawParams.m_totalHeapSize * 64));
     DrawHeapOccupancyBar(in_drawParams.m_numTilesCommitted, in_drawParams.m_totalHeapSize, 10.0f);
 
-    ImGui::Checkbox("Feedback Viewer", &in_args.m_showFeedbackMaps);
+    //---------------------------------------------------------------------
+    // number of objects. affects heap occupancy
+    //---------------------------------------------------------------------
+    ImGui::SliderInt("Num Objects", &in_args.m_numSpheres, 0, (int)in_args.m_maxNumObjects);
+
+    //---------------------------------------------------------------------
+    // terrain feedback viewer
+    //---------------------------------------------------------------------
+    in_args.m_showFeedbackMaps = ImGui::CollapsingHeader("Terrain Object Feedback Viewer");
     if (in_args.m_showFeedbackMaps)
     {
+        ImGui::Indent(indent);
         ImGui::Checkbox("Mip Window Orientation", &in_args.m_showFeedbackMapVertical);
         ImGui::Checkbox("Raw Feedback", &in_args.m_showFeedbackViewer);
-        ImGui::SliderInt("Viewer Mips", &in_args.m_visualizationBaseMip, 0, in_drawParams.m_scrollMipDim);
+        ImGui::SliderInt("Scroll", &in_args.m_visualizationBaseMip, 0, in_drawParams.m_scrollMipDim);
+        ImGui::Unindent(indent);
     }
 
+    //---------------------------------------------------------------------
+    // misc. options
+    //---------------------------------------------------------------------
+    if (ImGui::CollapsingHeader("Misc. Options"))
+    {
+        ImGui::Indent(indent);
+        out_buttonChanges.m_directStorageToggle = ImGui::Checkbox("DirectStorage", &in_args.m_useDirectStorage);
+        ImGui::Checkbox("VSync", &in_args.m_vsyncEnabled);
+
+        out_buttonChanges.m_frustumToggle = ImGui::Checkbox("Lock Frustum", &in_args.m_visualizeFrustum);
+        ImGui::Checkbox("Uploads Enabled", &in_args.m_enableTileUpdates);
+        ImGui::Checkbox("Update Every Object Every Frame", &in_args.m_updateEveryObjectEveryFrame);
+        ImGui::Checkbox("Lock \"Up\" Dir", &in_args.m_cameraUpLock);
+
+        //---------------------------------------------------------------------
+        // performance/quality controls
+        //---------------------------------------------------------------------
+        ImGui::PushItemWidth(100);
+        ImGui::SliderFloat("Sampler Bias", &in_args.m_lodBias, -2.0f, 4.0f);
+        ImGui::SliderFloat("Feedback Timeout", &in_args.m_maxGpuFeedbackTimeMs, 0, 30);
+        ImGui::PopItemWidth();
+
+        ImGui::Unindent(indent);
+    }
+
+    const char* visualizationModes[] = { "Texture", "Color = Mip Level", "Random Tile Color" };
+    out_buttonChanges.m_visualizationChange = ImGui::Combo("Visualize", &in_args.m_dataVisualizationMode, visualizationModes, _countof(visualizationModes));
+
+    //---------------------------------------------------------------------
+    // emphasize this important visualization
+    //---------------------------------------------------------------------
+    ImVec4 colorMinMip{ 0.4f, 0.2f, 0.8f, 1.0f };
+    ImGui::PushStyleColor(ImGuiCol_Button, colorMinMip);
+    if (ImGui::Button("Tile Min Mip Overlay", ImVec2(-1, 0))) { in_args.m_visualizeMinMip = !in_args.m_visualizeMinMip; }
+    ImGui::PopStyleColor(1);
+
+    //---------------------------------------------------------------------
+    // demo mode
+    //---------------------------------------------------------------------
     if (ImGui::Button("DEMO MODE", ImVec2(-1, 0)))
     {
-        if (m_benchmarkMode)
-        {
-            ToggleBenchmarkMode(in_args);
-        }
-
+        if (m_benchmarkMode) { ToggleBenchmarkMode(in_args); }
         ToggleDemoMode(in_args);
     }
 
+    //---------------------------------------------------------------------
+    // benchmark mode
+    //---------------------------------------------------------------------
     if (ImGui::Button("BENCHMARK MODE", ImVec2(-1, 0)))
     {
-        if (m_demoMode)
-        {
-            ToggleDemoMode(in_args);
-        }
-
+        if (m_demoMode) { ToggleDemoMode(in_args); }
         ToggleBenchmarkMode(in_args);
     }
 

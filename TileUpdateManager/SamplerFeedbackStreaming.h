@@ -126,12 +126,20 @@ struct TileUpdateManagerDesc
     // However, performance analysis tools like to know about changes to resources
     bool m_addAliasingBarriers{ false };
 
-    // applied to all internal threads: submit, fenceMonitor, processFeedback, updateResidency
-    // 1 prefers P cores, -1 prefers E cores. 0 is normal.
-    int m_threadPriority{ 0 };
+    UINT m_minNumUploadRequests{ 2000 }; // heuristic to reduce frequency of Submit() calls
 
-    // false: use internal file streaming system. true: use Microsoft DirectStorage
-    bool m_useDirectStorage{ false };
+    // applied to all internal threads: submit, fenceMonitor, processFeedback, updateResidency
+    // on hybrid systems: performance prefers P cores, efficiency prefers E cores, normal is OS default
+    enum class ThreadPriority
+    {
+        Prefer_Normal,
+        Prefer_Performance,
+        Prefer_Efficiency
+    };
+    ThreadPriority m_threadPriority{ ThreadPriority::Prefer_Normal };
+
+    // true: use Microsoft DirectStorage. false: use internal file streaming system
+    bool m_useDirectStorage{ true };
 };
 
 //=============================================================================
@@ -217,8 +225,8 @@ struct TileUpdateManager
 
     virtual float GetGpuStreamingTime() const = 0;
     virtual float GetCpuProcessFeedbackTime() = 0; // approx. cpu time spent processing feedback last frame. expected usage is to average over many frames
-
-    virtual UINT GetTotalNumUploads() const = 0;
-    virtual UINT GetTotalNumEvictions() const = 0;
-    virtual float GetTotalTileCopyLatency() const = 0;
+    virtual UINT GetTotalNumUploads() const = 0;   // number of tiles uploaded so far
+    virtual UINT GetTotalNumEvictions() const = 0; // number of tiles evicted so far
+    virtual float GetTotalTileCopyLatency() const = 0; // very approximate average latency of tile upload from request to completion
+    virtual UINT GetTotalNumSubmits() const = 0;   // number of fence signals for uploads. when using DS, equals number of calls to IDStorageQueue::Submit()
 };

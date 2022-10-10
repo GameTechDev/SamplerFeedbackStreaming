@@ -89,6 +89,7 @@ namespace Streaming
         virtual UINT GetTotalNumUploads() const override;
         virtual UINT GetTotalNumEvictions() const override;
         virtual float GetTotalTileCopyLatency() const override;
+        virtual UINT GetTotalNumSubmits() const override;
         //-----------------------------------------------------------------
         // end external APIs
         //-----------------------------------------------------------------
@@ -121,7 +122,6 @@ namespace Streaming
         UINT64 m_frameFenceValue{ 0 };
 
         std::unique_ptr<Streaming::DataUploader> m_pDataUploader;
-        UINT m_updateListWatermark{ 1 }; // heuristic to prevent "storms" of small batch submissions
 
         // each StreamingResource writes current uploaded tile state to min mip map, separate data for each frame
         // internally, use a single buffer containing all the residency maps
@@ -204,7 +204,9 @@ namespace Streaming
 
         std::atomic<bool> m_threadsRunning{ false };
 
-        const int m_threadPriority{ 0 };
+        const UINT m_minNumUploadRequests{ 2000 }; // heuristic to reduce Submit()s
+        void SignalFileStreamer();
+        int m_threadPriority{ 0 };
 
         // a thread to process feedback (when available) and queue tile loads / evictions to datauploader
         std::thread m_processFeedbackThread;
@@ -216,6 +218,11 @@ namespace Streaming
         void CreateMinMipMapView(D3D12_CPU_DESCRIPTOR_HANDLE in_descriptor);
 
         std::vector<UINT> m_residencyMapOffsets; // one for each StreamingResource sized for numswapbuffers min mip maps each
+
+        //-------------------------------------------
+        // statistics
+        //-------------------------------------------
+        std::atomic<UINT> m_numTotalSubmits{ 0 };
     };
 }
 /*

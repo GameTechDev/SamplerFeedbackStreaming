@@ -71,8 +71,6 @@ Streaming::DataUploader::DataUploader(
 Streaming::DataUploader::~DataUploader()
 {
     // stop updating. all StreamingResources must have been destroyed already, presumably.
-
-    FlushCommands();
     StopThreads();
 }
 
@@ -101,33 +99,36 @@ void Streaming::DataUploader::InitDirectStorage(ID3D12Device* in_pDevice)
     queueDesc.Device = in_pDevice;
     ThrowIfFailed(m_dsFactory->CreateQueue(&queueDesc, IID_PPV_ARGS(&m_memoryQueue)));
 
-    ThrowIfFailed(in_pDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_memoryFence)));
+    ThrowIfFailed(in_pDevice->CreateFence(m_memoryFenceValue, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_memoryFence)));
+    m_memoryFenceValue++;
 }
 
 //-----------------------------------------------------------------------------
 // handle request to load a texture from cpu memory
 // used for packed mips, which don't participate in fine-grained streaming
 //-----------------------------------------------------------------------------
-UINT64 Streaming::DataUploader::LoadTexture(ID3D12Resource* in_pResource, UINT in_firstSubresource,
-    const std::vector<BYTE>& in_paddedData, UINT in_uncompressedSize, UINT32 in_compressionFormat)
+void Streaming::DataUploader::LoadTextureFromMemory(Streaming::UpdateList& out_updateList)
 {
+    UINT uncompressedSize = 0;
+    auto& textureBytes = out_updateList.m_pStreamingResource->GetPaddedPackedMips(uncompressedSize);
+
     DSTORAGE_REQUEST request = {};
     request.Options.SourceType = DSTORAGE_REQUEST_SOURCE_MEMORY;
     request.Options.DestinationType = DSTORAGE_REQUEST_DESTINATION_MULTIPLE_SUBRESOURCES;
-    request.Source.Memory.Source = in_paddedData.data();
-    request.Source.Memory.Size = (UINT32)in_paddedData.size();
-    request.UncompressedSize = in_uncompressedSize;
-    request.Destination.MultipleSubresources.Resource = in_pResource;
-    request.Destination.MultipleSubresources.FirstSubresource = in_firstSubresource;
-    request.Options.CompressionFormat = (DSTORAGE_COMPRESSION_FORMAT)in_compressionFormat;
+    request.Source.Memory.Source = textureBytes.data();
+    request.Source.Memory.Size = (UINT32)textureBytes.size();
+    request.UncompressedSize = uncompressedSize;
+    request.Destination.MultipleSubresources.Resource = out_updateList.m_pStreamingResource->GetTiledResource();
+    request.Destination.MultipleSubresources.FirstSubresource = out_updateList.m_pStreamingResource->GetPackedMipInfo().NumStandardMips;
+    request.Options.CompressionFormat = (DSTORAGE_COMPRESSION_FORMAT)out_updateList.m_pStreamingResource->GetTextureFileInfo()->GetCompressionFormat();
 
+    out_updateList.m_copyFenceValue = m_memoryFenceValue;
     m_memoryQueue->EnqueueRequest(&request);
-    return m_memoryFenceValue;
 }
 
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
-void Streaming::DataUploader::SubmitTextureLoads()
+void Streaming::DataUploader::SubmitTextureLoadsFromMemory()
 {
     m_memoryQueue->EnqueueSignal(m_memoryFence.Get(), m_memoryFenceValue);
     m_memoryQueue->Submit();
@@ -140,7 +141,6 @@ void Streaming::DataUploader::SubmitTextureLoads()
 //-----------------------------------------------------------------------------
 Streaming::FileStreamer* Streaming::DataUploader::SetStreamer(StreamerType in_streamerType)
 {
-    FlushCommands();
     StopThreads();
 
     ComPtr<ID3D12Device> device;
@@ -192,13 +192,13 @@ void Streaming::DataUploader::StartThreads()
 
             while (m_threadsRunning)
             {
-                FenceMonitorThread();
-
                 // if no outstanding work, sleep
                 if (0 == m_updateListAllocator.GetAllocated())
                 {
                     m_fenceMonitorFlag.Wait();
                 }
+
+                FenceMonitorThread();
             }
         });
 
@@ -208,6 +208,8 @@ void Streaming::DataUploader::StartThreads()
 
 void Streaming::DataUploader::StopThreads()
 {
+    FlushCommands();
+
     if (m_threadsRunning)
     {
         m_threadsRunning = false;
@@ -238,6 +240,7 @@ void Streaming::DataUploader::FlushCommands()
     DebugPrint("DataUploader waiting on ", m_updateListAllocator.GetAllocated(), " tasks to complete\n");
     while (m_updateListAllocator.GetAllocated()) // wait so long as there is outstanding work
     {
+        m_submitFlag.Set(); // (paranoia)
         m_fenceMonitorFlag.Set(); // (paranoia)
         _mm_pause();
     }
@@ -337,18 +340,12 @@ void Streaming::DataUploader::FenceMonitorThread()
             ASSERT(0 == updateList.GetNumEvictions());
 
             // wait for mapping complete before streaming packed tiles
-            if (updateList.m_mappingFenceValue <= m_mappingFence->GetCompletedValue())
+            if (m_mappingFence->GetCompletedValue() >= updateList.m_mappingFenceValue)
             {
-                UINT uncompressedSize = 0;
-                auto& data = updateList.m_pStreamingResource->GetPaddedPackedMips(uncompressedSize);
-                updateList.m_copyFenceValue = LoadTexture(
-                    updateList.m_pStreamingResource->GetTiledResource(),
-                    updateList.m_pStreamingResource->GetPackedMipInfo().NumStandardMips,
-                    data, uncompressedSize,
-                    updateList.m_pStreamingResource->GetTextureFileInfo()->GetCompressionFormat());
-                updateList.m_executionState = UpdateList::State::STATE_PACKED_COPY_PENDING;
+                LoadTextureFromMemory(updateList);
 
-                loadPackedMips = true;
+                loadPackedMips = true; // set flag to signal fence
+                updateList.m_executionState = UpdateList::State::STATE_PACKED_COPY_PENDING;
             }
             break;
 
@@ -417,7 +414,7 @@ void Streaming::DataUploader::FenceMonitorThread()
 
     if (loadPackedMips)
     {
-        SubmitTextureLoads();
+        SubmitTextureLoadsFromMemory();
     }
 }
 

@@ -54,6 +54,7 @@ SceneObjects::BaseObject::BaseObject(
     BaseObject* in_pSharedObject) :
     m_matrix(DirectX::XMMatrixIdentity()),m_srvUavCbvDescriptorSize(0)
     , m_pTileUpdateManager(in_pTileUpdateManager)
+    , m_combinedMatrix(DirectX::XMMatrixIdentity())
 {
     //---------------------------------------
     // create root signature
@@ -386,12 +387,12 @@ void SceneObjects::CreateSphereResources(
             &heapProperties,
             D3D12_HEAP_FLAG_NONE,
             &resourceDesc,
-            D3D12_RESOURCE_STATE_COPY_DEST,
+            D3D12_RESOURCE_STATE_COMMON,
             nullptr,
             IID_PPV_ARGS(out_ppVertexBuffer)));
 
         in_assetUploader.SubmitRequest(*out_ppVertexBuffer, sphereVerts.data(), vertexBufferSize,
-            D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+            D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
     }
 
     // build index buffer
@@ -404,12 +405,12 @@ void SceneObjects::CreateSphereResources(
             &heapProperties,
             D3D12_HEAP_FLAG_NONE,
             &resourceDesc,
-            D3D12_RESOURCE_STATE_COPY_DEST,
+            D3D12_RESOURCE_STATE_COMMON,
             nullptr,
             IID_PPV_ARGS(out_ppIndexBuffer)));
 
         in_assetUploader.SubmitRequest(*out_ppIndexBuffer, sphereIndices.data(), indexBufferSize,
-            D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER);
+            D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_INDEX_BUFFER);
     }
 }
 
@@ -481,12 +482,12 @@ SceneObjects::Terrain::Terrain(const std::wstring& in_filename,
             &heapProperties,
             D3D12_HEAP_FLAG_NONE,
             &resourceDesc,
-            D3D12_RESOURCE_STATE_COPY_DEST,
+            D3D12_RESOURCE_STATE_COMMON,
             nullptr,
             IID_PPV_ARGS(&pVertexBuffer)));
 
         in_assetUploader.SubmitRequest(pVertexBuffer, mesh.GetVertices().data(), vertexBufferSize,
-            D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+            D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
     }
 
     // build index buffer
@@ -497,7 +498,7 @@ SceneObjects::Terrain::Terrain(const std::wstring& in_filename,
             &heapProperties,
             D3D12_HEAP_FLAG_NONE,
             &resourceDesc,
-            D3D12_RESOURCE_STATE_COPY_DEST,
+            D3D12_RESOURCE_STATE_COMMON,
             nullptr,
             IID_PPV_ARGS(&pIndexBuffer)));
 
@@ -505,7 +506,7 @@ SceneObjects::Terrain::Terrain(const std::wstring& in_filename,
         mesh.GenerateIndices((UINT*)indices.data());
         
         in_assetUploader.SubmitRequest(pIndexBuffer, indices.data(), indices.size(),
-            D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER);
+            D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_INDEX_BUFFER);
     }
 
     SetGeometry(pVertexBuffer, (UINT)mesh.GetVertices().size(), (UINT)sizeof(TerrainGenerator::Vertex),

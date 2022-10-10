@@ -156,6 +156,8 @@ float Streaming::TileUpdateManagerBase::GetTotalTileCopyLatency() const { return
 float Streaming::TileUpdateManagerBase::GetGpuTime() const { return m_gpuTimerResolve.GetTimes()[m_renderFrameIndex].first; }
 UINT Streaming::TileUpdateManagerBase::GetTotalNumUploads() const { return m_pDataUploader->GetTotalNumUploads(); }
 UINT Streaming::TileUpdateManagerBase::GetTotalNumEvictions() const { return m_pDataUploader->GetTotalNumEvictions(); }
+UINT Streaming::TileUpdateManagerBase::GetTotalNumSubmits() const { return m_numTotalSubmits; }
+
 void Streaming::TileUpdateManagerBase::SetVisualizationMode(UINT in_mode)
 {
     ASSERT(!GetWithinFrame());

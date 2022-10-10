@@ -151,7 +151,7 @@ namespace SceneObjects
 
         struct Geometry
         {
-            UINT m_numIndices;
+            UINT m_numIndices{ 0 };
             D3D12_INDEX_BUFFER_VIEW m_indexBufferView;
             D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView;
             ComPtr<ID3D12Resource> m_indexBuffer;

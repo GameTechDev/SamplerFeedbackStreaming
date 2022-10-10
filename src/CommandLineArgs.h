@@ -68,7 +68,6 @@ struct CommandLineArgs
     bool m_addAliasingBarriers{ false }; // adds a barrier for each streaming resource: alias(nullptr, pResource)
     UINT m_streamingHeapSize{ 16384 }; // in # of tiles, not bytes
     UINT m_numHeaps{ 1 };
-    UINT m_maxTileUpdatesPerApiCall{ 512 }; // max #tiles (regions) in call to UpdateTileMappings()
 
     // e.g. -timingStart 5 -timingEnd 25 writes a CSV showing the time to run 20 frames between those 2 times
     // ignored if end frame == 0
@@ -88,6 +87,7 @@ struct CommandLineArgs
     //-------------------------------------------------------
     // state that is not settable from command line:
     //-------------------------------------------------------
+    UINT m_maxTileUpdatesPerApiCall{ 512 }; // max #tiles (regions) in call to UpdateTileMappings()
     bool m_enableTileUpdates{ true }; // toggle enabling tile uploads/evictions
     int  m_visualizationBaseMip{ 0 };
     bool m_showFeedbackMapVertical{ false };
@@ -105,6 +105,7 @@ struct CommandLineArgs
     UINT m_statisticsNumFrames{ 30 };
     bool m_cameraUpLock{ true };       // navigation locks "up" to be y=1
     UINT m_numStreamingBatches{ 128 }; // number of in-flight batches of updates (UpdateLists)
+    UINT m_minNumUploadRequests{ 2000 }; // milliseconds. heuristic to reduce frequency of Submit() calls
 
     // planet parameters
     UINT m_sphereLong{ 128 }; // # steps vertically. must be even
