@@ -219,6 +219,9 @@ void ParseCommandLine(CommandLineArgs& out_args)
     argParser.AddArg(L"-directStorage", [&]() { out_args.m_useDirectStorage = true; }, L"force enable DirectStorage");
     argParser.AddArg(L"-directStorageOff", [&]() { out_args.m_useDirectStorage = false; }, L"force disable DirectStorage");
     argParser.AddArg(L"-stagingSizeMB", out_args.m_stagingSizeMB, L"DirectStorage staging buffer size");
+
+    argParser.AddArg(L"-captureTrace", [&]() { out_args.m_captureTrace = true; }, false, L"capture a trace of tile requests and submits (DS only)");
+
     argParser.Parse();
 }
 

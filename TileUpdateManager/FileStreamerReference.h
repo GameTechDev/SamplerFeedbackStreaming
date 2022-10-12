@@ -48,8 +48,6 @@ namespace Streaming
 
         virtual void Signal() override {} // reference auto-submits
 
-        static HANDLE GetFileHandle(const FileHandle* in_pHandle) { return dynamic_cast<const FileHandleReference*>(in_pHandle)->GetHandle(); }
-
         static const UINT MEDIA_SECTOR_SIZE = 4096; // see https://docs.microsoft.com/en-us/windows/win32/fileio/file-buffering
     private:
         class FileHandleReference : public FileHandle
@@ -128,5 +126,7 @@ namespace Streaming
         void LoadTexture(CopyBatch& in_copyBatch, UINT in_numtilesToLoad);
         void CopyTiles(ID3D12GraphicsCommandList* out_pCopyCmdList, ID3D12Resource* in_pSrcResource,
             const UpdateList* in_pUpdateList, const std::vector<UINT>& in_indices);
+
+        static HANDLE GetFileHandle(const FileHandle* in_pHandle) { return dynamic_cast<const FileHandleReference*>(in_pHandle)->GetHandle(); }
     };
 }

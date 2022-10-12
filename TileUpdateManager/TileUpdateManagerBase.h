@@ -84,6 +84,7 @@ namespace Streaming
         virtual bool GetWithinFrame() const  override { return m_withinFrame; }
         virtual float GetGpuTime() const override;
         virtual void SetVisualizationMode(UINT in_mode) override;
+        virtual void CaptureTraceFile(bool in_captureTrace) override;
         virtual float GetGpuStreamingTime() const override;
         virtual float GetCpuProcessFeedbackTime() override;
         virtual UINT GetTotalNumUploads() const override;

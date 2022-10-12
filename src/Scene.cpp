@@ -1272,17 +1272,22 @@ void Scene::GatherStatistics()
         PostQuitMessage(0);
     }
 
-    m_frameNumber++;
-
-    // start timing and gathering uploads from the very beginning of the timed region
-    if (m_args.m_timingFrameFileName.size() && (m_frameNumber == m_args.m_timingStartFrame))
+    if (m_frameNumber == m_args.m_timingStartFrame)
     {
-        numSubmits = m_pTileUpdateManager->GetTotalNumSubmits();
-        m_startUploadCount = m_pTileUpdateManager->GetTotalNumUploads();
-        m_startSubmitCount = m_pTileUpdateManager->GetTotalNumSubmits();
-        m_totalTileLatency = m_pTileUpdateManager->GetTotalTileCopyLatency();
-        m_cpuTimer.Start();
+        m_pTileUpdateManager->CaptureTraceFile(m_args.m_captureTrace);
+
+        // start timing and gathering uploads from the very beginning of the timed region
+        if (m_args.m_timingFrameFileName.size())
+        {
+            numSubmits = m_pTileUpdateManager->GetTotalNumSubmits();
+            m_startUploadCount = m_pTileUpdateManager->GetTotalNumUploads();
+            m_startSubmitCount = m_pTileUpdateManager->GetTotalNumSubmits();
+            m_totalTileLatency = m_pTileUpdateManager->GetTotalTileCopyLatency();
+            m_cpuTimer.Start();
+        }
     }
+
+    m_frameNumber++;
 }
 
 //-------------------------------------------------------------------------

@@ -133,7 +133,7 @@ inline void FrameEventTracing::WriteEvents(HWND in_hWnd, const CommandLineArgs& 
 
     *this << "\nTimers (ms)\n"
         << "-----------------------------------------------------------------------------------------------------------\n"
-        << "cpu_draw TUM::EndFrame exec_cmd_list wait_present total_frame_time evictions copies cpu_feedback feedback_resolve num_resolves num_submits\n"
+        << "cpu_draw TUM::EndFrame exec_cmd_list wait_present total_frame_time evictions_completed copies_completed cpu_feedback feedback_resolve num_resolves num_submits\n"
         << "-----------------------------------------------------------------------------------------------------------\n";
 
     for (auto& e : m_events)

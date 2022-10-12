@@ -48,9 +48,7 @@ TileUpdateManager* TileUpdateManager::Create(
 
     const TileUpdateManagerDesc& in_desc)
 {
-    auto p = new Streaming::TileUpdateManagerBase(in_pDevice, in_pDirectCommandQueue, in_desc);
-    p->UseDirectStorage(in_desc.m_useDirectStorage);
-    return p;
+    return new Streaming::TileUpdateManagerBase(in_pDevice, in_pDirectCommandQueue, in_desc);
 }
 
 void Streaming::TileUpdateManagerBase::Destroy()
@@ -168,6 +166,11 @@ void Streaming::TileUpdateManagerBase::SetVisualizationMode(UINT in_mode)
     }
 
     m_pDataUploader->SetVisualizationMode(in_mode);
+}
+
+void Streaming::TileUpdateManagerBase::CaptureTraceFile(bool in_captureTrace)
+{
+    m_pDataUploader->CaptureTraceFile(in_captureTrace);
 }
 
 //-----------------------------------------------------------------------------

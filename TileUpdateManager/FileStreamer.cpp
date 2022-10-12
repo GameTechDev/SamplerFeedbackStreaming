@@ -96,6 +96,55 @@ Streaming::FileStreamer::FileStreamer(ID3D12Device* in_pDevice)
     }
 }
 
+Streaming::FileStreamer::~FileStreamer()
+{
+    // write trace file
+    if (m_captureTrace)
+    {
+        int index = 0;
+        while (1)
+        {
+            std::wstring unique = L"uploadTraceFile_" + std::to_wstring(++index) + L".json";
+            if (!std::filesystem::exists(unique))
+            {
+                m_trace.Write(unique);
+                break;
+            }
+        }
+    }
+}
+
+//-----------------------------------------------------------------------------
+// append an upload request to the trace file
+//-----------------------------------------------------------------------------
+void Streaming::FileStreamer::TraceRequest(const D3D12_TILED_RESOURCE_COORDINATE& in_coord,
+    UINT64 in_offset, UINT64 in_fileHandle, UINT32 in_numBytes)
+{
+    auto& r = m_trace.GetRoot()["submits"][m_traceSubmitIndex][m_traceRequestIndex++];
+    r["coord"][0] = in_coord.X;
+    r["coord"][1] = in_coord.Y;
+    r["coord"][2] = in_coord.Subresource;
+    r["off"] = in_offset;
+    r["file"] = in_fileHandle;
+    r["size"] = in_numBytes;
+}
+
+//-----------------------------------------------------------------------------
+// capture submit() to the trace file
+// increments index to next array of requests
+//-----------------------------------------------------------------------------
+void Streaming::FileStreamer::TraceSubmit()
+{
+    if (m_firstSubmit) // ignore first submit while tracing in case enabled mid-frame.
+    {
+        m_firstSubmit = false;
+        return;
+    }
+    ASSERT(0 != m_traceRequestIndex); // should never call Submit() without any requests
+    m_traceRequestIndex = 0;
+    m_traceSubmitIndex++;
+}
+
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 void Streaming::FileStreamer::InitializeBC7()

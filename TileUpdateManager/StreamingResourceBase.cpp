@@ -495,7 +495,7 @@ void Streaming::StreamingResourceBase::AbandonPendingLoads()
 //-----------------------------------------------------------------------------
 UINT Streaming::StreamingResourceBase::QueueTiles()
 {
-    UINT uploadRequested = 0;
+    UINT uploadsRequested = 0;
 
     UINT numEvictions = (UINT)m_pendingEvictions.GetReadyToEvict().size();
     UINT numLoads = (UINT)m_pendingTileLoads.size();
@@ -513,7 +513,8 @@ UINT Streaming::StreamingResourceBase::QueueTiles()
         // queue as many new tiles as possible
         if (numLoads && m_pHeap->GetAllocator().GetAvailable())
         {
-            uploadRequested = QueuePendingTileLoads(&scratchUL);
+            QueuePendingTileLoads(&scratchUL);
+            uploadsRequested = (UINT)scratchUL.m_coords.size(); // number of uploads in UpdateList
             numLoads = (UINT)m_pendingTileLoads.size();
         }
 
@@ -531,7 +532,7 @@ UINT Streaming::StreamingResourceBase::QueueTiles()
             m_pTileUpdateManager->SubmitUpdateList(*pUpdateList);
         }
     }
-    return uploadRequested;
+    return uploadsRequested;
 }
 
 /*-----------------------------------------------------------------------------
@@ -623,7 +624,7 @@ void Streaming::StreamingResourceBase::QueuePendingTileEvictions(Streaming::Upda
 // FIFO order: work from the front of the array
 // NOTE: greedy, takes every available UpdateList if it can
 //-----------------------------------------------------------------------------
-UINT Streaming::StreamingResourceBase::QueuePendingTileLoads(Streaming::UpdateList* out_pUpdateList)
+void Streaming::StreamingResourceBase::QueuePendingTileLoads(Streaming::UpdateList* out_pUpdateList)
 {
     ASSERT(out_pUpdateList);
     ASSERT(m_pHeap->GetAllocator().GetAvailable());
@@ -682,8 +683,6 @@ UINT Streaming::StreamingResourceBase::QueuePendingTileLoads(Streaming::UpdateLi
     {
         m_pendingTileLoads.erase(m_pendingTileLoads.begin() + skippedIndex, m_pendingTileLoads.begin() + numConsumed);
     }
-
-    return numConsumed;
 }
 
 //-----------------------------------------------------------------------------

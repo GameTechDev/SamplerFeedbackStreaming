@@ -92,6 +92,8 @@ m_numSwapBuffers(in_desc.m_swapChainBufferCount)
 
     // advance frame number to the first frame...
     m_frameFenceValue++;
+
+    UseDirectStorage(in_desc.m_useDirectStorage);
 }
 
 Streaming::TileUpdateManagerBase::~TileUpdateManagerBase()
@@ -247,15 +249,19 @@ void Streaming::TileUpdateManagerBase::ProcessFeedbackThread()
             staleResources.resize(newStaleSize); // compact array
         }
 
-        // tell the file streamer to signal the corresponding fence
-        if ((flushPendingUploadRequests) || // flush requests from previous frame
-            (0 == staleResources.size()) || // flush because there's no more work to be done (no stale resources, all feedback has been processed)
-            // if we need updatelists and there is a minimum amount of pending work, go ahead and submit
-            // this minimum heuristic prevents "storms" of submits with too few tiles to sustain good throughput
-            ((0 == m_pDataUploader->GetNumUpdateListsAvailable()) && (uploadsRequested > m_minNumUploadRequests)))
+        // if there are uploads, maybe signal depending on heuristic to minimize # signals
+        if (uploadsRequested)
         {
-            SignalFileStreamer();
-            uploadsRequested = 0;
+            // tell the file streamer to signal the corresponding fence
+            if ((flushPendingUploadRequests) || // flush requests from previous frame
+                (0 == staleResources.size()) || // flush because there's no more work to be done (no stale resources, all feedback has been processed)
+                // if we need updatelists and there is a minimum amount of pending work, go ahead and submit
+                // this minimum heuristic prevents "storms" of submits with too few tiles to sustain good throughput
+                ((0 == m_pDataUploader->GetNumUpdateListsAvailable()) && (uploadsRequested > m_minNumUploadRequests)))
+            {
+                SignalFileStreamer();
+                uploadsRequested = 0;
+            }
         }
 
         // nothing to do? wait for next frame

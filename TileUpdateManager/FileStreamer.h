@@ -27,6 +27,7 @@
 #pragma once
 
 #include "Streaming.h"
+#include "ConfigurationParser.h"
 
 namespace Streaming
 {
@@ -43,7 +44,7 @@ namespace Streaming
     {
     public:
         FileStreamer(ID3D12Device* in_pDevice);
-        virtual ~FileStreamer() {}
+        virtual ~FileStreamer();
 
         virtual FileHandle* OpenFile(const std::wstring& in_path) = 0;
 
@@ -60,6 +61,8 @@ namespace Streaming
         void SetVisualizationMode(UINT in_mode) { m_visualizationMode = (VisualizationMode)in_mode; }
 
         bool GetCompleted(const UpdateList& in_updateList) const;
+
+        void CaptureTraceFile(bool in_captureTrace) { m_captureTrace = in_captureTrace; } // enable/disable writing requests/submits to a trace file
     protected:
         // copy queue fence
         ComPtr<ID3D12Fence> m_copyFence;
@@ -79,5 +82,17 @@ namespace Streaming
 
         static BYTE m_BC1[m_lutSize][D3D12_TILED_RESOURCE_TILE_SIZE_IN_BYTES];
         void InitializeBC1();
+
+        // trace file
+        bool m_captureTrace{ false };
+
+        void TraceRequest(const D3D12_TILED_RESOURCE_COORDINATE& in_coord,
+            UINT64 in_offset, UINT64 in_fileHandle, UINT32 in_numBytes);
+        void TraceSubmit();
+    private:
+        bool m_firstSubmit{ true };
+        ConfigurationParser m_trace; // array of submits, each submit is an array of requests
+        UINT m_traceSubmitIndex{ 0 };
+        UINT m_traceRequestIndex{ 0 };
     };
 }

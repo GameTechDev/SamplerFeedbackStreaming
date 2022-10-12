@@ -113,5 +113,6 @@ struct CommandLineArgs
 
     TerrainGenerator::Params m_terrainParams;
 
+    bool m_captureTrace{ false }; // capture a trace file of tile uploads
     int m_threadPriority{ 0 }; // applies to internal threads
 };

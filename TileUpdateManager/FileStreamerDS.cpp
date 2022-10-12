@@ -62,7 +62,7 @@ void Streaming::FileStreamerDS::StreamTexture(Streaming::UpdateList& in_updateLi
     DXGI_FORMAT textureFormat = pTextureFileInfo->GetFormat();
     auto pDstHeap = in_updateList.m_pStreamingResource->GetHeap();
 
-    DSTORAGE_REQUEST request = {};
+    DSTORAGE_REQUEST request{};
     request.Options.DestinationType = DSTORAGE_REQUEST_DESTINATION_TILES;
     request.Destination.Tiles.TileRegionSize = D3D12_TILE_REGION_SIZE{ 1, FALSE, 0, 0, 0 };
 
@@ -77,7 +77,7 @@ void Streaming::FileStreamerDS::StreamTexture(Streaming::UpdateList& in_updateLi
         {
             request.Source.File.Offset = pTextureFileInfo->GetFileOffset(in_updateList.m_coords[i], request.Source.File.Size);
 
-            D3D12_TILED_RESOURCE_COORDINATE coord;
+            D3D12_TILED_RESOURCE_COORDINATE coord{};
             ID3D12Resource* pAtlas = pDstHeap->ComputeCoordFromTileIndex(coord, in_updateList.m_heapIndices[i], textureFormat);
 
             request.Destination.Tiles.Resource = pAtlas;
@@ -85,6 +85,11 @@ void Streaming::FileStreamerDS::StreamTexture(Streaming::UpdateList& in_updateLi
             request.Options.CompressionFormat = (DSTORAGE_COMPRESSION_FORMAT)pTextureFileInfo->GetCompressionFormat();
 
             m_fileQueue->EnqueueRequest(&request);
+
+            if (m_captureTrace)
+            {
+                TraceRequest(coord, request.Source.File.Offset, (UINT64)request.Source.File.Source, (UINT32)request.Source.File.Size);
+            }
         }
     }
     else // visualization color is loaded from memory
@@ -98,7 +103,7 @@ void Streaming::FileStreamerDS::StreamTexture(Streaming::UpdateList& in_updateLi
         {
             request.Source.Memory.Source = GetVisualizationData(in_updateList.m_coords[i], textureFormat);
 
-            D3D12_TILED_RESOURCE_COORDINATE coord;
+            D3D12_TILED_RESOURCE_COORDINATE coord{};
             ID3D12Resource* pAtlas = pDstHeap->ComputeCoordFromTileIndex(coord, in_updateList.m_heapIndices[i], textureFormat);
 
             request.Destination.Tiles.Resource = pAtlas;
@@ -122,6 +127,8 @@ void Streaming::FileStreamerDS::Signal()
     {
         m_fileQueue->EnqueueSignal(m_copyFence.Get(), m_copyFenceValue);
         m_fileQueue->Submit();
+
+        if (m_captureTrace) { TraceSubmit(); }
     }
     else
     {

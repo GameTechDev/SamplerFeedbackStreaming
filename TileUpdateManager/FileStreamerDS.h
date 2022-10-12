@@ -16,8 +16,6 @@ namespace Streaming
         virtual FileHandle* OpenFile(const std::wstring& in_path) override;
         virtual void StreamTexture(Streaming::UpdateList& in_updateList) override;
 
-        static IDStorageFile* GetFileHandle(const FileHandle* in_pHandle);
-
         // for DS, we don't have a way to batch batches
         // this allows the calling thread to periodically request Submit() vs. every enqueue
         virtual void Signal() override;
@@ -39,5 +37,7 @@ namespace Streaming
 
         // memory queue when for visualization modes, which copy from cpu memory
         ComPtr<IDStorageQueue> m_memoryQueue;
+
+        static IDStorageFile* GetFileHandle(const FileHandle* in_pHandle);
     };
 };

@@ -326,7 +326,7 @@ namespace Streaming
         // only push evictions to DataUploader once per rendered frame (i.e. "on the next frame")
         void QueuePendingTileEvictions(Streaming::UpdateList* out_pUpdateList);
 
-        UINT QueuePendingTileLoads(Streaming::UpdateList* out_pUpdateList); // returns # tiles queued
+        void QueuePendingTileLoads(Streaming::UpdateList* out_pUpdateList); // returns # tiles queued
 
         void LoadPackedMips();
 

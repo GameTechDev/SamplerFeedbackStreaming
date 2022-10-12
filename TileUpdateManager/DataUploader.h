@@ -93,6 +93,7 @@ namespace Streaming
         float GetApproximateTileCopyLatency() const { return m_pFenceThreadTimer->GetSecondsFromDelta(m_totalTileCopyLatency); } // sum of per-tile latencies so far
 
         void SetVisualizationMode(UINT in_mode) { m_pFileStreamer->SetVisualizationMode(in_mode); }
+        void CaptureTraceFile(bool in_captureTrace) { m_pFileStreamer->CaptureTraceFile(in_captureTrace); }
     private:
         // upload buffer size
         const UINT m_stagingBufferSizeMB{ 0 };
