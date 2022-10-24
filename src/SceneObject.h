@@ -90,8 +90,8 @@ namespace SceneObjects
 
         void CopyGeometry(const BaseObject* in_pObjectForSharedHeap);
 
-        void SetGeometry(ID3D12Resource* in_pVertexBuffer, UINT in_numVertices, UINT in_vertexSize,
-            ID3D12Resource* in_pIndexBuffer, UINT in_numIndices, UINT in_lod = 0);
+        void SetGeometry(ID3D12Resource* in_pVertexBuffer, UINT in_vertexSize,
+            ID3D12Resource* in_pIndexBuffer, UINT in_lod = 0);
 
         void SetFeedbackEnabled(bool in_value) { m_feedbackEnabled = in_value; }
     protected:

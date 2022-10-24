@@ -14,9 +14,12 @@ EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Expanse", "src\Expanse_vs2022.vcxproj", "{E9BCC846-C1E9-402F-AC99-0E72195202AC}"
 	ProjectSection(ProjectDependencies) = postProject
 		{12A36A45-4A15-48E3-B886-257E81FD57C6} = {12A36A45-4A15-48E3-B886-257E81FD57C6}
+		{273A5112-7D55-4A16-829A-E4F73E4BACE7} = {273A5112-7D55-4A16-829A-E4F73E4BACE7}
 		{369039E2-4C18-40D9-A7FE-E3D87BA23149} = {369039E2-4C18-40D9-A7FE-E3D87BA23149}
 		{45087328-C272-4BB6-BB09-95D899D2276A} = {45087328-C272-4BB6-BB09-95D899D2276A}
 	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "tracePlayer", "tracePlayer\tracePlayer.vcxproj", "{273A5112-7D55-4A16-829A-E4F73E4BACE7}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -40,12 +43,17 @@ Global
 		{E9BCC846-C1E9-402F-AC99-0E72195202AC}.Debug|x64.Build.0 = Debug|x64
 		{E9BCC846-C1E9-402F-AC99-0E72195202AC}.Release|x64.ActiveCfg = Release|x64
 		{E9BCC846-C1E9-402F-AC99-0E72195202AC}.Release|x64.Build.0 = Release|x64
+		{273A5112-7D55-4A16-829A-E4F73E4BACE7}.Debug|x64.ActiveCfg = Debug|x64
+		{273A5112-7D55-4A16-829A-E4F73E4BACE7}.Debug|x64.Build.0 = Debug|x64
+		{273A5112-7D55-4A16-829A-E4F73E4BACE7}.Release|x64.ActiveCfg = Release|x64
+		{273A5112-7D55-4A16-829A-E4F73E4BACE7}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{369039E2-4C18-40D9-A7FE-E3D87BA23149} = {EB9EA81E-AD7B-4F2F-B8A9-AFC9282303C9}
+		{273A5112-7D55-4A16-829A-E4F73E4BACE7} = {EB9EA81E-AD7B-4F2F-B8A9-AFC9282303C9}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {CECC8215-A95C-44A3-94DC-6A6AEE5A841B}

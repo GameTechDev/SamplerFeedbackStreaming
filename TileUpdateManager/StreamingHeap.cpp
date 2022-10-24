@@ -101,7 +101,7 @@ UINT Streaming::Atlas::CreateAtlas(
     // Layout must be D3D12_TEXTURE_LAYOUT_64KB_UNDEFINED_SWIZZLE when creating reserved resources
     rd.Layout = D3D12_TEXTURE_LAYOUT_64KB_UNDEFINED_SWIZZLE;
 
-    // this will only every be a copy dest
+    // this will only ever be a copy dest
     ThrowIfFailed(device->CreateReservedResource(&rd, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&out_pDst)));
     out_pDst->SetName(L"DataUploader::m_atlas");
 

@@ -213,9 +213,11 @@ void Streaming::TileUpdateManagerBase::ProcessFeedbackThread()
         {
             UINT newStaleSize = 0; // track number of stale resources, then resize the array to the updated number
             UINT staleIndex = 0;
+
+            // loop over stale resources
             for (; staleIndex < staleResources.size(); staleIndex++)
             {
-                if (m_pDataUploader->GetNumUpdateListsAvailable())
+                if (m_pDataUploader->GetNumUpdateListsAvailable() && m_threadsRunning)
                 {
                     UINT resourceIndex = staleResources[staleIndex];
                     uploadsRequested += m_streamingResources[resourceIndex]->QueueTiles();
@@ -231,10 +233,8 @@ void Streaming::TileUpdateManagerBase::ProcessFeedbackThread()
                         pending[resourceIndex] = 0; // clear the flag that prevents duplicates
                     }
                 }
-                else
+                else // compact the stale array with a memcpy and do no further processing.
                 {
-                    // if no UpdateLists, then compact the stale array with a memcpy and do no further processing.
-
                     UINT numNotUpdated = UINT(staleResources.size() - staleIndex);
                     if (0 != staleIndex) // no need to move contents if no changes made
                     {

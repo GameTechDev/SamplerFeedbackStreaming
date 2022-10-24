@@ -271,8 +271,7 @@ void SceneObjects::BaseObject::CopyGeometry(const BaseObject* in_pObjectForShare
 
 //-------------------------------------------------------------------------
 //-------------------------------------------------------------------------
-void SceneObjects::BaseObject::SetGeometry(ID3D12Resource* in_pVertexBuffer, UINT in_numVertices, UINT in_vertexSize,
-    ID3D12Resource* in_pIndexBuffer, UINT in_numIndices, UINT in_lod)
+void SceneObjects::BaseObject::SetGeometry(ID3D12Resource* in_pVertexBuffer, UINT in_vertexSize, ID3D12Resource* in_pIndexBuffer, UINT in_lod)
 {
     if (in_lod >= m_lods.size())
     {
@@ -287,9 +286,9 @@ void SceneObjects::BaseObject::SetGeometry(ID3D12Resource* in_pVertexBuffer, UIN
     in_pVertexBuffer->Release();
     in_pIndexBuffer->Release();
 
-    lod.m_numIndices = in_numIndices;
-    lod.m_vertexBufferView = { lod.m_vertexBuffer->GetGPUVirtualAddress(), in_numVertices * in_vertexSize,  in_vertexSize };
-    lod.m_indexBufferView = { lod.m_indexBuffer->GetGPUVirtualAddress(), UINT(in_numIndices * sizeof(UINT32)), DXGI_FORMAT_R32_UINT };
+    lod.m_numIndices = (UINT)in_pIndexBuffer->GetDesc().Width / sizeof(UINT32);
+    lod.m_vertexBufferView = { lod.m_vertexBuffer->GetGPUVirtualAddress(), (UINT)in_pVertexBuffer->GetDesc().Width,  in_vertexSize};
+    lod.m_indexBufferView = { lod.m_indexBuffer->GetGPUVirtualAddress(), (UINT)in_pIndexBuffer->GetDesc().Width, DXGI_FORMAT_R32_UINT};
 }
 
 //-------------------------------------------------------------------------
@@ -310,19 +309,28 @@ void SceneObjects::BaseObject::Draw(ID3D12GraphicsCommandList1* in_pCommandList,
             DirectX::XMVECTOR distance = DirectX::XMVectorSubtract(pos, eye);
             distance = DirectX::XMVector3LengthEst(distance);
 
-            // FIXME? could store bounding sphere diameter in object
-            DirectX::XMVECTOR scale = DirectX::XMVector3LengthEst(m_matrix.r[0]);
-            float objectSize = DirectX::XMVectorGetX(scale);
+            // spheres behind the view won't be visible
+            if (DirectX::XMVectorGetX(distance) < 0)
+            {
+                lod = UINT(m_lods.size() - 1);
+            }
+            else
+            {
 
-            float distanceToEye = DirectX::XMVectorGetX(distance);
-            // slow lod progression with distance
-            distanceToEye = std::powf(distanceToEye, 0.95f);
+                // FIXME? could store bounding sphere diameter in object
+                DirectX::XMVECTOR scale = DirectX::XMVector3LengthEst(m_matrix.r[0]);
+                float objectSize = DirectX::XMVectorGetX(scale);
 
-            float lodBias = 0.1f * (float)SharedConstants::SPHERE_LOD_BIAS;
-            float ratio = distanceToEye / (objectSize * lodBias);
+                float distanceToEye = DirectX::XMVectorGetX(distance);
+                // slow lod progression with distance
+                distanceToEye = std::powf(distanceToEye, 0.95f);
 
-            // clamp to the number of lods
-            lod = std::min((UINT)m_lods.size() - 1, UINT(ratio));
+                float lodBias = 0.1f * (float)SharedConstants::SPHERE_LOD_BIAS;
+                float ratio = distanceToEye / (objectSize * lodBias);
+
+                // clamp to the number of lods
+                lod = std::min((UINT)m_lods.size() - 1, UINT(ratio));
+            }
         }
         const auto& geometry = m_lods[lod];
 
@@ -375,7 +383,7 @@ void SceneObjects::CreateSphereResources(
     std::vector<SphereGen::Vertex> sphereVerts;
     std::vector<UINT32> sphereIndices;
 
-    SphereGen::Create(sphereVerts, sphereIndices, &in_sphereProperties);
+    SphereGen::Create(sphereVerts, sphereIndices, in_sphereProperties);
 
     // build vertex buffer
     {
@@ -432,17 +440,10 @@ void SceneObjects::CreateSphere(SceneObjects::BaseObject* out_pObject,
         sphereProperties.m_numLong = UINT(in_sphereProperties.m_numLong * lodScaleFactor);
         lodScaleFactor -= lodStepFactor;
 
-        std::vector<SphereGen::Vertex> sphereVerts;
-        std::vector<UINT32> sphereIndices;
-        SphereGen::Create(sphereVerts, sphereIndices, &sphereProperties);
-
         ID3D12Resource* pVertexBuffer{ nullptr };
         ID3D12Resource* pIndexBuffer{ nullptr };
         CreateSphereResources(&pVertexBuffer, &pIndexBuffer, in_pDevice, sphereProperties, in_assetUploader);
-
-        out_pObject->SetGeometry(
-            pVertexBuffer, (UINT)sphereVerts.size(), (UINT)sizeof(SphereGen::Vertex),
-            pIndexBuffer, (UINT)sphereIndices.size(), lod);
+        out_pObject->SetGeometry(pVertexBuffer, (UINT)sizeof(SphereGen::Vertex), pIndexBuffer, lod);
     }
 }
 
@@ -509,8 +510,7 @@ SceneObjects::Terrain::Terrain(const std::wstring& in_filename,
             D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_INDEX_BUFFER);
     }
 
-    SetGeometry(pVertexBuffer, (UINT)mesh.GetVertices().size(), (UINT)sizeof(TerrainGenerator::Vertex),
-        pIndexBuffer, mesh.GetNumIndices());
+    SetGeometry(pVertexBuffer, (UINT)sizeof(TerrainGenerator::Vertex), pIndexBuffer);
 }
 
 //=========================================================================
@@ -578,6 +578,7 @@ SceneObjects::Sky::Sky(const std::wstring& in_filename,
     sphereProperties.m_numLong = 80;
     sphereProperties.m_numLat = 81;
     sphereProperties.m_mirrorU = true;
+    sphereProperties.m_topBottom = true;
     CreateSphere(this, in_pDevice, in_assetUploader, sphereProperties);
     float d = SharedConstants::SPHERE_SCALE * 200;
     GetModelMatrix() = DirectX::XMMatrixScaling(d, d, d);

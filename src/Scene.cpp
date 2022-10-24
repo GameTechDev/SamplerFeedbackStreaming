@@ -496,7 +496,7 @@ void Scene::CreateDescriptorHeaps()
 }
 
 //-----------------------------------------------------------------------------
-// Create synchronization objects and wait until assets have been uploaded to the GPU.
+// Create synchronization objects
 //-----------------------------------------------------------------------------
 void Scene::CreateFence()
 {
@@ -797,6 +797,7 @@ void Scene::LoadSpheres()
             sphereProperties.m_numLat = m_args.m_sphereLat;
             sphereProperties.m_numLong = m_args.m_sphereLong;
             sphereProperties.m_mirrorU = true;
+            sphereProperties.m_topBottom = true;
 
             // 3 options: sphere, earth, sky
 
@@ -821,6 +822,7 @@ void Scene::LoadSpheres()
                 if (nullptr == m_pEarth)
                 {
                     sphereProperties.m_mirrorU = false;
+                    sphereProperties.m_topBottom = false;
                     o = new SceneObjects::Planet(textureFilename, m_pTileUpdateManager, pHeap, m_device.Get(), m_assetUploader, m_args.m_sampleCount, descCPU, sphereProperties);
                     m_pEarth = o;
                 }

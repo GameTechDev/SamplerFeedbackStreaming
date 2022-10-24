@@ -50,6 +50,7 @@ namespace Streaming
         ID3D12Resource* GetTiledResource() const { return m_resources->GetTiledResource(); }
 
         const FileHandle* GetFileHandle() const { return m_pFileHandle.get(); }
+        const std::wstring& GetFileName() const { return m_filename; }
 
         std::vector<BYTE>& GetPaddedPackedMips(UINT& out_uncompressedSize) { out_uncompressedSize = m_packedMipsUncompressedSize; return m_packedMips; }
 

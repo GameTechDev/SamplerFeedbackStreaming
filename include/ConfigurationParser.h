@@ -141,7 +141,7 @@ public:
         KVP() {}
         template<typename T> KVP(T in_t) { *this = in_t; }
  
-        // root["x"] = root["y"] has a race: root["y"] may bcome invalid if root["x"] must be created
+        // root["x"] = root["y"] has a race: root["y"] may become invalid if root["x"] must be created
         // this solution (copy source before copy assignment) is more expensive, but more robust
         KVP& operator= (const KVP o)
         {
@@ -166,6 +166,12 @@ public:
     };
 
     //-------------------------------------------------------------------------
+    //-------------------------------------------------------------------------
+    ConfigurationParser() {};
+    ConfigurationParser(const std::wstring& in_filePath) { m_readSuccess = Read(in_filePath); };
+    bool GetReadSuccess() const { return m_readSuccess; }
+
+    //-------------------------------------------------------------------------
     // read file
     //-------------------------------------------------------------------------
     bool Read(const std::wstring& in_filePath);
@@ -176,10 +182,12 @@ public:
     void Write(const std::wstring& in_filePath) const;
 
     KVP& GetRoot() { return m_value; }
+    const KVP& GetRoot() const { return m_value; }
 
 private:
 
     using Tokens = std::vector<std::string>;
+    bool m_readSuccess{ true }; // only false if Read() failed
 
     inline void ParseError(uint32_t in_pos)
     {
@@ -638,7 +646,7 @@ inline void ConfigurationParser::KVP::Write(std::ofstream& in_ofs, uint32_t in_t
     {
         if (m_isString)
         {
-            in_ofs << '"' << m_data << '"';
+            in_ofs << '\"' << m_data.c_str() << '\"';
         }
         else
         {

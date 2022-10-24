@@ -155,6 +155,8 @@ namespace Streaming
         UINT GetNumTilesHeight() const { return m_tileReferencesHeight; }
 
     protected:
+        const std::wstring m_filename;
+
         // object that streams data from a file
         std::unique_ptr<Streaming::XeTexture> m_pTextureFileInfo;
         std::unique_ptr<Streaming::InternalResources> m_resources;
@@ -256,9 +258,6 @@ namespace Streaming
         std::atomic<bool> m_setZeroRefCounts{ false };
 
     private:
-
-        const std::wstring m_filename;
-
         // do not immediately decmap:
         // need to withhold until in-flight command buffers have completed
         class EvictionDelay

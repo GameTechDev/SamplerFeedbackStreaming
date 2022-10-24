@@ -284,6 +284,11 @@ ID3D12CommandList* pCommandLists[] = { commandLists.m_beforeDrawCommands, m_comm
 
 ## Log
 
+- 2022-10-24: Added DirectStorage trace playback utility to measure performance of file upload independent of rendering. For example, to capture and playback the DirectStorage requests and submits for 500 "stressful" frames with a staging buffer size of 128MB, cd to the build directory and:
+```
+stress.bat -timingstart 200 -timingstop 700 -capturetrace
+traceplayer.exe -file uploadTraceFile_1.json -mediadir media -staging 128
+```
 - 2022-06-10: File format (.xet) change. DdsToXet can upgrade old Xet files to the new format. Assets in the DDS directory are exported at build time into media directory. Upgrade to DirectStorage v1.0.2. Many misc. improvements.
 - 2022-05-05: Workaround for rare race condition. Many tweaks and improvements.
 - 2022-03-14: DirectStorage 1.0.0 integrated into mainline

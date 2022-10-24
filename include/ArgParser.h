@@ -198,7 +198,7 @@ inline void ArgParser::Parse()
 template<typename T> inline void ArgParser::AddArg(std::wstring s, ArgFunction f, T default_value, std::wstring d)
 {
     std::wstringstream w;
-    w << ": " << d << " (default: " << default_value << ") ";
+    w << d << " (default: " << default_value << ") ";
     AddArg(s, f, w.str());
 }
 

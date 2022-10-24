@@ -28,6 +28,7 @@
 
 #include "Streaming.h"
 #include "ConfigurationParser.h"
+#include <unordered_map>
 
 namespace Streaming
 {
@@ -86,13 +87,15 @@ namespace Streaming
         // trace file
         bool m_captureTrace{ false };
 
-        void TraceRequest(const D3D12_TILED_RESOURCE_COORDINATE& in_coord,
-            UINT64 in_offset, UINT64 in_fileHandle, UINT32 in_numBytes);
+        void TraceRequest(
+            ID3D12Resource* in_pDstResource, const D3D12_TILED_RESOURCE_COORDINATE& in_dstCoord,
+            const std::wstring& in_srcFilename, UINT64 in_srcOffset, UINT32 in_srcNumBytes, UINT32 in_compressionFormat);
         void TraceSubmit();
     private:
         bool m_firstSubmit{ true };
         ConfigurationParser m_trace; // array of submits, each submit is an array of requests
         UINT m_traceSubmitIndex{ 0 };
         UINT m_traceRequestIndex{ 0 };
+        std::unordered_map<ID3D12Resource*, D3D12_RESOURCE_DESC> m_tracingResources;
     };
 }

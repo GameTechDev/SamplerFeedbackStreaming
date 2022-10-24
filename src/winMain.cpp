@@ -459,8 +459,8 @@ void LoadConfigFile(std::wstring& in_configFileName, CommandLineArgs& out_args)
     filePath.remove_filename().append(in_configFileName);
     if (std::filesystem::exists(filePath))
     {
-        ConfigurationParser parser;
-        success = parser.Read(filePath);
+        const ConfigurationParser parser(filePath);
+        success = parser.GetReadSuccess();
 
         if (success)
         {

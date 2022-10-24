@@ -53,11 +53,6 @@ after running, m_float=20.27 and m_flipGravity=true
 -----------------------------------------------------------------------------*/
 #pragma once
 
-#ifdef _DEBUG
-#include <assert.h>
-#define ASSERT(X) assert(X)
-inline void ThrowIfFailed(HRESULT hr) { assert(SUCCEEDED(hr)); }
-
 //==================================================
 // auto t = AutoString::Concat("test: ", 3, "*", 2.75f, "\n");
 //==================================================
@@ -79,8 +74,12 @@ private:
         Expander(in_w, ts...);
     }
 };
-#define DebugPrint(...) OutputDebugString(AutoString::Concat(__VA_ARGS__).c_str());
 
+#ifdef _DEBUG
+#include <assert.h>
+#define ASSERT(X) assert(X)
+#define DebugPrint(...) OutputDebugString(AutoString::Concat(__VA_ARGS__).c_str());
+inline void ThrowIfFailed(HRESULT hr) { assert(SUCCEEDED(hr)); }
 #else
 #define ASSERT(X)
 #define DebugPrint(...)

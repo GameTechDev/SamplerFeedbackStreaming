@@ -343,11 +343,18 @@ void Gui::Draw(ID3D12GraphicsCommandList* in_pCommandList,
     in_args.m_showFeedbackMaps = ImGui::CollapsingHeader("Terrain Object Feedback Viewer");
     if (in_args.m_showFeedbackMaps)
     {
+        in_args.m_cameraUpLock = true;
+
         ImGui::Indent(indent);
         ImGui::Checkbox("Mip Window Orientation", &in_args.m_showFeedbackMapVertical);
         ImGui::Checkbox("Raw Feedback", &in_args.m_showFeedbackViewer);
         ImGui::SliderInt("Scroll", &in_args.m_visualizationBaseMip, 0, in_drawParams.m_scrollMipDim);
+        ImGui::Checkbox("Lock \"Up\" Dir", &in_args.m_cameraUpLock);
         ImGui::Unindent(indent);
+    }
+    else
+    {
+        in_args.m_cameraUpLock = false;
     }
 
     //---------------------------------------------------------------------

@@ -32,6 +32,8 @@
 #include "StreamingResourceDU.h"
 #include "StreamingHeap.h"
 
+static const  D3D12_COMMAND_LIST_TYPE g_commandListType = D3D12_COMMAND_LIST_TYPE_COPY;
+
 //-----------------------------------------------------------------------------
 // Constructor
 //-----------------------------------------------------------------------------
@@ -47,7 +49,7 @@ Streaming::FileStreamerReference::FileStreamerReference(ID3D12Device* in_pDevice
 
     D3D12_COMMAND_QUEUE_DESC queueDesc = {};
     queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
-    queueDesc.Type = D3D12_COMMAND_LIST_TYPE_COPY;
+    queueDesc.Type = g_commandListType;
     ThrowIfFailed(in_pDevice->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&m_copyCommandQueue)));
     m_copyCommandQueue->SetName(L"FileStreamerReference::m_copyCommandQueue");
 
@@ -66,7 +68,7 @@ Streaming::FileStreamerReference::FileStreamerReference(ID3D12Device* in_pDevice
         copyBatchIndex++;
     }
 
-    ThrowIfFailed(in_pDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_COPY, m_copyBatches[0].GetCommandAllocator(), nullptr, IID_PPV_ARGS(&m_copyCommandList)));
+    ThrowIfFailed(in_pDevice->CreateCommandList(0, queueDesc.Type, m_copyBatches[0].GetCommandAllocator(), nullptr, IID_PPV_ARGS(&m_copyCommandList)));
     m_copyCommandList->SetName(L"FileStreamerReference::m_copyCommandList");
     m_copyCommandList->Close();
 
@@ -98,7 +100,7 @@ Streaming::FileStreamerReference::~FileStreamerReference()
 //=============================================================================
 void Streaming::FileStreamerReference::CopyBatch::Init(ID3D12Device* in_pDevice)
 {
-    ThrowIfFailed(in_pDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_COPY, IID_PPV_ARGS(&m_commandAllocator)));
+    ThrowIfFailed(in_pDevice->CreateCommandAllocator(g_commandListType, IID_PPV_ARGS(&m_commandAllocator)));
 }
 
 
