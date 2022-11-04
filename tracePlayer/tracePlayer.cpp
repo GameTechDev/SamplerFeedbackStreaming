@@ -62,25 +62,19 @@
 //-----------------------------------------------------------------------------
 void FindPath(std::wstring& out_path)
 {
-    std::wstring inPath = std::filesystem::path(out_path);
-
-    WCHAR buffer[MAX_PATH];
-    GetModuleFileName(nullptr, buffer, MAX_PATH);
-    std::filesystem::path exePath(buffer);
-    exePath.remove_filename();
-
     // if the desired media path doesn't exist, try looking relative to the executable
-    if (!std::filesystem::exists(inPath))
+    if (!std::filesystem::exists(out_path))
     {
-        std::filesystem::path testPath = exePath;
-        testPath.append(inPath);
-        if (std::filesystem::exists(testPath))
+        WCHAR buffer[MAX_PATH];
+        GetModuleFileName(nullptr, buffer, _countof(buffer));
+        auto path = std::filesystem::path(buffer).remove_filename().append(out_path);
+        if (std::filesystem::exists(path))
         {
-            out_path = testPath;
+            out_path = path;
         }
         else
         {
-            ErrorMessage("Path not found: \"", inPath, "\" also tried: ", testPath);
+            ErrorMessage("Path not found: \"", out_path, "\" also tried: ", path);
         }
     }
 }
@@ -235,8 +229,6 @@ ID3D12Resource* TracePlayer::CreateDestinationResource(UINT& out_numTiles, DXGI_
     // this will only ever be a copy dest
     ID3D12Resource* pResource{ nullptr };
     ThrowIfFailed(m_device->CreateReservedResource(&rd, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&pResource)));
-
-    std::vector<D3D12_SUBRESOURCE_TILING> tiling(in_subresourceCount);
     m_device->GetResourceTiling(pResource, &out_numTiles, nullptr, nullptr, nullptr, 0, nullptr);
 
     return pResource;
@@ -295,7 +287,7 @@ void TracePlayer::LoadTraceFile()
     //---------------------------------
     {
         const auto& resources = traceFile.GetRoot()["resources"];
-        UINT numTilesTotal{ 0 };
+        UINT64 numTilesTotal{ 0 };
         std::vector<UINT> tilesPerResource;
         for (const auto& r : resources)
         {
@@ -310,7 +302,7 @@ void TracePlayer::LoadTraceFile()
 
             tilesPerResource.push_back(numTiles);
         }
-        UINT heapSize = numTilesTotal * D3D12_TILED_RESOURCE_TILE_SIZE_IN_BYTES;
+        UINT64 heapSize = numTilesTotal * D3D12_TILED_RESOURCE_TILE_SIZE_IN_BYTES;
         CD3DX12_HEAP_DESC heapDesc(heapSize, D3D12_HEAP_TYPE_DEFAULT, 0, D3D12_HEAP_FLAG_DENY_BUFFERS | D3D12_HEAP_FLAG_DENY_RT_DS_TEXTURES);
         ThrowIfFailed(m_device->CreateHeap(&heapDesc, IID_PPV_ARGS(&m_heap)));
         UINT tileOffset = 0;

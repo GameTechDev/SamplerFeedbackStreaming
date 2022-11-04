@@ -65,7 +65,6 @@ public:
 
     void ToggleFrustum() { m_args.m_visualizeFrustum = !m_args.m_visualizeFrustum; HandleUiToggleFrustum(); }
 
-    void ToggleUpLock() { m_args.m_cameraUpLock = !m_args.m_cameraUpLock; }
     void ToggleAnimation()
     {
         static float animationRate = 0;
@@ -100,24 +99,24 @@ private:
 
     CommandLineArgs m_args;
 
-    const HWND m_hwnd;
-    WINDOWINFO m_windowInfo;
-    bool m_windowedSupportsTearing;
-    bool m_deviceRemoved; // when true, resize and draw immediately exit, returning false if appicable
+    const HWND m_hwnd{ nullptr };
+    WINDOWINFO m_windowInfo{};
+    bool m_windowedSupportsTearing{ false };
+    bool m_deviceRemoved{ false }; // when true, resize and draw immediately exit, returning false if appicable
 
     ComPtr<IDXGIFactory5> m_factory;
     ComPtr<IDXGIAdapter1> m_adapter;
     ComPtr<ID3D12Device8> m_device;
     ComPtr<ID3D12CommandQueue> m_commandQueue;
 
-    static const UINT m_swapBufferCount = SharedConstants::SWAP_CHAIN_BUFFER_COUNT;
+    static const UINT m_swapBufferCount{ SharedConstants::SWAP_CHAIN_BUFFER_COUNT };
     static const FLOAT m_clearColor[4];
     ComPtr<IDXGISwapChain3> m_swapChain;
-    UINT m_frameIndex; // comes from swap chain
-    UINT64 m_renderFenceValue; // also serves as a frame count
-    UINT64 m_frameFenceValues[m_swapBufferCount];
+    UINT m_frameIndex{ 0 }; // comes from swap chain
+    UINT64 m_renderFenceValue{ 0 }; // also serves as a frame count
+    std::vector<UINT64> m_frameFenceValues;
     ComPtr<ID3D12Fence> m_renderFence;
-    HANDLE m_renderFenceEvent;
+    HANDLE m_renderFenceEvent{ NULL };
 
     // used for animation or statistics gathering
     // e.g. rotate by radians*m_framenumber
@@ -136,14 +135,14 @@ private:
     ComPtr<ID3D12DescriptorHeap> m_dsvHeap;
     ComPtr<ID3D12DescriptorHeap> m_rtvHeap;
 
-    UINT m_rtvDescriptorSize;
-    UINT m_srvUavCbvDescriptorSize;
-    UINT m_dsvDescriptorSize;
+    UINT m_rtvDescriptorSize{ 0 };
+    UINT m_srvUavCbvDescriptorSize{ 0 };
+    UINT m_dsvDescriptorSize{ 0 };
 
     DirectX::XMMATRIX m_projection;
     DirectX::XMMATRIX m_viewMatrix;
     DirectX::XMMATRIX m_viewMatrixInverse;
-    float m_aspectRatio;
+    float m_aspectRatio{ 0 };
     const float m_fieldOfView{ DirectX::XM_PI / 6.0f };
 
     CD3DX12_VIEWPORT m_viewport;
@@ -159,16 +158,16 @@ private:
         int g_visualizeFeedback;
     };
 
-    FrameConstantData* m_pFrameConstantData; // left in the mapped state
+    FrameConstantData* m_pFrameConstantData{ nullptr }; // left in the mapped state
     ComPtr<ID3D12Resource> m_frameConstantBuffer;
 
-    Gui* m_pGui;
+    Gui* m_pGui{ nullptr };
     Gui::ButtonChanges m_uiButtonChanges; // track changes in UI settings
 
-    class TextureViewer* m_pTextureViewer;
-    class BufferViewer* m_pMinMipMapViewer;
-    class BufferViewer* m_pFeedbackViewer;
-    class FrustumViewer* m_pFrustumViewer;
+    class TextureViewer* m_pTextureViewer{ nullptr };
+    class BufferViewer* m_pMinMipMapViewer{ nullptr };
+    class BufferViewer* m_pFeedbackViewer{ nullptr };
+    class FrustumViewer* m_pFrustumViewer{ nullptr };
 
     void MsaaResolve();
 
@@ -220,7 +219,7 @@ private:
     void LoadSpheres(); // progressively over multiple frames
 
     // each frame, update objects until timeout reached
-    UINT m_queueFeedbackIndex; // index based on number of gpu feedback resolves per frame
+    UINT m_queueFeedbackIndex{ 0 }; // index based on number of gpu feedback resolves per frame
     std::vector<UINT> m_prevNumFeedbackObjects; // to correlate # objects with feedback time
 
     //-----------------------------------
@@ -228,7 +227,7 @@ private:
     //-----------------------------------
     FrameEventTracing::RenderEventList m_renderThreadTimes;
     FrameEventTracing::UpdateEventList m_updateFeedbackTimes;
-    class D3D12GpuTimer* m_pGpuTimer;
+    class D3D12GpuTimer* m_pGpuTimer { nullptr };
     std::unique_ptr<FrameEventTracing> m_csvFile{ nullptr };
     float m_gpuProcessFeedbackTime{ 0 };
 
@@ -257,6 +256,8 @@ private:
     void StartScene();
     void DrawUI();
     void HandleUiToggleFrustum();
+
+    void CreateDeviceWithName(std::wstring& out_adapterDescription);
 
     AssetUploader m_assetUploader;
 };

@@ -33,19 +33,28 @@
 
 struct CommandLineArgs
 {
-    UINT  m_windowWidth{ 1280 };
-    UINT  m_windowHeight{ 800 };
-    UINT  m_sampleCount{ 4 };
-    float m_lodBias{ 0 };
+    enum class PreferredArchitecture
+    {
+        NONE = 0,
+        DISCRETE,
+        INTEGRATED
+    };
+    PreferredArchitecture m_preferredArchitecture{ PreferredArchitecture::NONE };
+    std::wstring m_adapterDescription;  // e.g. "intel", will pick the GPU with this substring in the adapter description (not case sensitive)
 
-    std::wstring m_textureFilename;
-    std::wstring m_mediaDir;
-    bool m_vsyncEnabled{ false };
+    bool m_useDirectStorage{ true };
+    UINT m_stagingSizeMB{ 128 };         // size of the staging buffer for DirectStorage or reference streaming code
 
     std::wstring m_terrainTexture;
     std::wstring m_skyTexture;
     std::wstring m_earthTexture;
-    std::vector<std::wstring> m_textures; // textures for things other than the terrain
+    std::wstring m_mediaDir;
+
+    bool m_vsyncEnabled{ false };
+    UINT  m_windowWidth{ 1280 };
+    UINT  m_windowHeight{ 800 };
+    UINT  m_sampleCount{ 4 };
+    float m_lodBias{ 0 };
 
     bool m_startFullScreen{ false };
     bool m_cameraRollerCoaster{ false };
@@ -77,16 +86,13 @@ struct CommandLineArgs
     UINT m_timingStopFrame{ 0 };
     std::wstring m_timingFrameFileName; // where to write per-frame statistics
     std::wstring m_exitImageFileName;   // write an image on exit
-
     bool m_waitForAssetLoad{ false };   // wait for assets to load before progressing frame #
-    std::wstring m_adapterDescription;  // e.g. "intel", will pick the GPU with this substring in the adapter description (not case sensitive)
-
-    bool m_useDirectStorage{ false };
-    UINT m_stagingSizeMB{ 64 };         // size of the staging buffer for DirectStorage or reference streaming code
 
     //-------------------------------------------------------
     // state that is not settable from command line:
     //-------------------------------------------------------
+    std::vector<std::wstring> m_textures; // textures for things other than the terrain
+
     UINT m_maxTileUpdatesPerApiCall{ 512 }; // max #tiles (regions) in call to UpdateTileMappings()
     bool m_enableTileUpdates{ true }; // toggle enabling tile uploads/evictions
     int  m_visualizationBaseMip{ 0 };

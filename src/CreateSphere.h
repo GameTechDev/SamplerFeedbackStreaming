@@ -61,27 +61,23 @@ namespace SphereGen
         bool repeatEdge = !in_props.m_mirrorU;
 
         std::vector<Vertex> vertices;
-
         // compute sphere vertices
         // skip top and bottom rows (will just use single points)
         {
             float dLat = DirectX::XM_PI * 2.0f / in_props.m_numLong; // the number of vertical segments tells you how many horizontal steps to take
-            float dz = 1.0f / (in_props.m_numLat - 1); // e.g. NumLat = 3, dv = 0.5, v = {0, .5, 1}
+            float dz = 2.f / (in_props.m_numLat - 1);
 
             // du is uniform
             float du = 1.0f / float(in_props.m_numLong); // u from 0..1
-            if (in_props.m_mirrorU)               // when mirroring, u from 0..2
-            {
-                du *= 2;
-            }
+            if (in_props.m_mirrorU) { du *= 2; }         // when mirroring, u from 0..2
 
             for (UINT longitude = 1; longitude < (in_props.m_numLat - 1); longitude++)
             {
                 float z = dz * longitude;
 
                 // logarithmic step in z produces smoother poles
-                if (z < 0.5f) { z = -1 + std::powf(2 * z, in_props.m_exponent); }
-                else { z = 1 - std::powf(2 - (2 * z), in_props.m_exponent); }
+                if (z < 1) { z = -1 + std::powf(z, in_props.m_exponent); }
+                else { z = 1 - std::powf(2 - z, in_props.m_exponent); }
 
                 // radius of this latitude in x/y plane
                 float r = std::sqrtf(1 - (z * z));
@@ -89,8 +85,6 @@ namespace SphereGen
                 // v is constant for this latitude
                 float v = std::acosf(-z) / DirectX::XM_PI;
 
-                //float zs = 1.f - std::fabsf(z); zs = (1 + zs * zs) / 2;// too big at pole, pretty good along equator
-                //DebugPrint("<", z, ",", zs, ">")
                 // create row of vertices
                 for (UINT lat = 0; lat < in_props.m_numLong; lat++)
                 {
@@ -104,31 +98,27 @@ namespace SphereGen
                     // stretch texture across hemisphere. mirrored on other hemisphere.
                     if (in_props.m_topBottom)
                     {
-                        uv = DirectX::XMFLOAT2{ pos.x, pos.y };
+                        uv = { pos.x, pos.y };
 
-                        float s = std::sqrtf(2); // corners touch the equator
-
-                        uv.x *= s;
-                        uv.y *= s;
-
-                        if (theta > DirectX::XM_PI) { theta -= DirectX::XM_PI; }
+                        // radial scale
+                        if (theta > DirectX::XM_PI) { theta = DirectX::XM_2PI - theta; }
                         if (theta > DirectX::XM_PIDIV2) { theta = DirectX::XM_PI - theta; }
-                        if (theta < DirectX::XM_PIDIV4)
+                        if (theta > DirectX::XM_PIDIV4)
                         {
-                            s = std::cosf(DirectX::XM_PIDIV4) / std::cosf(theta);
-                            s = std::powf(s, r);
-                            uv.x *= s;
+                            float s = std::cosf(DirectX::XM_PIDIV4) / std::cosf(DirectX::XM_PIDIV2 - theta);
+                            uv.y *= (1 - r) + r * s;
                         }
                         else
                         {
-                            s = std::cosf(DirectX::XM_PIDIV4) / std::cosf(DirectX::XM_PIDIV2 - theta);
-                            s = std::powf(s, r);
-                            uv.y *= s;
+                            float s = std::cosf(DirectX::XM_PIDIV4) / std::cosf(theta);
+                            uv.x *= (1 - r) + r * s;
                         }
 
-                        uv.x *= std::powf(0.6f, std::fabsf(z));
-                        uv.y *= std::powf(0.6f, std::fabsf(z));
+                        // z scale
+                        float s = std::powf(0.5f, std::fabsf(z)) * std::sqrtf(2.f);
+                        uv = { uv.x * s, uv.y * s };
 
+                        // -1 .. 1 -> 0 .. 1
                         uv.x = (1 + uv.x) * .5f;
                         uv.y = (1 + uv.y) * .5f;
                     }

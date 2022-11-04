@@ -23,34 +23,6 @@
 // DEALINGS IN THE SOFTWARE.
 //
 //*********************************************************
-
-/*-----------------------------------------------------------------------------
-ArgParser
-
-Parse arguments to a Windows application
-On finding a match, calls custom code
-Case is ignored while parsing
-
-example:
-This creates the parser, then searches for a few values.
-The value is expected to follow the token.
-
-runprogram.exe gRaVity 20.27 upIsDown dothing
-
-float m_float = 0;
-bool m_flipGravity = false;
-
-ArgParser argParser;
-argParser.AddArg(L"gravity", m_float);
-argParser.AddArg(L"upisdown", m_flipGravity); // inverts m_flipGravity
-argParser.AddArg(L"downisup", L"whoops!", m_flipGravity); // inverts current value, includes help message
-argParser.AddArg(L"dothing", [=](std::wstring) { DoTheThing(); } ); // call custom function to handle param
-argParser.AddArg(L"option", L"a function", [=](std::wstring) { DoOption(); } ); // custom function with help message
-argParser.Parse();
-
-after running, m_float=20.27 and m_flipGravity=true
-
------------------------------------------------------------------------------*/
 #pragma once
 
 //==================================================

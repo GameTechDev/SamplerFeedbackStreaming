@@ -48,9 +48,9 @@ float3 evaluateLight(in float3 normal, in float3 pos)
 
     float ambient = 0.1f;
 
-    float3 color = (diffuse * g_lightColor.xyz) + (specular * g_specularColor.xyz) + ambient;
+    float3 color = (.9f * diffuse * g_lightColor.xyz) + (specular * g_specularColor.xyz) + ambient;
 
-    color = pow(color, 1.0f / 2.0f);
+    color = pow(color, 1.0f / 1.5f);
 
     return color;
 }

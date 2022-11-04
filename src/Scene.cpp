@@ -58,39 +58,88 @@ enum class DescriptorHeapOffsets
     NumEntries
 };
 
+#define ErrorMessage(...) { MessageBox(0, AutoString::Concat(__VA_ARGS__).c_str(), L"Error", MB_OK); exit(-1); }
+
+//-----------------------------------------------------------------------------
+// create device, optionally checking adapter description for e.g. "intel"
+//-----------------------------------------------------------------------------
+void Scene::CreateDeviceWithName(std::wstring& out_adapterDescription)
+{
+    auto preferredArchitecture = m_args.m_preferredArchitecture;
+    std::wstring lowerCaseAdapterDesc = m_args.m_adapterDescription;
+
+    if (lowerCaseAdapterDesc.size())
+    {
+        for (auto& c : lowerCaseAdapterDesc) { c = ::towlower(c); }
+    }
+
+    ComPtr<IDXGIAdapter1> adapter;
+    for (UINT i = 0; m_factory->EnumAdapters1(i, &adapter) != DXGI_ERROR_NOT_FOUND; ++i)
+    {
+        DXGI_ADAPTER_DESC1 desc{};
+        adapter->GetDesc1(&desc);
+
+        if ((desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) || (std::wstring(L"Microsoft Basic Render Driver") == desc.Description))
+        {
+            continue;
+        }
+
+        if (lowerCaseAdapterDesc.size())
+        {
+            std::wstring description(desc.Description);
+            for (auto& c : description) { c = ::towlower(c); }
+            std::size_t found = description.find(lowerCaseAdapterDesc);
+            if (found == std::string::npos)
+            {
+                continue;
+            }
+        }
+
+        D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(&m_device));
+
+        // if we care about adapter architecture, check that UMA corresponds to integrated vs. discrete
+        if (CommandLineArgs::PreferredArchitecture::NONE != preferredArchitecture)
+        {
+            D3D12_FEATURE_DATA_ARCHITECTURE archFeatures{};
+            m_device->CheckFeatureSupport(D3D12_FEATURE_ARCHITECTURE, &archFeatures, sizeof(archFeatures));
+
+            if (((FALSE == archFeatures.UMA) && (CommandLineArgs::PreferredArchitecture::INTEGRATED == preferredArchitecture)) ||
+                ((TRUE == archFeatures.UMA) && (CommandLineArgs::PreferredArchitecture::DISCRETE == preferredArchitecture)))
+            {
+                // adapter does not match requirements (name and/or architecture)
+                m_device = nullptr;
+                continue;
+            }
+        }
+
+        // adapter matches requirements (name and/or architecture), exit loop
+        break;
+    }
+
+    // get the description from whichever adapter was used to create the device
+    if (nullptr != m_device.Get())
+    {
+        DXGI_ADAPTER_DESC1 desc{};
+        adapter->GetDesc1(&desc);
+        out_adapterDescription = desc.Description;
+    }
+    else
+    {
+        ErrorMessage("No adapter found with name \"", m_args.m_adapterDescription, "\" or architecture \"",
+            (CommandLineArgs::PreferredArchitecture::NONE == preferredArchitecture ? "none" :
+                (CommandLineArgs::PreferredArchitecture::DISCRETE == preferredArchitecture ? "discrete" : "integrated")),
+            "\"\n");
+    }
+}
+
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 Scene::Scene(const CommandLineArgs& in_args, HWND in_hwnd) :
-    m_args(in_args)
-    , m_hwnd(in_hwnd)
-    , m_windowInfo{}
-    , m_windowedSupportsTearing(false)
-    , m_deviceRemoved(false)
-    , m_frameIndex(0)
-    , m_renderFenceValue(0)
-    , m_frameFenceValues{}
-    , m_renderFenceEvent(0)
-    , m_rtvDescriptorSize(0)
-    , m_srvUavCbvDescriptorSize(0)
-    , m_dsvDescriptorSize(0)
-    , m_aspectRatio(0)
-    , m_pFrameConstantData(nullptr)
-
-    // visuals
-    , m_pGui(nullptr)
-    , m_pTextureViewer(nullptr)
-    , m_pMinMipMapViewer(nullptr)
-    , m_pFeedbackViewer(nullptr)
-    , m_pFrustumViewer(nullptr)
-
-    // thread
-    , m_queueFeedbackIndex(0)
+    m_args(in_args), m_hwnd(in_hwnd)
+    , m_frameFenceValues(m_swapBufferCount, 0)
     , m_prevNumFeedbackObjects(SharedConstants::SWAP_CHAIN_BUFFER_COUNT, 1)
-
-    // statistics
     , m_renderThreadTimes(in_args.m_statisticsNumFrames)
     , m_updateFeedbackTimes(in_args.m_statisticsNumFrames)
-    , m_pGpuTimer(nullptr)
 {
     m_windowInfo.cbSize = sizeof(WINDOWINFO);
 
@@ -107,46 +156,17 @@ Scene::Scene(const CommandLineArgs& in_args, HWND in_hwnd) :
         ThrowIfFailed(CreateDXGIFactory2(factoryFlags, IID_PPV_ARGS(&m_factory)));
     }
 
-    ComPtr<IDXGIAdapter1> adapter;
-    DXGI_ADAPTER_DESC1 desc;
-    if (m_args.m_adapterDescription.size())
-    {
-        std::wstring lowerCaseAdapterDesc = m_args.m_adapterDescription;
-        for (auto& c : lowerCaseAdapterDesc) { c = ::towlower(c); }
+    std::wstring adapterDescription = m_args.m_adapterDescription;
+    CreateDeviceWithName(adapterDescription);
 
-        for (UINT i = 0; m_factory->EnumAdapters1(i, &adapter) != DXGI_ERROR_NOT_FOUND; ++i)
-        {
-            ThrowIfFailed(adapter->GetDesc1(&desc));
-            std::wstring description(desc.Description);
-            for (auto& c : description) { c = ::towlower(c); }
-            std::size_t found = description.find(lowerCaseAdapterDesc);
-            if (found != std::string::npos)
-            {
-                break;
-            }
-        }
-    }
-    else
-    {
-        ThrowIfFailed(m_factory->EnumAdapters1(0, &adapter));
-        ThrowIfFailed(adapter->GetDesc1(&desc));
-    }
-    std::wstring adapterDescription = desc.Description;
 
     // does this device support sampler feedback?
     D3D12_FEATURE_DATA_D3D12_OPTIONS7 feedbackOptions{};
-    HRESULT hr = D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(&m_device));
-    if (SUCCEEDED(hr))
-    {
-        m_device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS7, &feedbackOptions, sizeof(feedbackOptions));
-    }
+    m_device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS7, &feedbackOptions, sizeof(feedbackOptions));
 
     if (0 == feedbackOptions.SamplerFeedbackTier)
     {
-        std::wstring msg = L"Sampler Feedback not supported by\n";
-        msg += adapterDescription;
-        MessageBox(0, msg.c_str(), L"Error", MB_OK);
-        exit(-1);
+        ErrorMessage(L"Sampler Feedback not supported by ", adapterDescription);
     }
 
     D3D12_FEATURE_DATA_D3D12_OPTIONS tileOptions{};
@@ -154,10 +174,7 @@ Scene::Scene(const CommandLineArgs& in_args, HWND in_hwnd) :
 
     if (0 == tileOptions.TiledResourcesTier)
     {
-        std::wstring msg = L"Tiled Resources not supported by\n";
-        msg += adapterDescription;
-        MessageBox(0, msg.c_str(), L"Error", MB_OK);
-        exit(-1);
+        ErrorMessage(L"Tiled Resources not supported by ", adapterDescription);
     }
 
     m_pGpuTimer = new D3D12GpuTimer(m_device.Get(), 8, D3D12GpuTimer::TimerType::Direct);
@@ -176,7 +193,7 @@ Scene::Scene(const CommandLineArgs& in_args, HWND in_hwnd) :
     CreateCommandQueue();
     CreateSwapChain();
     CreateFence();
-    
+
     StartStreamingLibrary();
 
     CreateSampler();
@@ -222,7 +239,7 @@ Scene::~Scene()
 
     delete m_pGpuTimer;
     delete m_pGui;
-    
+
     DeleteTerrainViewers();
 
     delete m_pFrustumViewer;
@@ -666,7 +683,7 @@ void Scene::StartStreamingLibrary()
     tumDesc.m_useDirectStorage = m_args.m_useDirectStorage;
 
     m_pTileUpdateManager = TileUpdateManager::Create(m_device.Get(), m_commandQueue.Get(), tumDesc);
-    
+
     // create 1 or more heaps to contain our StreamingResources
     for (UINT i = 0; i < m_args.m_numHeaps; i++)
     {
@@ -701,8 +718,7 @@ XMMATRIX Scene::SetSphereMatrix()
         }
         else
         {
-            MessageBox(0, L"Failed to fit planet in universe. Universe too small?", L"ERROR", MB_OK);
-            exit(-1);
+            ErrorMessage("Failed to fit planet in universe. Universe too small?");
         }
 
         float sphereScale = scaleDis(gen) * SharedConstants::SPHERE_SCALE;
@@ -714,9 +730,9 @@ XMMATRIX Scene::SetSphereMatrix()
         // position sphere far from terrain
         x += (MAX_SPHERE_SIZE + 2) * SharedConstants::SPHERE_SCALE;
 
-        float rx = (2*XM_PI) * dis(gen);
-        float ry = (2*XM_PI) * dis(gen);
-        float rz = (2*XM_PI) * dis(gen);
+        float rx = (2 * XM_PI) * dis(gen);
+        float ry = (2 * XM_PI) * dis(gen);
+        float rz = (2 * XM_PI) * dis(gen);
 
         XMMATRIX xlate = XMMatrixTranslation(x, 0, 0);
         XMMATRIX rtate = XMMatrixRotationRollPitchYaw(rx, ry, rz);
@@ -776,6 +792,20 @@ void Scene::LoadSpheres()
 
         const UINT numSpheresToLoad = m_args.m_numSpheres - m_numSpheresLoaded;
 
+        // is there a sky?
+        std::wstring skyTexture;
+        if (m_args.m_skyTexture.size())
+        {
+            for (auto& n : m_args.m_textures)
+            {
+                if (std::wstring::npos != n.find(m_args.m_skyTexture))
+                {
+                    skyTexture = n;
+                    break;
+                }
+            }
+        }
+
         UINT textureIndex = 0;
         for (UINT i = 0; i < numSpheresToLoad; i++)
         {
@@ -801,12 +831,13 @@ void Scene::LoadSpheres()
 
             // 3 options: sphere, earth, sky
 
-            // sky has to be first because it disables depth when drawn
-            if ((nullptr == m_pSky) && (m_args.m_skyTexture.size())) // only 1 sky
+            // only 1 sky, and it must be first because it disables depth when drawn
+            if ((nullptr == m_pSky) && (skyTexture.size()))
             {
-                auto tf = m_args.m_mediaDir + L"\\\\" + m_args.m_skyTexture;
-                m_pSky = new SceneObjects::Sky(tf, m_pTileUpdateManager, pHeap, m_device.Get(), m_assetUploader, m_args.m_sampleCount, descCPU);
+                m_pSky = new SceneObjects::Sky(skyTexture, m_pTileUpdateManager, pHeap, m_device.Get(), m_assetUploader, m_args.m_sampleCount, descCPU);
                 o = m_pSky;
+                float scale = SharedConstants::UNIVERSE_SIZE * 2;
+                o->GetModelMatrix() = DirectX::XMMatrixScaling(scale, scale, scale);
             }
 
             else if (nullptr == m_pTerrainSceneObject)
@@ -1000,7 +1031,7 @@ void Scene::CreateConstantBuffers()
         m_pFrameConstantData->g_lightDir = XMFLOAT4(-0.538732767f, 0.787301660f, 0.299871892f, 0);
         XMStoreFloat4(&m_pFrameConstantData->g_lightDir, XMVector4Normalize(XMLoadFloat4(&m_pFrameConstantData->g_lightDir)));
         m_pFrameConstantData->g_lightColor = XMFLOAT4(1, 1, 1, 1);
-        m_pFrameConstantData->g_specularColor = XMFLOAT4(1, 1, 1, 18.f);
+        m_pFrameConstantData->g_specularColor = XMFLOAT4(1, 1, 1, 50.f);
 
         D3D12_CONSTANT_BUFFER_VIEW_DESC constantBufferView = {};
         constantBufferView.SizeInBytes = bufferSize;
@@ -1257,12 +1288,13 @@ void Scene::GatherStatistics()
 
             m_csvFile->WriteEvents(m_hwnd, m_args);
             *m_csvFile
-                << measuredNumUploads
+                << "bandwidth_MB/s #uploads seconds latency_ms #submits\n"
+                << mbps
+                << " " << measuredNumUploads
                 << " " << measuredTime
-                << " " << mbps
                 << " " << approximatePerTileLatency
                 << " " << m_pTileUpdateManager->GetTotalNumSubmits() - m_startSubmitCount
-                << " uploads|seconds|bandwidth|latency_ms|#submits\n";
+                << "\n";
             m_csvFile->close();
             m_csvFile = nullptr;
         }

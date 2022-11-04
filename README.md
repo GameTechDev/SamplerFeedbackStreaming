@@ -2,15 +2,26 @@
 
 ## Introduction
 
-This repository contains an [MIT licensed](LICENSE) demo of _DirectX12 Sampler Feedback Streaming_, a technique using [DirectX12 Sampler Feedback](https://microsoft.github.io/DirectX-Specs/d3d/SamplerFeedback.html) to guide continuous loading and eviction of small portions (tiles) of assets allowing for much higher visual quality than previously possible by making better use of GPU memory capacity. Sampler Feedback Streaming allows scenes consisting of 100s of gigabytes of resources to be drawn on GPUs containing much less physical memory. The scene below uses just ~200MB of a 1GB heap, despite over 350GB of total texture resources. (Objects could have shared streaming resources, but the intent of the demo is to show the potential of using many unique textures).
+This repository contains an [MIT licensed](LICENSE) demo of _DirectX12 Sampler Feedback Streaming_, a technique using [DirectX12 Sampler Feedback](https://microsoft.github.io/DirectX-Specs/d3d/SamplerFeedback.html) to guide continuous loading and eviction of small regions (tiles) of textures - in other words, virtual texture streaming. Sampler Feedback Streaming can dramatically improve visual quality by enabling scenes consisting of 100s of gigabytes of resources to be drawn on GPUs containing much less physical memory. The scene below uses just ~200MB of a 1GB heap, despite over 350GB of total texture resources.
 
-The demo requires ***Windows 10 20H1 (aka May 2020 Update, build 19041)*** or later and a GPU with Sampler Feedback Support, such as Intel Iris Xe Graphics as found in 11th Generation Intel&reg; Core&trade; processors and discrete GPUs (driver version **[30.0.100.9667](https://downloadcenter.intel.com/product/80939/Graphics) or later**).
-
-This repository has been updated with DirectStorage 1.0.2 for Windows&reg; from https://www.nuget.org/packages/Microsoft.Direct3D.DirectStorage/
+![Sample screenshot](./readme-images/sampler-feedback-streaming.jpg "Sample screenshot")
+Textures derived from [Hubble Images](https://www.nasa.gov/mission_pages/hubble/multimedia/index.html), see the [Hubble Copyright](https://hubblesite.org/copyright)
 
 Notes:
-- The file format has changed since large textures were provided as "releases." See the [log](#log) below.
-- The legacy streaming code using ReadFile() had sector alignment constraints for the file internals that are not required by DirectStorage for Windows. 
+- while multiple objects can share the same DX texture and source file, this sample aims to demonstrate the possibility of every object having a unique resource. Hence, every texture is treated as though unique, though the same source file may be used multiple times.
+- not all textures shown above, which total over 13GB, are not part of the repo. A few 16k x 16k textures are available as [release 1](https://github.com/GameTechDev/SamplerFeedbackStreaming/releases/tag/1) and  [release 2](https://github.com/GameTechDev/SamplerFeedbackStreaming/releases/tag/2)
+- the file format has changed since large textures were provided as "releases." See the [log](#log) below.
+- this repository has been updated with DirectStorage 1.0.2 for Windows&reg; from https://www.nuget.org/packages/Microsoft.Direct3D.DirectStorage/
+- at build time, BCx textures (BC7 and BC1 tested) in the dds/ directory are converted into the custom .XET format and placed in the ($TargetDir)/media directory (e.g. x64/Release/media). A few dds files are included.
+
+Requirements:
+- minimum:
+    - Windows 10 20H1 (aka May 2020 Update, build 19041)
+    - GPU with D3D12 Sampler Feedback Support such as Intel Iris Xe Graphics as found in 11th Generation Intel&reg; Core&trade; processors and discrete GPUs (driver version **[30.0.100.9667](https://downloadcenter.intel.com/product/80939/Graphics) or later**)
+- recommended:
+    - Windows 11
+    - nvme SSD with PCIe gen4 or later
+    - Intel Arc A770 discrete GPU or later
 
 See also:
 
@@ -18,32 +29,28 @@ See also:
 
 * [GDC 2021 presentation](https://software.intel.com/content/dam/develop/external/us/en/documents/pdf/july-gdc-2021-sampler-feedback-texture-space-shading-direct-storage.pdf) in PDF form
 
-![Sample screenshot](./readme-images/sampler-feedback-streaming.jpg "Sample screenshot")
-Textures derived from [Hubble Images](https://www.nasa.gov/mission_pages/hubble/multimedia/index.html), see the [Hubble Copyright](https://hubblesite.org/copyright)
-
-
-Note the textures shown above, which total over 13GB, are not part of the repo. A few 16k x 16k textures are available as [release 1](https://github.com/GameTechDev/SamplerFeedbackStreaming/releases/tag/1) and  [release 2](https://github.com/GameTechDev/SamplerFeedbackStreaming/releases/tag/2)
-
-Test textures are provided. At build time, BCx textures (BC7 and BC1 tested) in the dds/ directory are converted into the custom .XET format and placed in the ($TargetDir)/media directory (e.g. x64/Release/media)
-
 ## Build Instructions
 
-Download the source. Build the solution file [SamplerFeedbackStreaming.sln](SamplerFeedbackStreaming.sln) (tested with Visual Studio 2019).
+Download the source. Build the appropriate solution file
+- Visual Studio 2022: [SamplerFeedbackStreaming_vs2022.sln](SamplerFeedbackStreaming_vs2022.sln)
+- Visual Studio 2019: [SamplerFeedbackStreaming.sln](SamplerFeedbackStreaming.sln).
 
 All executables, scripts, configurations, and media files will be found in the x64/Release or x64/Debug directories. You can run from within the Visual Studio IDE or from the command line, e.g.:
 
     c:\SamplerFeedbackStreaming\x64\Release> expanse.exe
 
-By default (no command line options) there will be a single object, "terrain", which allows for exploring sampler feedback streaming. In the top right find 2 windows: on the left is the raw GPU min mip feedback, on the right is the min mip map "residency map" generated by the application. Across the bottom are the mips of the texture, with mip 0 in the bottom left. Left-click drag the terrain to see sampler feedback streaming in action.
+By default (no command line options) there will be a single object, "terrain", which allows for exploring sampler feedback streaming. To explore sampler feedback streaming, expand "Terrain Object Feedback Viewer." In the top right find 2 windows: the raw GPU sampler feedback (min mip map of desired tiles) and to its right the "residency map" generated by the application (min mip map of tiles that have been loaded). Across the bottom are the mips of the texture, with mip 0 in the bottom left. Left-click drag the terrain to see sampler feedback streaming in action. Note that navigation in this mode has the up direction locked, which can be disabled in the UI.
 ![default startup](./readme-images/default-startup.jpg "default startup")
 
-Press the DEMO MODE button or run the batch file _demo.bat_ to see streaming in action. Press "page up" or to click _Color MinMip_ to toggle a visualization of the tiles loading, best viewed in _Roller Coaster_ mode. Note keyboard controls are inactive while the _Camera_ slider is non-zero.
+Press the DEMO MODE button or run the batch file _demo.bat_ to see streaming in action. Press "page up" or to click _Tile Min Mip Overlay_ to toggle a visualization of the tiles loading. Toggle _Roller Coaster_ mode (page up) to fly through the scene. Note keyboard controls are inactive while the _Camera_ slider is non-zero.
 
     c:\SamplerFeedbackStreaming\x64\Release> demo.bat
 
 ![demo batch file](./readme-images/demo-bat.jpg "demo.bat")
 
-The high-resolution textures in the first "release" package, [hubble-16k.zip](https://github.com/GameTechDev/SamplerFeedbackStreaming/releases/tag/1), work with "demo-hubble.bat", including a sky and earth. Make sure the mediadir in the batch file is set properly, or override it on the command line as follows:
+Benchmark mode generates massive disk traffic by cranking up the animation rate, dialing up the sampler bias, and rapidly switching between two camera paths to force eviction of all the current texture tiles. This mode is designed to stress the whole platform, from storage to PCIe interface to CPU and GPU.
+
+Two sets of high resolution textures are available for use with "demo-hubble.bat": [hubble-16k.zip](https://github.com/GameTechDev/SamplerFeedbackStreaming/releases/tag/1) and [hubble-16k-bc1.zip](https://github.com/GameTechDev/SamplerFeedbackStreaming/releases/tag/2)). BUT they are in an older file format. Simply drop them into the "dds" directory and rebuild DdsToXet, or convert them to the new file format with `convert.bat` (see below). Make sure the mediadir in the batch file is set properly, or override it on the command line as follows:
 
     c:\SamplerFeedbackStreaming\x64\Release> demo-hubble.bat -mediadir c:\hubble-16k
 
@@ -51,16 +58,14 @@ The high-resolution textures in the first "release" package, [hubble-16k.zip](ht
 
 * `qwe / asd` : strafe left, forward, strafe right / rotate left, back, rotate right
 * `z c` : levitate up and down
-* `x` : toggles "up lock". When hovering over the "terrain" object, locking the up direction "feels right" with mouse navigation. Otherwise, it should be turned off.
 * `v b` : rotate around the look direction (z axis)
 * `arrow keys` : rotate left/right, pitch down/up
 * `shift` : move faster
 * `mouse left-click drag` : rotate view
-* `page up` : toggle the min mip map viewer for the "terrain" geometry in the center of the universe
+* `page up` : toggle the min mip map overlay onto every object (visualize tiles loading)
 * `page down` : while camera animation is non-zero, toggles fly-through "rollercoaster" vs. fly-around "orbit"
 * `space` : toggles camera animation on/off.
 * `home` : toggles UI. Hold "shift" while UI is enabled to toggle mini UI mode.
-* `end` : toggle overlay of min mip map onto every object
 * `insert` : toggles frustum visualization
 * `esc` : while windowed, exit. while full-screen, return to windowed mode
 
@@ -94,6 +99,11 @@ The batch file [convert.bat](scripts/convert.bat) will read all the DDS files in
 
     c:> convert c:\myDdsFiles c:\myXetFiles
 
+A new DirectStorage trace capture and playback utility has been added so DirectStorage performance can be analyzed without the overhead of rendering. For example, to capture and play back the DirectStorage requests and submits for 500 "stressful" frames with a staging buffer size of 128MB, cd to the build directory and:
+```
+stress.bat -timingstart 200 -timingstop 700 -capturetrace
+traceplayer.exe -file uploadTraceFile_1.json -mediadir media -staging 128
+```
 ## TileUpdateManager: a library for streaming textures
 
 The sample includes a library *TileUpdateManager* with a minimal set of APIs defined in [SamplerFeedbackStreaming.h](TileUpdateManager/SamplerFeedbackStreaming.h). The central object, *TileUpdateManager*, allows for the creation of streaming textures and heaps to contain them. These objects handle all the feedback resource creation, readback, processing, and file/IO.

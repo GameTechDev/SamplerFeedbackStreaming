@@ -172,7 +172,7 @@ Streaming::Heap::Heap(ID3D12CommandQueue* in_pQueue, UINT in_maxNumTilesHeap) : 
 
     // create a heap to store streaming tiles
     // should be smaller than the entire surface
-    const UINT heapSize = in_maxNumTilesHeap * D3D12_TILED_RESOURCE_TILE_SIZE_IN_BYTES;
+    const UINT64 heapSize = UINT64(in_maxNumTilesHeap) * D3D12_TILED_RESOURCE_TILE_SIZE_IN_BYTES;
     CD3DX12_HEAP_DESC heapDesc(heapSize, D3D12_HEAP_TYPE_DEFAULT, 0, D3D12_HEAP_FLAG_DENY_BUFFERS | D3D12_HEAP_FLAG_DENY_RT_DS_TEXTURES);
     ThrowIfFailed(device->CreateHeap(&heapDesc, IID_PPV_ARGS(&m_tileHeap)));
 }

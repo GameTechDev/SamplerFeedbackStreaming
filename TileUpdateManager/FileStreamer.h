@@ -70,7 +70,7 @@ namespace Streaming
         UINT64 m_copyFenceValue{ 0 };
 
         // Visualization
-        VisualizationMode m_visualizationMode;
+        VisualizationMode m_visualizationMode{ VisualizationMode::DATA_VIZ_NONE };
 
         // get visualization colors
         void* GetVisualizationData(const D3D12_TILED_RESOURCE_COORDINATE& in_coord, DXGI_FORMAT in_format);

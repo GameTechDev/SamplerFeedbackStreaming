@@ -88,6 +88,24 @@ struct MouseState
 void LoadConfigFile(std::wstring& in_configFileName, CommandLineArgs& out_args);
 
 //-----------------------------------------------------------------------------
+// check an incoming path. if not found, try relative to exe. if found, replace parameter
+//-----------------------------------------------------------------------------
+void CorrectPath(std::wstring& inout_path)
+{
+    if (!std::filesystem::exists(inout_path))
+    {
+        WCHAR buffer[MAX_PATH];
+        GetModuleFileName(nullptr, buffer, MAX_PATH);
+        std::filesystem::path exePath(buffer);
+        exePath.remove_filename().append(inout_path);
+        if (std::filesystem::exists(exePath))
+        {
+            inout_path = exePath;
+        }
+    }
+}
+
+//-----------------------------------------------------------------------------
 // apply limits arguments
 // e.g. # spheres, path to terrain texture
 //-----------------------------------------------------------------------------
@@ -98,16 +116,6 @@ void AdjustArguments(CommandLineArgs& out_args)
     out_args.m_sampleCount = std::min(out_args.m_sampleCount, (UINT)D3D12_MAX_MULTISAMPLE_SAMPLE_COUNT);
     out_args.m_anisotropy = std::min(out_args.m_anisotropy, (UINT)D3D12_REQ_MAXANISOTROPY);
 
-    // override: use this texture for everything. no sky.
-    if (out_args.m_textureFilename.size())
-    {
-        out_args.m_mediaDir.clear();
-        out_args.m_skyTexture.clear();
-        out_args.m_terrainTexture = out_args.m_textureFilename;
-        out_args.m_textures.clear();
-        out_args.m_textures.push_back(out_args.m_textureFilename);
-    }
-
     // if there's a media directory, sky and earth are relative to media
     if (out_args.m_mediaDir.size())
     {
@@ -117,18 +125,7 @@ void AdjustArguments(CommandLineArgs& out_args)
             out_args.m_mediaDir += L'\\';
         }
 
-        // if the desired media path doesn't exist, try looking relative to the executable
-        if (!std::filesystem::exists(out_args.m_mediaDir))
-        {
-            WCHAR buffer[MAX_PATH];
-            GetModuleFileName(nullptr, buffer, MAX_PATH);
-            std::filesystem::path exePath(buffer);
-            exePath.remove_filename().append(out_args.m_mediaDir);
-            if (std::filesystem::exists(exePath))
-            {
-                out_args.m_mediaDir = exePath;
-            }
-        }
+        CorrectPath(out_args.m_mediaDir);
 
         if (std::filesystem::exists(out_args.m_mediaDir))
         {
@@ -144,13 +141,10 @@ void AdjustArguments(CommandLineArgs& out_args)
                 }
             }
 
-            // media directory overrides textureFilename
-            out_args.m_textureFilename = out_args.m_textures[0];
-
             // no terrain texture set or not found? set to something.
             if ((0 == out_args.m_terrainTexture.size()) || (!std::filesystem::exists(out_args.m_terrainTexture)))
             {
-                out_args.m_terrainTexture = out_args.m_textureFilename;
+                out_args.m_terrainTexture = out_args.m_textures[0];
             }
         }
         else
@@ -180,7 +174,16 @@ void ParseCommandLine(CommandLineArgs& out_args)
     argParser.AddArg(L"-LodBias", out_args.m_lodBias);
 
     argParser.AddArg(L"-animationrate", out_args.m_animationRate);
-    argParser.AddArg(L"-texture", out_args.m_textureFilename);
+    argParser.AddArg(L"-texture",
+        [&] {
+            out_args.m_mediaDir.clear();
+            out_args.m_skyTexture.clear();
+            out_args.m_textures.clear();
+            std::wstring textureFileName = ArgParser::GetNextArg();
+            CorrectPath(textureFileName);
+            out_args.m_terrainTexture = textureFileName;
+            out_args.m_textures.push_back(textureFileName);
+        }, "use only one texture, with this name");
     argParser.AddArg(L"-vsync", out_args.m_vsyncEnabled);
 
     argParser.AddArg(L"-heapSizeTiles", out_args.m_streamingHeapSize);
@@ -214,7 +217,9 @@ void ParseCommandLine(CommandLineArgs& out_args)
     argParser.AddArg(L"-exitImageFile", out_args.m_exitImageFileName);
 
     argParser.AddArg(L"-waitForAssetLoad", out_args.m_waitForAssetLoad, L"stall animation & statistics until assets have minimally loaded");
+
     argParser.AddArg(L"-adapter", out_args.m_adapterDescription, L"find an adapter containing this string in the description, ignoring case");
+    argParser.AddArg(L"-arch", (UINT&)out_args.m_preferredArchitecture, L"none (0), discrete (1), integrated (2)");
 
     argParser.AddArg(L"-directStorage", [&]() { out_args.m_useDirectStorage = true; }, L"force enable DirectStorage");
     argParser.AddArg(L"-directStorageOff", [&]() { out_args.m_useDirectStorage = false; }, L"force disable DirectStorage");
@@ -354,10 +359,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             g_keyState.key.rotzr = 1;
             break;
 
-        case 'X':
-            g_pScene->ToggleUpLock();
-            break;
-
         case '1':
             g_pScene->SetVisualizationMode(CommandLineArgs::VisualizationMode::TEXTURE);
             break;
@@ -453,13 +454,12 @@ void LoadConfigFile(std::wstring& in_configFileName, CommandLineArgs& out_args)
 {
     bool success = false;
 
-    WCHAR buffer[MAX_PATH];
-    GetModuleFileName(nullptr, buffer, MAX_PATH);
-    std::filesystem::path filePath(buffer);
-    filePath.remove_filename().append(in_configFileName);
-    if (std::filesystem::exists(filePath))
+    CorrectPath(in_configFileName);
+
+    if (std::filesystem::exists(in_configFileName))
     {
-        const ConfigurationParser parser(filePath);
+        const ConfigurationParser parser(in_configFileName);
+
         success = parser.GetReadSuccess();
 
         if (success)
@@ -482,7 +482,6 @@ void LoadConfigFile(std::wstring& in_configFileName, CommandLineArgs& out_args)
             if (root.isMember("rollerCoaster")) out_args.m_cameraRollerCoaster = root["rollerCoaster"].asBool();
             if (root.isMember("paintMixer")) out_args.m_cameraRollerCoaster = root["paintMixer"].asBool();
 
-            if (root.isMember("texture")) out_args.m_textureFilename = StrToWstr(root["texture"].asString());
             if (root.isMember("mediaDir")) out_args.m_mediaDir = StrToWstr(root["mediaDir"].asString());
             if (root.isMember("terrainTexture")) out_args.m_terrainTexture = StrToWstr(root["terrainTexture"].asString());
             if (root.isMember("skyTexture")) out_args.m_skyTexture = StrToWstr(root["skyTexture"].asString());
@@ -532,7 +531,7 @@ void LoadConfigFile(std::wstring& in_configFileName, CommandLineArgs& out_args)
     if (!success)
     {
         std::wstring msg(L"Invalid Configuration file path: ");
-        msg += filePath;
+        msg += in_configFileName;
         MessageBox(0, msg.c_str(), L"ERROR", MB_OK);
         exit(-1);
     }
@@ -551,9 +550,11 @@ int WINAPI WinMain(
     _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
 #endif
 
+    // load default configuration
     CommandLineArgs args;
     LoadConfigFile(g_configFileName, args);
 
+    // command line can load a different configuration file, overriding part or all of the default config
     ParseCommandLine(args);
 
     // apply limits and other constraints

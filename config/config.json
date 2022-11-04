@@ -23,10 +23,10 @@
   "rollerCoaster": false, // fly through, vs. orbiting, planets
 
   "mediaDir": "media", // media directory
-  "texture": "", // setting this overrides all textures, invalidates mediadir
   "skyTexture": "", // add a sky sphere. path relative to mediadir
   "earthTexture": "earth", // when a texture containing this string is encountered, treat it as a mercator projection (no uv mirror)
   "terrainTexture": "4kTiles.xet", // use this texture only for the terrain, no planets
+
   "maxNumObjects": 985, // maximum total number of objects in the scene
   "numSpheres": 0, // number of objects besides the terrain
   "lightFromView": false, // light direction is look direction

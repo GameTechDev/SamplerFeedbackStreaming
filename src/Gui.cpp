@@ -300,6 +300,7 @@ void Gui::Draw(ID3D12GraphicsCommandList* in_pCommandList,
         ImGui::SliderFloat("Camera", &in_args.m_cameraAnimationRate, 0, 2.0f);
         ImGui::Indent(indent);
         ImGui::Checkbox("Roller Coaster", &in_args.m_cameraRollerCoaster);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("hotkey: page down");
         ImGui::Unindent(indent);
     }
 
@@ -388,10 +389,13 @@ void Gui::Draw(ID3D12GraphicsCommandList* in_pCommandList,
     //---------------------------------------------------------------------
     // emphasize this important visualization
     //---------------------------------------------------------------------
-    ImVec4 colorMinMip{ 0.4f, 0.2f, 0.8f, 1.0f };
-    ImGui::PushStyleColor(ImGuiCol_Button, colorMinMip);
-    if (ImGui::Button("Tile Min Mip Overlay", ImVec2(-1, 0))) { in_args.m_visualizeMinMip = !in_args.m_visualizeMinMip; }
+    ImVec4 colorMinMip{ 0.6f, 0.4f, 0.9f, 1.0f };
+    ImGui::Indent(indent);
+    ImGui::PushStyleColor(ImGuiCol_Text, colorMinMip);
+    ImGui::Checkbox("Tile Min Mip Overlay", &in_args.m_visualizeMinMip);
+    ImGui::Unindent(indent);
     ImGui::PopStyleColor(1);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("hotkey: page up");
 
     //---------------------------------------------------------------------
     // demo mode

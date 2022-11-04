@@ -533,9 +533,6 @@ SceneObjects::Planet::Planet(const std::wstring& in_filename,
 
     const UINT numLevelsOfDetail = SharedConstants::NUM_SPHERE_LEVELS_OF_DETAIL;
     CreateSphere(this, in_pDevice, in_assetUploader, in_sphereProperties, numLevelsOfDetail);
-
-    float d = SharedConstants::SPHERE_SCALE * 200;
-    GetModelMatrix() = DirectX::XMMatrixScaling(d, d, d);
 }
 
 //-------------------------------------------------------------------------
@@ -580,8 +577,6 @@ SceneObjects::Sky::Sky(const std::wstring& in_filename,
     sphereProperties.m_mirrorU = true;
     sphereProperties.m_topBottom = true;
     CreateSphere(this, in_pDevice, in_assetUploader, sphereProperties);
-    float d = SharedConstants::SPHERE_SCALE * 200;
-    GetModelMatrix() = DirectX::XMMatrixScaling(d, d, d);
 }
 
 //-------------------------------------------------------------------------
