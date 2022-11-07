@@ -211,8 +211,8 @@ private:
 
     UINT m_terrainObjectIndex{ 0 };
     SceneObjects::BaseObject* m_pTerrainSceneObject{ nullptr }; // convenience pointer, do not delete or draw, this is also in m_objects.
-    SceneObjects::BaseObject* m_pFirstSphere{ nullptr };   // all regular planets
-    SceneObjects::BaseObject* m_pEarth{ nullptr };         // special geometry (no mirror in U)
+    SceneObjects::Planet* m_pFirstSphere{ nullptr };   // all regular planets
+    SceneObjects::Planet* m_pEarth{ nullptr };         // special geometry (no mirror in U)
     SceneObjects::BaseObject* m_pSky{ nullptr }; // lifetime owned by m_objects
 
     DirectX::XMMATRIX SetSphereMatrix();

@@ -854,13 +854,14 @@ void Scene::LoadSpheres()
                 {
                     sphereProperties.m_mirrorU = false;
                     sphereProperties.m_topBottom = false;
-                    o = new SceneObjects::Planet(textureFilename, m_pTileUpdateManager, pHeap, m_device.Get(), m_assetUploader, m_args.m_sampleCount, descCPU, sphereProperties);
-                    m_pEarth = o;
+                    m_pEarth = new SceneObjects::Planet(textureFilename, m_pTileUpdateManager, pHeap, m_device.Get(), m_assetUploader, m_args.m_sampleCount, descCPU, sphereProperties);
+                    o = m_pEarth;
                 }
                 else
                 {
-                    o = new SceneObjects::Planet(textureFilename, m_pTileUpdateManager, pHeap, m_device.Get(), descCPU, m_pEarth);
+                    o = new SceneObjects::Planet(textureFilename, pHeap, descCPU, m_pEarth);
                 }
+                o->SetAxis(XMVectorSet(0, 0, 1, 0));
                 o->GetModelMatrix() = SetSphereMatrix();
             }
 
@@ -877,12 +878,12 @@ void Scene::LoadSpheres()
                 if (nullptr == m_pFirstSphere)
                 {
                     sphereProperties.m_mirrorU = true;
-                    o = new SceneObjects::Planet(textureFilename, m_pTileUpdateManager, pHeap, m_device.Get(), m_assetUploader, m_args.m_sampleCount, descCPU, sphereProperties);
-                    m_pFirstSphere = o;
+                    m_pFirstSphere = new SceneObjects::Planet(textureFilename, m_pTileUpdateManager, pHeap, m_device.Get(), m_assetUploader, m_args.m_sampleCount, descCPU, sphereProperties);
+                    o = m_pFirstSphere;
                 }
                 else
                 {
-                    o = new SceneObjects::Planet(textureFilename, m_pTileUpdateManager, pHeap, m_device.Get(), descCPU, m_pFirstSphere);
+                    o = new SceneObjects::Planet(textureFilename, pHeap, descCPU, m_pFirstSphere);
                 }
                 o->GetModelMatrix() = SetSphereMatrix();
             }
@@ -1382,13 +1383,9 @@ void Scene::Animate()
 
     for (auto o : m_objects)
     {
-        if (m_pTerrainSceneObject == o)
+        if (m_pSky != o)
         {
-            o->GetModelMatrix() = DirectX::XMMatrixRotationY(rotation) * o->GetModelMatrix();
-        }
-        else if (m_pSky != o)
-        {
-            o->GetModelMatrix() = DirectX::XMMatrixRotationZ(rotation) * o->GetModelMatrix();
+            o->Spin(rotation);
         }
 
         o->GetCombinedMatrix() = o->GetModelMatrix() * m_viewMatrix * m_projection;

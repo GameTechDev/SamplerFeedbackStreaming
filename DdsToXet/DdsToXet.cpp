@@ -33,6 +33,8 @@
 #include <assert.h>
 #include <filesystem>
 
+#include <dstorage.h>
+
 #include "ArgParser.h"
 #include "d3dx12.h"
 
@@ -68,10 +70,13 @@ std::vector<BYTE> m_packedMipData;
 
 D3D12_RESOURCE_DESC m_resourceDesc; // will be created and re-used
 
-UINT32 m_compressionFormat{ 0 };
+UINT32 m_compressionFormat{ 1 };
 
 bool m_convertFromXet2{ false };
 
+ComPtr<IDStorageCompressionCodec> m_compressor;
+//DSTORAGE_COMPRESSION m_compressionLevel = DSTORAGE_COMPRESSION_FASTEST;
+DSTORAGE_COMPRESSION m_compressionLevel = DSTORAGE_COMPRESSION_BEST_RATIO;
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 void Error(std::wstring in_s)
@@ -91,9 +96,9 @@ static DXGI_FORMAT GetFormatFromHeader(const DirectX::DDS_HEADER& in_ddsHeader)
         UINT32 fourCC = in_ddsHeader.ddspf.fourCC;
         if (DirectX::DDSPF_DXT1.fourCC == fourCC) { format = DXGI_FORMAT_BC1_UNORM; }
         if (DirectX::DDSPF_DXT2.fourCC == fourCC) { format = DXGI_FORMAT_BC2_UNORM; }
-        if (DirectX::DDSPF_DXT3.fourCC == fourCC) { format = DXGI_FORMAT_BC2_UNORM; } 
-        if (DirectX::DDSPF_DXT4.fourCC == fourCC) { format = DXGI_FORMAT_BC3_UNORM; } 
-        if (DirectX::DDSPF_DXT5.fourCC == fourCC) { format = DXGI_FORMAT_BC3_UNORM; } 
+        if (DirectX::DDSPF_DXT3.fourCC == fourCC) { format = DXGI_FORMAT_BC2_UNORM; }
+        if (DirectX::DDSPF_DXT4.fourCC == fourCC) { format = DXGI_FORMAT_BC3_UNORM; }
+        if (DirectX::DDSPF_DXT5.fourCC == fourCC) { format = DXGI_FORMAT_BC3_UNORM; }
         if (MAKEFOURCC('A', 'T', 'I', '1') == fourCC) { format = DXGI_FORMAT_BC4_UNORM; }
         if (MAKEFOURCC('A', 'T', 'I', '2') == fourCC) { format = DXGI_FORMAT_BC5_UNORM; }
         if (MAKEFOURCC('B', 'C', '4', 'U') == fourCC) { format = DXGI_FORMAT_BC4_UNORM; }
@@ -255,6 +260,26 @@ UINT WriteTile(BYTE* out_pDst,
 }
 
 //-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+void CompressTile(std::vector<BYTE>& inout_tile)
+{
+    auto bound = m_compressor->CompressBufferBound(D3D12_TILED_RESOURCE_TILE_SIZE_IN_BYTES);
+    std::vector<BYTE> scratch(bound);
+
+    size_t compressedDataSize = 0;
+    HRESULT hr = m_compressor->CompressBuffer(
+        inout_tile.data(), D3D12_TILED_RESOURCE_TILE_SIZE_IN_BYTES,
+        m_compressionLevel,
+        scratch.data(), bound, &compressedDataSize);
+
+    assert(compressedDataSize <= D3D12_TILED_RESOURCE_TILE_SIZE_IN_BYTES);
+
+    scratch.resize(compressedDataSize);
+
+    inout_tile.swap(scratch);
+}
+
+//-----------------------------------------------------------------------------
 // builds offset table and fills tiled texture data
 //-----------------------------------------------------------------------------
 void WriteTiles(const XetFileHeader& in_header, const BYTE* in_pSrc)
@@ -287,11 +312,16 @@ void WriteTiles(const XetFileHeader& in_header, const BYTE* in_pSrc)
                     WriteTile(tile.data(), D3D12_TILED_RESOURCE_COORDINATE{ x, y, 0, s }, m_subresourceData[s], in_pSrc);
                 }
 
+                if (m_compressionFormat)
+                {
+                    CompressTile(tile);
+                }
+
                 m_textureData.resize(m_textureData.size() + tile.size()); // grow the texture space to hold the new tile
                 memcpy(&m_textureData[offset], tile.data(), tile.size()); // copy bytes
 
                 // add tileData to array
-                XetFileHeader::TileData outData{0};
+                XetFileHeader::TileData outData{ 0 };
                 outData.m_offset = offset;
                 outData.m_numBytes = (UINT)tile.size();
                 m_offsets.push_back(outData);
@@ -358,10 +388,25 @@ UINT WritePackedMips(const XetFileHeader& in_header, BYTE* in_pBytes, size_t in_
     PadPackedMips(in_header, pSrc, m_packedMipData);
     UINT numBytesPadded = (UINT)m_packedMipData.size(); // uncompressed and padded
 
+    size_t numBytesCompressed = numBytesPadded; // unless we compress...
+    if (m_compressionFormat)
+    {
+        // input to CompressBuffer() is a UINT32
+        auto bound = m_compressor->CompressBufferBound(numBytesPadded);
+        std::vector<BYTE> scratch(bound);
+
+        HRESULT hr = m_compressor->CompressBuffer(
+            m_packedMipData.data(), numBytesPadded,
+            m_compressionLevel,
+            scratch.data(), bound, &numBytesCompressed);
+        scratch.resize(numBytesCompressed);
+        m_packedMipData.swap(scratch);
+    }
+
     // last offset structure points at the packed mips
     XetFileHeader::TileData outData{ 0 };
     outData.m_offset = m_offsets.back().m_offset + m_offsets.back().m_numBytes;
-    outData.m_numBytes = numBytesPadded;
+    outData.m_numBytes = (UINT32)numBytesCompressed;
     m_offsets.push_back(outData);
 
     return numBytesPadded;
@@ -377,6 +422,7 @@ int main()
     ArgParser argParser;
     argParser.AddArg(L"-in", inFileName);
     argParser.AddArg(L"-out", outFileName);
+    argParser.AddArg(L"-compress", m_compressionFormat, L"compression format");
     argParser.Parse();
 
     //--------------------------
@@ -459,7 +505,7 @@ int main()
     //--------------------------
     // reserve output space
     //--------------------------
-    std::filesystem::path inFilePath(inFileName );
+    std::filesystem::path inFilePath(inFileName);
     auto fileSize = std::filesystem::file_size(inFilePath);
 
     m_textureData.reserve(fileSize); // reserve enough space to hold the whole uncompressed source
@@ -468,6 +514,10 @@ int main()
     //--------------------------
     // write tiles
     //--------------------------
+    if (m_compressionFormat)
+    {
+        HRESULT hr = DStorageCreateCompressionCodec((DSTORAGE_COMPRESSION_FORMAT)m_compressionFormat, 2, IID_PPV_ARGS(&m_compressor));
+    }
     WriteTiles(header, pBits);
     header.m_mipInfo.m_numUncompressedBytesForPackedMips = WritePackedMips(header, pInFileBytes, fileSize);
 

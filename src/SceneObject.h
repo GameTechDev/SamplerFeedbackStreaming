@@ -78,6 +78,8 @@ namespace SceneObjects
         DirectX::XMMATRIX& GetModelMatrix() { return m_matrix; }
         DirectX::XMMATRIX& GetCombinedMatrix() { return m_combinedMatrix; }
 
+        void Spin(float in_radians); // spin this object around its desired axis
+
         // for visualization
         ID3D12Resource* GetTiledResource() const { return m_pStreamingResource->GetTiledResource(); }
         ID3D12Resource* GetMinMipMap() const { return m_pStreamingResource->GetMinMipMap(); }
@@ -94,6 +96,8 @@ namespace SceneObjects
             ID3D12Resource* in_pIndexBuffer, UINT in_lod = 0);
 
         void SetFeedbackEnabled(bool in_value) { m_feedbackEnabled = in_value; }
+
+        void SetAxis(DirectX::XMVECTOR in_vector) { m_axis.v = in_vector; }
     protected:
         // pass in a location in a descriptor heap where this can write 3 descriptors
         BaseObject(
@@ -109,8 +113,8 @@ namespace SceneObjects
         bool m_feedbackEnabled{ true };
         TileUpdateManager* m_pTileUpdateManager{ nullptr };
 
-        DirectX::XMMATRIX m_matrix;
-        DirectX::XMMATRIX m_combinedMatrix;
+        DirectX::XMMATRIX m_matrix{ DirectX::XMMatrixIdentity() };
+        DirectX::XMMATRIX m_combinedMatrix{ DirectX::XMMatrixIdentity() };
 
         struct ModelConstantData
         {
@@ -147,6 +151,9 @@ namespace SceneObjects
             in_pCommandList->SetGraphicsRootSignature(m_rootSignatureFB.Get());
             in_pCommandList->SetPipelineState(m_pipelineStateFB.Get());
         }
+
+        ID3D12Device* GetDevice();
+        DirectX::XMVECTORF32 m_axis{ { { 0.0f, 1.0f, 0.0f, 0.0f } } };
     private:
 
         struct Geometry
@@ -172,7 +179,7 @@ namespace SceneObjects
 
         std::wstring GetAssetFullPath(const std::wstring& in_filename);
 
-        UINT m_srvUavCbvDescriptorSize;
+        UINT m_srvUavCbvDescriptorSize{ 0 };
     };
 
     void CreateSphere(SceneObjects::BaseObject* out_pObject,
@@ -208,11 +215,9 @@ namespace SceneObjects
             const SphereGen::Properties& in_properties);
 
         Planet(const std::wstring& in_filename,
-            TileUpdateManager* in_pTileUpdateManager,
             StreamingHeap* in_pStreamingHeap,
-            ID3D12Device* in_pDevice,
             D3D12_CPU_DESCRIPTOR_HANDLE in_srvBaseCPU,
-            BaseObject* in_pSharedObject);
+            Planet* in_pSharedObject);
     };
 
     // special render state (front face cull)

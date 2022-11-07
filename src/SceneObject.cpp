@@ -51,10 +51,7 @@ SceneObjects::BaseObject::BaseObject(
     StreamingHeap* in_pStreamingHeap,
     ID3D12Device* in_pDevice,
     D3D12_CPU_DESCRIPTOR_HANDLE in_srvBaseCPU,
-    BaseObject* in_pSharedObject) :
-    m_matrix(DirectX::XMMatrixIdentity()),m_srvUavCbvDescriptorSize(0)
-    , m_pTileUpdateManager(in_pTileUpdateManager)
-    , m_combinedMatrix(DirectX::XMMatrixIdentity())
+    BaseObject* in_pSharedObject) : m_pTileUpdateManager(in_pTileUpdateManager)
 {
     //---------------------------------------
     // create root signature
@@ -513,7 +510,24 @@ SceneObjects::Terrain::Terrain(const std::wstring& in_filename,
     SetGeometry(pVertexBuffer, (UINT)sizeof(TerrainGenerator::Vertex), pIndexBuffer);
 }
 
-//=========================================================================
+//-------------------------------------------------------------------------
+//-------------------------------------------------------------------------
+ID3D12Device* SceneObjects::BaseObject::GetDevice()
+{
+    ComPtr<ID3D12Device> device;
+    m_pStreamingResource->GetTiledResource()->GetDevice(IID_PPV_ARGS(&device));
+    return device.Get();
+}
+
+//-------------------------------------------------------------------------
+// rotate object around a custom axis.
+//-------------------------------------------------------------------------
+void SceneObjects::BaseObject::Spin(float in_radians)
+{
+    m_matrix = DirectX::XMMatrixRotationAxis(m_axis, in_radians) * m_matrix;
+}
+
+ //=========================================================================
 // planets have multiple LoDs
 // Texture Coordinates may optionally be mirrored in U
 //=========================================================================
@@ -538,13 +552,11 @@ SceneObjects::Planet::Planet(const std::wstring& in_filename,
 //-------------------------------------------------------------------------
 //-------------------------------------------------------------------------
 SceneObjects::Planet::Planet(const std::wstring& in_filename,
-    TileUpdateManager* in_pTileUpdateManager,
     StreamingHeap* in_pStreamingHeap,
-    ID3D12Device* in_pDevice,
     D3D12_CPU_DESCRIPTOR_HANDLE in_srvBaseCPU,
-    BaseObject* in_pSharedObject) :
-    BaseObject(in_filename, in_pTileUpdateManager, in_pStreamingHeap,
-        in_pDevice, in_srvBaseCPU, in_pSharedObject)
+    Planet* in_pSharedObject) :
+    BaseObject(in_filename, in_pSharedObject->m_pTileUpdateManager, in_pStreamingHeap,
+        in_pSharedObject->GetDevice(), in_srvBaseCPU, in_pSharedObject)
 {
     CopyGeometry(in_pSharedObject);
 }
