@@ -45,16 +45,16 @@ public:
     {
         std::wstring m_filename;
         std::wstring m_mediaDir;
-        UINT32 m_stagingBufferSizeMB{ 32 };
+        UINT32 m_stagingBufferSizeMB{ 128 };
 
-        std::wstring m_adapterDescription{ L"intel" };  // e.g. "intel", will pick the GPU with this substring in the adapter description (not case sensitive)
+        std::wstring m_adapterDescription;  // e.g. "intel", will pick the GPU with this substring in the adapter description (not case sensitive)
         enum class PreferredArchitecture
         {
             NONE = 0,
             DISCRETE,
             INTEGRATED
         };
-        PreferredArchitecture m_preferredArchitecture{ PreferredArchitecture::DISCRETE };
+        PreferredArchitecture m_preferredArchitecture{ PreferredArchitecture::NONE };
 
         bool m_inspect{ false }; // inspect trace only, no playback
     };
