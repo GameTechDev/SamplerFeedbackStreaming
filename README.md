@@ -4,7 +4,7 @@
 
 This repository contains an [MIT licensed](LICENSE) demo of _DirectX12 Sampler Feedback Streaming_, a technique using [DirectX12 Sampler Feedback](https://microsoft.github.io/DirectX-Specs/d3d/SamplerFeedback.html) to guide continuous loading and eviction of small regions (tiles) of textures - in other words, virtual texture streaming. Sampler Feedback Streaming can dramatically improve visual quality by enabling scenes consisting of 100s of gigabytes of resources to be drawn on GPUs containing much less physical memory. The scene below uses just ~200MB of a 1GB heap, despite over 350GB of total texture resources. It also uses DirectStorage for Windows for maximum file upload performance.
 
-New: incorporated DirectStorage for Windows v1.10 with GPU decompression. Be sure to update your GPU drivers to access your vendor's optimized GPU decompression capabilities. See also:
+New: incorporated DirectStorage for Windows v1.1.0 with GPU decompression. Be sure to update your GPU drivers to access your vendor's optimized GPU decompression capabilities. See also:
 - [Intel's blog](https://www.intel.com/content/www/us/en/developer/articles/news/directstorage-on-intel-gpus.html)
 - [Microsoft's blog](https://devblogs.microsoft.com/directx/directstorage-1-1-now-available/)
 
