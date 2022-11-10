@@ -65,8 +65,8 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
     <PostBuildEvent>
-      <Command>cd /d $(TargetDir)
-convert.bat $(SolutionDir)dds media</Command>
+      <Command>cd /d "$(TargetDir)"
+convert.bat "$(SolutionDir)dds" media</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -86,8 +86,8 @@ convert.bat $(SolutionDir)dds media</Command>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
     <PostBuildEvent>
-      <Command>cd /d $(TargetDir)
-convert.bat $(SolutionDir)dds media</Command>
+      <Command>cd /d "$(TargetDir)"
+convert.bat "$(SolutionDir)dds" media</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
