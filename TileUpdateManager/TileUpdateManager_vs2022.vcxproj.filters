@@ -63,6 +63,9 @@
     <ClInclude Include="SimpleAllocator.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="BitVector.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="TileUpdateManagerBase.cpp">

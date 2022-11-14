@@ -34,7 +34,7 @@
   "maxFeedbackTime": 5.0, // maximum milliseconds for GPU to resolve feedback
 
   "visualizeMinMip": false, // color overlayed onto texture by PS corresponding to mip level
-  "hideFeedback": true, // hide the terrain feedback windows
+  "hideFeedback": false, // hide the terrain feedback windows
   "hideUI": false, // hide the UI
   "miniUI": false, // use "lite" UI (bandwidth & heap occupancy only)
 

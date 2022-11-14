@@ -238,12 +238,22 @@ void Gui::ToggleDemoMode(CommandLineArgs& in_args)
     static float bias = 0;
     static float cameraRate = 0.4f;
     static float animationRate = 0.4f;
+    static int numSpheres = (int)m_initialArgs.m_maxNumObjects;
+
+    if (m_demoMode)
+    {
+        bias = 0;
+        cameraRate = 0.4f;
+        animationRate = 0.4f;
+        numSpheres = (int)m_initialArgs.m_maxNumObjects;
+    }
 
     std::swap(bias, in_args.m_lodBias);
     std::swap(cameraRate, in_args.m_cameraAnimationRate);
     std::swap(animationRate, in_args.m_animationRate);
+    std::swap(numSpheres, in_args.m_numSpheres);
+
     in_args.m_showFeedbackMaps = false;
-    in_args.m_numSpheres = (int)m_initialArgs.m_maxNumObjects;
 }
 
 //-----------------------------------------------------------------------------
@@ -256,13 +266,24 @@ void Gui::ToggleBenchmarkMode(CommandLineArgs& in_args)
     static float bias = -2;
     static float cameraRate = 2;
     static float animationRate = 2;
+    static int numSpheres = (int)m_initialArgs.m_maxNumObjects;
+
+    if (m_benchmarkMode)
+    {
+        paintmixer = true;
+        bias = -2;
+        cameraRate = 2;
+        animationRate = 2;
+        numSpheres = (int)m_initialArgs.m_maxNumObjects;
+    }
 
     std::swap(paintmixer, in_args.m_cameraPaintMixer);
     std::swap(bias, in_args.m_lodBias);
     std::swap(cameraRate, in_args.m_cameraAnimationRate);
     std::swap(animationRate, in_args.m_animationRate);
+    std::swap(numSpheres, in_args.m_numSpheres);
+
     in_args.m_showFeedbackMaps = false;
-    in_args.m_numSpheres = (int)m_initialArgs.m_maxNumObjects;
 }
 
 //-----------------------------------------------------------------------------
@@ -341,7 +362,12 @@ void Gui::Draw(ID3D12GraphicsCommandList* in_pCommandList,
     //---------------------------------------------------------------------
     // terrain feedback viewer
     //---------------------------------------------------------------------
-    in_args.m_showFeedbackMaps = ImGui::CollapsingHeader("Terrain Object Feedback Viewer");
+    ImGuiTreeNodeFlags feedbackNodeFlags = ImGuiTreeNodeFlags_None;
+    if (in_args.m_showFeedbackMaps)
+    {
+        feedbackNodeFlags = ImGuiTreeNodeFlags_DefaultOpen;
+    }
+    in_args.m_showFeedbackMaps = ImGui::CollapsingHeader("Terrain Object Feedback Viewer", feedbackNodeFlags);
     if (in_args.m_showFeedbackMaps)
     {
         in_args.m_cameraUpLock = true;
@@ -400,7 +426,8 @@ void Gui::Draw(ID3D12GraphicsCommandList* in_pCommandList,
     //---------------------------------------------------------------------
     // demo mode
     //---------------------------------------------------------------------
-    if (ImGui::Button("DEMO MODE", ImVec2(-1, 0)))
+    out_buttonChanges.m_toggleDemoMode = ImGui::Button("DEMO MODE", ImVec2(-1, 0));
+    if (out_buttonChanges.m_toggleDemoMode)
     {
         if (m_benchmarkMode) { ToggleBenchmarkMode(in_args); }
         ToggleDemoMode(in_args);
@@ -409,7 +436,8 @@ void Gui::Draw(ID3D12GraphicsCommandList* in_pCommandList,
     //---------------------------------------------------------------------
     // benchmark mode
     //---------------------------------------------------------------------
-    if (ImGui::Button("BENCHMARK MODE", ImVec2(-1, 0)))
+    out_buttonChanges.m_toggleBenchmarkMode = ImGui::Button("BENCHMARK MODE", ImVec2(-1, 0));
+    if (out_buttonChanges.m_toggleBenchmarkMode)
     {
         if (m_demoMode) { ToggleDemoMode(in_args); }
         ToggleBenchmarkMode(in_args);

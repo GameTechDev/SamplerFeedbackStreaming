@@ -59,6 +59,8 @@ public:
         bool m_directStorageToggle{ false };
         bool m_frustumToggle{ false };
         bool m_visualizationChange{ false };
+        bool m_toggleDemoMode{ false };
+        bool m_toggleBenchmarkMode{ false };
     };
 
     void Draw(ID3D12GraphicsCommandList* in_pCommandList,

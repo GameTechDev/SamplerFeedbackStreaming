@@ -204,8 +204,7 @@ Scene::Scene(const CommandLineArgs& in_args, HWND in_hwnd) :
     XMVECTOR lookAt = XMVectorSet(0.0f, 0.0f, 0.0f, 1.0f);
     XMVECTOR vUpVec = XMVectorSet(0.0f, 1.0f, 0.0f, 1.0f);
 
-    m_viewMatrix = XMMatrixLookAtLH(vEyePt, lookAt, vUpVec);
-    m_viewMatrixInverse = XMMatrixInverse(nullptr, m_viewMatrix);
+    SetViewMatrix(XMMatrixLookAtLH(vEyePt, lookAt, vUpVec));
 
     m_pGui = new Gui(m_hwnd, m_device.Get(), m_srvHeap.Get(), (UINT)DescriptorHeapOffsets::GUI, m_swapBufferCount, SharedConstants::SWAP_CHAIN_FORMAT, adapterDescription, m_args);
 
@@ -284,8 +283,7 @@ void Scene::MoveView(int in_x, int in_y, int in_z)
     float z = in_z * -translationRate;
     XMMATRIX translation = XMMatrixTranslation(x, y, z);
 
-    m_viewMatrix = XMMatrixMultiply(m_viewMatrix, translation);
-    m_viewMatrixInverse = XMMatrixInverse(nullptr, m_viewMatrix);
+    SetViewMatrix(XMMatrixMultiply(m_viewMatrix, translation));
 }
 
 //-----------------------------------------------------------------------------
@@ -314,9 +312,7 @@ void Scene::RotateView(float in_x, float in_y, float in_z)
         rotation = XMMatrixRotationRollPitchYaw(in_x, in_y, in_z);
     }
 
-    m_viewMatrix = XMMatrixMultiply(m_viewMatrix, rotation);
-
-    m_viewMatrixInverse = XMMatrixInverse(nullptr, m_viewMatrix);
+    SetViewMatrix(XMMatrixMultiply(m_viewMatrix, rotation));
 }
 
 
@@ -1365,17 +1361,15 @@ void Scene::Animate()
 
             XMVECTOR vUpVec = XMVectorSet(0.0f, 1.0f, 0.0f, 1.0f);
 
-            m_viewMatrix = XMMatrixLookToLH(pos, lookTo, vUpVec);
+            SetViewMatrix(XMMatrixLookToLH(pos, lookTo, vUpVec));
 
             previous = pos;
         }
         else
         {
             XMVECTOR pos = XMVectorSet(x, y, z, 1);
-            m_viewMatrix = XMMatrixLookAtLH(pos, XMVectorSet(0, 0, 0, 0), XMVectorSet(0.0f, 1.0f, 0.0f, 1.0f));
+            SetViewMatrix(XMMatrixLookAtLH(pos, XMVectorSet(0, 0, 0, 0), XMVectorSet(0.0f, 1.0f, 0.0f, 1.0f)));
         }
-
-        m_viewMatrixInverse = XMMatrixInverse(nullptr, m_viewMatrix);
     }
 
     // spin objects
@@ -1639,6 +1633,22 @@ void Scene::HandleUiToggleFrustum()
 }
 
 //-------------------------------------------------------------------------
+//-------------------------------------------------------------------------
+void Scene::SwapCameraForDemo(bool in_capture)
+{
+    static XMMATRIX previousView = XMMatrixIdentity();
+
+    if (in_capture)
+    {
+        previousView = m_viewMatrix;
+    }
+    else
+    {
+        SetViewMatrix(previousView);
+    }
+}
+
+//-------------------------------------------------------------------------
 // handle UI changes (outside of begin/end frame)
 //-------------------------------------------------------------------------
 void Scene::HandleUIchanges()
@@ -1656,6 +1666,19 @@ void Scene::HandleUIchanges()
         if (m_uiButtonChanges.m_visualizationChange)
         {
             m_pTileUpdateManager->SetVisualizationMode((UINT)m_args.m_dataVisualizationMode);
+        }
+
+        if (m_uiButtonChanges.m_toggleBenchmarkMode)
+        {
+            m_benchmarkMode = !m_benchmarkMode;
+            if (!m_demoMode) { SwapCameraForDemo(m_benchmarkMode); }
+            else { m_demoMode = false; }
+        }
+        if (m_uiButtonChanges.m_toggleDemoMode)
+        {
+            m_demoMode = !m_demoMode;
+            if (!m_benchmarkMode) { SwapCameraForDemo(m_demoMode); }
+            else { m_benchmarkMode = false; }
         }
 
         m_uiButtonChanges = Gui::ButtonChanges(); // reset

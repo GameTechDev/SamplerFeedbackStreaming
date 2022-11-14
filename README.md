@@ -1,25 +1,30 @@
-# Sampler Feedback Streaming
+# Sampler Feedback Streaming With DirectStorage
 
 ## Introduction
 
 This repository contains an [MIT licensed](LICENSE) demo of _DirectX12 Sampler Feedback Streaming_, a technique using [DirectX12 Sampler Feedback](https://microsoft.github.io/DirectX-Specs/d3d/SamplerFeedback.html) to guide continuous loading and eviction of small regions (tiles) of textures - in other words, virtual texture streaming. Sampler Feedback Streaming can dramatically improve visual quality by enabling scenes consisting of 100s of gigabytes of resources to be drawn on GPUs containing much less physical memory. The scene below uses just ~200MB of a 1GB heap, despite over 350GB of total texture resources. It also uses DirectStorage for Windows for maximum file upload performance.
 
 New: incorporated DirectStorage for Windows v1.1.0 with GPU decompression. Be sure to update your GPU drivers to access your vendor's optimized GPU decompression capabilities. See also:
-- [Intel's blog](https://www.intel.com/content/www/us/en/developer/articles/news/directstorage-on-intel-gpus.html)
-- [Microsoft's blog](https://devblogs.microsoft.com/directx/directstorage-1-1-now-available/)
+- [Intel's 1.1 announcement blog](https://www.intel.com/content/www/us/en/developer/articles/news/directstorage-on-intel-gpus.html)
+- [Microsoft's 1.1 announcement blog](https://devblogs.microsoft.com/directx/directstorage-1-1-now-available/)
 
+See also:
+
+- [GDC 2021 video](https://software.intel.com/content/www/us/en/develop/events/gdc.html?videoid=6264595860001) [(alternate link)](https://www.youtube.com/watch?v=VDDbrfZucpQ) which provides an overview of Sampler Feedback and discusses this sample [starting at about 15:30.](https://www.youtube.com/watch?v=VDDbrfZucpQ&t=936s)
+- [GDC 2021 presentation](https://software.intel.com/content/dam/develop/external/us/en/documents/pdf/july-gdc-2021-sampler-feedback-texture-space-shading-direct-storage.pdf) in PDF form
+- [Microsoft DirectStorage Landing Page](https://devblogs.microsoft.com/directx/directstorage-api-downloads/)
 
 ![Sample screenshot](./readme-images/sampler-feedback-streaming.jpg "Sample screenshot")
 Textures derived from [Hubble Images](https://www.nasa.gov/mission_pages/hubble/multimedia/index.html), see the [Hubble Copyright](https://hubblesite.org/copyright)
 
 Notes:
 - while multiple objects can share the same DX texture and source file, this sample aims to demonstrate the possibility of every object having a unique resource. Hence, every texture is treated as though unique, though the same source file may be used multiple times.
-- not all textures shown above, which total over 13GB, are not part of the repo. A few 16k x 16k textures are available as [release 1](https://github.com/GameTechDev/SamplerFeedbackStreaming/releases/tag/1) and  [release 2](https://github.com/GameTechDev/SamplerFeedbackStreaming/releases/tag/2)
+- the repo does not include all textures shown above (they total over 13GB). A few 16k x 16k textures are available as [release 1](https://github.com/GameTechDev/SamplerFeedbackStreaming/releases/tag/1) and  [release 2](https://github.com/GameTechDev/SamplerFeedbackStreaming/releases/tag/2)
 - the file format has changed since large textures were provided as "releases." See the [log](#log) below.
-- this repository has been updated with DirectStorage 1.0.2 for Windows&reg; from https://www.nuget.org/packages/Microsoft.Direct3D.DirectStorage/
+- this repository depends on DirectStorage for Windows&reg; version 1.1.0 from https://www.nuget.org/packages/Microsoft.Direct3D.DirectStorage/
 - at build time, BCx textures (BC7 and BC1 tested) in the dds/ directory are converted into the custom .XET format and placed in the ($TargetDir)/media directory (e.g. x64/Release/media). A few dds files are included.
 
-Requirements:
+## Requirements:
 - minimum:
     - Windows 10 20H1 (aka May 2020 Update, build 19041)
     - GPU with D3D12 Sampler Feedback Support such as Intel Iris Xe Graphics as found in 11th Generation Intel&reg; Core&trade; processors and discrete GPUs (driver version **[30.0.100.9667](https://downloadcenter.intel.com/product/80939/Graphics) or later**)
@@ -27,12 +32,6 @@ Requirements:
     - Windows 11
     - nvme SSD with PCIe gen4 or later
     - Intel Arc A770 discrete GPU or later
-
-See also:
-
-* [GDC 2021 video](https://software.intel.com/content/www/us/en/develop/events/gdc.html?videoid=6264595860001) [(alternate link)](https://www.youtube.com/watch?v=VDDbrfZucpQ) which provides an overview of Sampler Feedback and discusses this sample starting at about 15:30.
-
-* [GDC 2021 presentation](https://software.intel.com/content/dam/develop/external/us/en/documents/pdf/july-gdc-2021-sampler-feedback-texture-space-shading-direct-storage.pdf) in PDF form
 
 ## Build Instructions
 

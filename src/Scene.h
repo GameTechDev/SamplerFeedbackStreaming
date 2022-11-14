@@ -142,6 +142,8 @@ private:
     DirectX::XMMATRIX m_projection;
     DirectX::XMMATRIX m_viewMatrix;
     DirectX::XMMATRIX m_viewMatrixInverse;
+    void SetViewMatrix(const DirectX::XMMATRIX& m) { m_viewMatrix = m; m_viewMatrixInverse = XMMatrixInverse(nullptr, m_viewMatrix); }
+
     float m_aspectRatio{ 0 };
     const float m_fieldOfView{ DirectX::XM_PI / 6.0f };
 
@@ -183,6 +185,7 @@ private:
     // startup sequence (constructor)
     //-------------------------------
     void InitDebugLayer();
+    void CreateDeviceWithName(std::wstring& out_adapterDescription);
     void CreateDescriptorHeaps();
     void CreateCommandQueue();
     void CreateSwapChain();
@@ -206,6 +209,8 @@ private:
     //-----------------------------------
     // scene graph
     //-----------------------------------
+    AssetUploader m_assetUploader;
+
     std::vector<class SceneObjects::BaseObject*> m_objects;
     UINT m_numSpheresLoaded{ 0 };
 
@@ -252,12 +257,11 @@ private:
 
     void HandleUIchanges();
     bool WaitForAssetLoad();
-
     void StartScene();
     void DrawUI();
     void HandleUiToggleFrustum();
 
-    void CreateDeviceWithName(std::wstring& out_adapterDescription);
-
-    AssetUploader m_assetUploader;
+    bool m_demoMode{ false };
+    bool m_benchmarkMode{ false };
+    void SwapCameraForDemo(bool in_capture);
 };

@@ -111,6 +111,7 @@
     <ClCompile Include="XeTexture.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="BitVector.h" />
     <ClInclude Include="SimpleAllocator.h" />
     <ClInclude Include="DataUploader.h" />
     <ClInclude Include="FileStreamer.h" />
