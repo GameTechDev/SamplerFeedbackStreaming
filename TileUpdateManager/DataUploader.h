@@ -125,6 +125,8 @@ namespace Streaming
         void SubmitThread();
         std::thread m_submitThread;
         Streaming::SynchronizationFlag m_submitFlag;
+        std::vector<UINT> m_submitTasks;
+        RingBuffer m_submitTaskAlloc;
 
         // thread to poll copy and mapping fences
         // this thread could have been designed using WaitForMultipleObjects, but it was found that SetEventOnCompletion() was expensive in a tight thread loop
@@ -133,13 +135,15 @@ namespace Streaming
         std::thread m_fenceMonitorThread;
         Streaming::SynchronizationFlag m_fenceMonitorFlag;
         RawCpuTimer* m_pFenceThreadTimer{ nullptr }; // init timer on the thread that uses it. can't really worry about thread migration.
+        std::vector<UINT> m_monitorTasks;
+        RingBuffer m_monitorTaskAlloc;
 
         void StartThreads();
         void StopThreads();
         std::atomic<bool> m_threadsRunning{ false };
         const int m_threadPriority{ 0 };
 
-        // DS memory queue used just for loading packed mips when the file doesn't include padding
+        // DS memory queue used just for loading packed mips
         // separate memory queue means needing a second fence - can't wait across DS queues
         void InitDirectStorage(ID3D12Device* in_pDevice);
         ComPtr<IDStorageFactory> m_dsFactory;

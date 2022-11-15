@@ -206,7 +206,7 @@ template<> inline void ArgParser::AddArg(std::wstring s, ArgFunction f, bool def
 {
     std::wstringstream w;
     std::string b = default_value ? "True" : "False";
-    w << ": " << d << " (default: " << b.c_str() << ") ";
+    w << d << " (default: " << b.c_str() << ") ";
     AddArg(s, f, w.str());
 }
 

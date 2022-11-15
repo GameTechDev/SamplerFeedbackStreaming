@@ -72,7 +72,11 @@ namespace Streaming
         // writer methods
         //-------------------------
         UINT GetAvailableToWrite() const { return m_size - m_counter; } // how many could be written
-        UINT GetWriteIndex() const { return (m_writerIndex % m_size); } // can start writing here
+        UINT GetWriteIndex(UINT in_offset = 0) const // can start writing here
+        {
+            ASSERT(in_offset < GetAvailableToWrite()); // fixme? probably an error because there's no valid index
+            return (m_writerIndex + in_offset) % m_size;
+        }
         void Allocate(UINT in_n = 1) // notify reader there's data ready
         {
             ASSERT((m_counter + in_n) <= m_size); // can't have more in-flight than m_size
@@ -84,7 +88,11 @@ namespace Streaming
         // reader methods
         //-------------------------
         UINT GetReadyToRead() const { return m_counter; } // how many can be read
-        UINT GetReadIndex() const { return (m_readerIndex % m_size); } // can start reading here
+        UINT GetReadIndex(UINT in_offset = 0) const // can start reading here
+        {
+            ASSERT(in_offset < GetReadyToRead()); // fixme? probably an error because there's no valid index
+            return (m_readerIndex + in_offset) % m_size;
+        }
         void Free(UINT in_n = 1) // return entries to pool
         {
             ASSERT(m_counter >= in_n);

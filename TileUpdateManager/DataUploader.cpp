@@ -47,6 +47,8 @@ Streaming::DataUploader::DataUploader(
     , m_gpuTimer(in_pDevice, in_maxCopyBatches, D3D12GpuTimer::TimerType::Copy)
     , m_mappingUpdater(in_maxTileMappingUpdatesPerApiCall)
     , m_threadPriority(in_threadPriority)
+    , m_submitTaskAlloc(in_maxCopyBatches), m_submitTasks(in_maxCopyBatches)
+    , m_monitorTaskAlloc(in_maxCopyBatches), m_monitorTasks(in_maxCopyBatches)
 {
     // copy queue just for UpdateTileMappings() on reserved resources
     {
@@ -273,7 +275,11 @@ Streaming::UpdateList* Streaming::DataUploader::AllocateUpdateList(Streaming::St
         pUpdateList->m_executionState = UpdateList::State::STATE_ALLOCATED;
 
         // start fence polling thread now
-        m_fenceMonitorFlag.Set();
+        {
+            m_monitorTasks[m_monitorTaskAlloc.GetWriteIndex()] = index;
+            m_monitorTaskAlloc.Allocate();
+            m_fenceMonitorFlag.Set();
+        }
     }
 
     return pUpdateList;
@@ -308,7 +314,12 @@ void Streaming::DataUploader::SubmitUpdateList(Streaming::UpdateList& in_updateL
         m_pFileStreamer->StreamTexture(in_updateList);
     }
 
-    m_submitFlag.Set();
+    // add to submit task queue
+    {
+        m_submitTasks[m_submitTaskAlloc.GetWriteIndex()] = UINT(&in_updateList - m_updateLists.data());
+        m_submitTaskAlloc.Allocate();
+        m_submitFlag.Set();
+    }
 }
 
 //-----------------------------------------------------------------------------
@@ -323,8 +334,21 @@ void Streaming::DataUploader::SubmitUpdateList(Streaming::UpdateList& in_updateL
 void Streaming::DataUploader::FenceMonitorThread()
 {
     bool loadPackedMips = false;
-    for (auto& updateList : m_updateLists)
+
+    const UINT numTasks = m_monitorTaskAlloc.GetReadyToRead();
+    if (0 == numTasks)
     {
+        return;
+    }
+
+    const UINT startIndex = m_monitorTaskAlloc.GetReadIndex();
+    for (UINT i = startIndex; i < (startIndex + numTasks); i++)
+    {
+        ASSERT(numTasks != 0);
+        auto& updateList = m_updateLists[m_monitorTasks[i % m_monitorTasks.size()]];
+
+        bool freeUpdateList = false;
+
         // assign a start time to every in-flight update list. this will give us an upper bound on latency.
         // latency is only measured for tile uploads
         if ((UpdateList::State::STATE_FREE != updateList.m_executionState) && (0 == updateList.m_copyLatencyTimer))
@@ -356,7 +380,7 @@ void Streaming::DataUploader::FenceMonitorThread()
             if (m_memoryFence->GetCompletedValue() >= updateList.m_copyFenceValue)
             {
                 updateList.m_pStreamingResource->NotifyPackedMips();
-                FreeUpdateList(updateList);
+                freeUpdateList = true;
             }
             break;
 
@@ -375,40 +399,42 @@ void Streaming::DataUploader::FenceMonitorThread()
             [[fallthrough]];
 
         case UpdateList::State::STATE_MAP_PENDING:
-        {
-            // standard updates or mapping only? check if mapping complete
-            if (updateList.m_mappingFenceValue > m_mappingFence->GetCompletedValue())
+            if (updateList.m_mappingFenceValue <= m_mappingFence->GetCompletedValue())
             {
-                break;
+                // notify evictions
+                if (updateList.GetNumEvictions())
+                {
+                    updateList.m_pStreamingResource->NotifyEvicted(updateList.m_evictCoords);
+
+                    m_numTotalEvictions.fetch_add(updateList.GetNumEvictions(), std::memory_order_relaxed);
+                }
+
+                // notify regular tiles
+                if (updateList.GetNumStandardUpdates())
+                {
+                    updateList.m_pStreamingResource->NotifyCopyComplete(updateList.m_coords);
+
+                    auto updateLatency = m_pFenceThreadTimer->GetTime() - updateList.m_copyLatencyTimer;
+                    m_totalTileCopyLatency.fetch_add(updateLatency * updateList.GetNumStandardUpdates(), std::memory_order_relaxed);
+
+                    m_numTotalUploads.fetch_add(updateList.GetNumStandardUpdates(), std::memory_order_relaxed);
+
+                }
+
+                freeUpdateList = true;
             }
-
-            // notify evictions
-            if (updateList.GetNumEvictions())
-            {
-                updateList.m_pStreamingResource->NotifyEvicted(updateList.m_evictCoords);
-
-                m_numTotalEvictions.fetch_add(updateList.GetNumEvictions(), std::memory_order_relaxed);
-            }
-
-            // notify regular tiles
-            if (updateList.GetNumStandardUpdates())
-            {
-                updateList.m_pStreamingResource->NotifyCopyComplete(updateList.m_coords);
-
-                auto updateLatency = m_pFenceThreadTimer->GetTime() - updateList.m_copyLatencyTimer;
-                m_totalTileCopyLatency.fetch_add(updateLatency * updateList.GetNumStandardUpdates(), std::memory_order_relaxed);
-
-                m_numTotalUploads.fetch_add(updateList.GetNumStandardUpdates(), std::memory_order_relaxed);
-
-            }
-
-            // UpdateList complete
-            FreeUpdateList(updateList);
-        }
         break;
 
         default:
             break;
+        }
+
+        if (freeUpdateList)
+        {
+            // O(1) array compaction: move the first element to the position of the element to be freed, then reduce size by 1.
+            m_monitorTasks[i % m_monitorTasks.size()] = m_monitorTasks[m_monitorTaskAlloc.GetReadIndex()];
+            m_monitorTaskAlloc.Free();
+            FreeUpdateList(updateList);
         }
     } // end loop over updatelists
 
@@ -424,58 +450,54 @@ void Streaming::DataUploader::FenceMonitorThread()
 // set next state depending on the task
 // Note: QueryPerformanceCounter() needs to be called from the same CPU for values to be compared,
 //       but this thread starts work while a different thread handles completion
+// NOTE: if UpdateTileMappings is slow, throughput will be impacted
 //-----------------------------------------------------------------------------
 void Streaming::DataUploader::SubmitThread()
 {
     bool signalMap = false;
 
-    for (auto& updateList : m_updateLists)
+    // look through tasks
+    while (m_submitTaskAlloc.GetReadyToRead())
     {
-        switch (updateList.m_executionState)
+        signalMap = true;
+
+        UINT index = m_submitTasks[m_submitTaskAlloc.GetReadIndex()]; // get the next task
+        m_submitTaskAlloc.Free(); // consume this task
+
+        auto& updateList = m_updateLists[index];
+
+        ASSERT(UpdateList::State::STATE_SUBMITTED == updateList.m_executionState);
+
+        // set to the fence value to be signaled next
+        updateList.m_mappingFenceValue = m_mappingFenceValue;
+
+        // unmap tiles that are being evicted
+        if (updateList.GetNumEvictions())
         {
-        case UpdateList::State::STATE_SUBMITTED:
-        {
-            // all UpdateLists require mapping
-            signalMap = true;
-            updateList.m_mappingFenceValue = m_mappingFenceValue;
+            m_mappingUpdater.UnMap(GetMappingQueue(), updateList.m_pStreamingResource->GetTiledResource(), updateList.m_evictCoords);
 
-            // WARNING: UpdateTileMappings performance is an issue on some hardware
-            // throughput will degrade if UpdateTileMappings isn't ~free
-
-            // unmap tiles that are being evicted
-            if (updateList.GetNumEvictions())
-            {
-                m_mappingUpdater.UnMap(GetMappingQueue(), updateList.m_pStreamingResource->GetTiledResource(), updateList.m_evictCoords);
-
-                // this will skip the uploading state unless there are uploads
-                updateList.m_executionState = UpdateList::State::STATE_MAP_PENDING;
-            }
-
-            // map standard tiles
-            // can upload and evict in a single UpdateList
-            if (updateList.GetNumStandardUpdates())
-            {
-                m_mappingUpdater.Map(GetMappingQueue(),
-                    updateList.m_pStreamingResource->GetTiledResource(),
-                    updateList.m_pStreamingResource->GetHeap()->GetHeap(),
-                    updateList.m_coords, updateList.m_heapIndices);
-
-                updateList.m_executionState = UpdateList::State::STATE_UPLOADING;
-            }
-
-            // no uploads or evictions? must be mapping packed mips
-            else if (0 == updateList.GetNumEvictions())
-            {
-                updateList.m_pStreamingResource->MapPackedMips(GetMappingQueue());
-
-                updateList.m_executionState = UpdateList::State::STATE_PACKED_MAPPING;
-            }
+            // this will skip the uploading state unless there are uploads
+            updateList.m_executionState = UpdateList::State::STATE_MAP_PENDING;
         }
-        break; // end STATE_SUBMITTED
 
-        default:
-            break;
+        // map standard tiles
+        // can upload and evict in a single UpdateList
+        if (updateList.GetNumStandardUpdates())
+        {
+            m_mappingUpdater.Map(GetMappingQueue(),
+                updateList.m_pStreamingResource->GetTiledResource(),
+                updateList.m_pStreamingResource->GetHeap()->GetHeap(),
+                updateList.m_coords, updateList.m_heapIndices);
 
+            updateList.m_executionState = UpdateList::State::STATE_UPLOADING;
+        }
+
+        // no uploads or evictions? must be mapping packed mips
+        else if (0 == updateList.GetNumEvictions())
+        {
+            updateList.m_pStreamingResource->MapPackedMips(GetMappingQueue());
+
+            updateList.m_executionState = UpdateList::State::STATE_PACKED_MAPPING;
         }
     }
 
