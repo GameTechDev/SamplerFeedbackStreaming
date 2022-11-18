@@ -39,16 +39,11 @@
 //--------------------------------------------
 // instantiate streaming library
 //--------------------------------------------
-TileUpdateManager* TileUpdateManager::Create(
-    // query resource for tiling properties. use its device to create internal resources
-    ID3D12Device8* in_pDevice,
-
-    // the Direct command queue the application is using to render, which TUM monitors to know when new feedback is ready
-    ID3D12CommandQueue* in_pDirectCommandQueue,
-
-    const TileUpdateManagerDesc& in_desc)
+TileUpdateManager* TileUpdateManager::Create(const TileUpdateManagerDesc& in_desc)
 {
-    return new Streaming::TileUpdateManagerBase(in_pDevice, in_pDirectCommandQueue, in_desc);
+    Streaming::ComPtr<ID3D12Device8> device;
+    in_desc.m_pDirectCommandQueue->GetDevice(IID_PPV_ARGS(&device));
+    return new Streaming::TileUpdateManagerBase(in_desc, device.Get());
 }
 
 void Streaming::TileUpdateManagerBase::Destroy()

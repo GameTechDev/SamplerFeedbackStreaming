@@ -670,6 +670,7 @@ void Scene::WaitForGpu()
 void Scene::StartStreamingLibrary()
 {
     TileUpdateManagerDesc tumDesc;
+    tumDesc.m_pDirectCommandQueue = m_commandQueue.Get();
     tumDesc.m_maxNumCopyBatches = m_args.m_numStreamingBatches;
     tumDesc.m_stagingBufferSizeMB = m_args.m_stagingSizeMB;
     tumDesc.m_maxTileMappingUpdatesPerApiCall = m_args.m_maxTileUpdatesPerApiCall;
@@ -677,8 +678,9 @@ void Scene::StartStreamingLibrary()
     tumDesc.m_addAliasingBarriers = m_args.m_addAliasingBarriers;
     tumDesc.m_minNumUploadRequests = m_args.m_minNumUploadRequests;
     tumDesc.m_useDirectStorage = m_args.m_useDirectStorage;
+    tumDesc.m_threadPriority = (TileUpdateManagerDesc::ThreadPriority)m_args.m_threadPriority;
 
-    m_pTileUpdateManager = TileUpdateManager::Create(m_device.Get(), m_commandQueue.Get(), tumDesc);
+    m_pTileUpdateManager = TileUpdateManager::Create(tumDesc);
 
     // create 1 or more heaps to contain our StreamingResources
     for (UINT i = 0; i < m_args.m_numHeaps; i++)
@@ -1510,15 +1512,15 @@ void Scene::DrawUI()
         if (m_args.m_showFeedbackMapVertical)
         {
             UINT areaHeight = UINT(m_viewport.Height - minDim);
-            UINT numMips = areaHeight / (UINT)minDim;
-            if (numMips > 1)
-            {
-                DirectX::XMFLOAT2 windowPos = DirectX::XMFLOAT2(m_viewport.Width - minDim, 0);
-                m_pTextureViewer->Draw(m_commandList.Get(), windowPos, windowSize,
-                    m_viewport,
-                    m_args.m_visualizationBaseMip, numMips - 1,
-                    m_args.m_showFeedbackMapVertical);
-            }
+                UINT numMips = areaHeight / (UINT)minDim;
+                if (numMips > 1)
+                {
+                    DirectX::XMFLOAT2 windowPos = DirectX::XMFLOAT2(m_viewport.Width - minDim, 0);
+                        m_pTextureViewer->Draw(m_commandList.Get(), windowPos, windowSize,
+                            m_viewport,
+                            m_args.m_visualizationBaseMip, numMips - 1,
+                            m_args.m_showFeedbackMapVertical);
+                }
         }
         else
         {

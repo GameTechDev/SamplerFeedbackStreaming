@@ -36,29 +36,19 @@
 //=============================================================================
 // constructor for streaming library base class
 //=============================================================================
-Streaming::TileUpdateManagerBase::TileUpdateManagerBase(
-    ID3D12Device8* in_pDevice,
-    ID3D12CommandQueue* in_pDirectCommandQueue,     // application's Direct command queue. Used to know when new feedback is ready.
-    const TileUpdateManagerDesc& in_desc) :
+Streaming::TileUpdateManagerBase::TileUpdateManagerBase(const TileUpdateManagerDesc& in_desc, ID3D12Device8* in_pDevice) :// required for constructor
 m_numSwapBuffers(in_desc.m_swapChainBufferCount)
 , m_gpuTimerResolve(in_pDevice, in_desc.m_swapChainBufferCount, D3D12GpuTimer::TimerType::Direct)
 , m_renderFrameIndex(0)
-, m_directCommandQueue(in_pDirectCommandQueue)
+, m_directCommandQueue(in_desc.m_pDirectCommandQueue)
 , m_device(in_pDevice)
 , m_commandLists((UINT)CommandListName::Num)
 , m_maxTileMappingUpdatesPerApiCall(in_desc.m_maxTileMappingUpdatesPerApiCall)
-, m_addAliasingBarriers(in_desc.m_addAliasingBarriers)
+, m_addAliasingBarriers(in_desc.m_addAliasingBarriers)  
 , m_minNumUploadRequests(in_desc.m_minNumUploadRequests)
+, m_threadPriority((int)in_desc.m_threadPriority)
 {
-    ASSERT(D3D12_COMMAND_LIST_TYPE_DIRECT == in_pDirectCommandQueue->GetDesc().Type);
-
-    switch (in_desc.m_threadPriority)
-    {
-    case TileUpdateManagerDesc::ThreadPriority::Prefer_Performance: m_threadPriority = 1; break;
-    case TileUpdateManagerDesc::ThreadPriority::Prefer_Efficiency: m_threadPriority = 1; break;
-    default:
-        m_threadPriority = 0;
-    }
+    ASSERT(D3D12_COMMAND_LIST_TYPE_DIRECT == m_directCommandQueue->GetDesc().Type);
 
     ThrowIfFailed(in_pDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_frameFence)));
     m_frameFence->SetName(L"Streaming::TileUpdateManagerBase::m_frameFence");
@@ -212,42 +202,32 @@ void Streaming::TileUpdateManagerBase::ProcessFeedbackThread()
 
         // push uploads and evictions for stale resources
         {
+            UINT numEvictions = 0;
             UINT newStaleSize = 0; // track number of stale resources, then resize the array to the updated number
-            UINT staleIndex = 0;
-
-            // loop over stale resources
-            for (; staleIndex < staleResources.size(); staleIndex++)
+            for (auto resourceIndex : staleResources)
             {
                 if (m_pDataUploader->GetNumUpdateListsAvailable() && m_threadsRunning)
                 {
-                    UINT resourceIndex = staleResources[staleIndex];
                     uploadsRequested += m_streamingResources[resourceIndex]->QueueTiles();
-
-                    if (m_streamingResources[resourceIndex]->IsStale()) // still have work to do?
-                    {
-                        // keep stale resource in compacted array while retaining oldest-first ordering
-                        staleResources[newStaleSize] = resourceIndex;
-                        newStaleSize++;
-                    }
-                    else
-                    {
-                        pending[resourceIndex] = 0; // clear the flag that prevents duplicates
-                    }
                 }
-                else // compact the stale array with a memcpy and do no further processing.
-                {
-                    UINT numNotUpdated = UINT(staleResources.size() - staleIndex);
-                    if (0 != staleIndex) // no need to move contents if no changes made
-                    {
-                        // copy of overlapping memory region requires left-to-right safety (not safe for memcpy)
-                        std::copy(staleResources.begin() + staleIndex, staleResources.end(), staleResources.begin() + newStaleSize);
-                    }
-                    newStaleSize += numNotUpdated;
 
-                    break;
+                // tiles that are "loading" can't be evicted. as soon as they arrive, they can be.
+                // note: since we aren't unmapping evicted tiles, we can evict even if no UpdateLists are available
+                numEvictions += m_streamingResources[resourceIndex]->QueuePendingTileEvictions();
+
+                if (m_streamingResources[resourceIndex]->IsStale()) // still have work to do?
+                {
+                    // keep stale resource in compacted array while retaining oldest-first ordering
+                    staleResources[newStaleSize] = resourceIndex;
+                    newStaleSize++;
+                }
+                else
+                {
+                    pending[resourceIndex] = 0; // clear the flag that prevents duplicates
                 }
             }
             staleResources.resize(newStaleSize); // compact array
+            if (numEvictions) { m_pDataUploader->AddEvictions(numEvictions); }
         }
 
         // if there are uploads, maybe signal depending on heuristic to minimize # signals

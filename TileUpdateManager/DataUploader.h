@@ -89,6 +89,7 @@ namespace Streaming
         float GetGpuStreamingTime() const { return m_gpuTimer.GetTimes()[0].first; }
 
         UINT GetTotalNumUploads() const { return m_numTotalUploads; }
+        void AddEvictions(UINT in_numEvictions) { m_numTotalEvictions += in_numEvictions; }
         UINT GetTotalNumEvictions() const { return m_numTotalEvictions; }
         float GetApproximateTileCopyLatency() const { return m_pFenceThreadTimer->GetSecondsFromDelta(m_totalTileCopyLatency); } // sum of per-tile latencies so far
 

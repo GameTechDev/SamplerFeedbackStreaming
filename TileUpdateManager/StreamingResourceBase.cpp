@@ -497,29 +497,17 @@ UINT Streaming::StreamingResourceBase::QueueTiles()
 {
     UINT uploadsRequested = 0;
 
-    UINT numEvictions = (UINT)m_pendingEvictions.GetReadyToEvict().size();
-    UINT numLoads = (UINT)m_pendingTileLoads.size();
-
     // pushes as many tiles as it can into a single UpdateList
-    if ((numLoads && m_pHeap->GetAllocator().GetAvailable()) || numEvictions)
+    if (m_pendingTileLoads.size() && m_pHeap->GetAllocator().GetAvailable())
     {
         UpdateList scratchUL;
-        if (numEvictions)
-        {
-            QueuePendingTileEvictions(&scratchUL);
-            numEvictions = (UINT)m_pendingEvictions.GetReadyToEvict().size();
-        }
 
         // queue as many new tiles as possible
-        if (numLoads && m_pHeap->GetAllocator().GetAvailable())
-        {
-            QueuePendingTileLoads(&scratchUL);
-            uploadsRequested = (UINT)scratchUL.m_coords.size(); // number of uploads in UpdateList
-            numLoads = (UINT)m_pendingTileLoads.size();
-        }
+        QueuePendingTileLoads(&scratchUL);
+        uploadsRequested = (UINT)scratchUL.m_coords.size(); // number of uploads in UpdateList
 
         // only allocate an UpdateList if we have updates
-        if (scratchUL.m_coords.size() || scratchUL.m_evictCoords.size())
+        if (scratchUL.m_coords.size())
         {
             // calling function checked for availability, so UL allocation must succeed
             UpdateList* pUpdateList = m_pTileUpdateManager->AllocateUpdateList(this);
@@ -527,11 +515,11 @@ UINT Streaming::StreamingResourceBase::QueueTiles()
 
             pUpdateList->m_coords.swap(scratchUL.m_coords);
             pUpdateList->m_heapIndices.swap(scratchUL.m_heapIndices);
-            pUpdateList->m_evictCoords.swap(scratchUL.m_evictCoords);
 
             m_pTileUpdateManager->SubmitUpdateList(*pUpdateList);
         }
     }
+
     return uploadsRequested;
 }
 
@@ -575,14 +563,14 @@ Note that the multi-frame delay for evictions prevents allocation of an index th
 // note there are only tiles to evict after processing feedback, but it's possible
 // there was no UpdateList available at the time, so they haven't been evicted yet.
 //-----------------------------------------------------------------------------
-void Streaming::StreamingResourceBase::QueuePendingTileEvictions(Streaming::UpdateList* out_pUpdateList)
+UINT Streaming::StreamingResourceBase::QueuePendingTileEvictions()
 {
-    ASSERT(out_pUpdateList);
-    ASSERT(m_pendingEvictions.GetReadyToEvict().size());
+    if (0 == m_pendingEvictions.GetReadyToEvict().size()) { return 0; }
 
     auto& pendingEvictions = m_pendingEvictions.GetReadyToEvict();
 
     UINT numDelayed = 0;
+    UINT numEvictions = 0;
     for (auto& coord : pendingEvictions)
     {
         // if the heap index is valid, but the tile is not resident, there's a /pending load/
@@ -597,11 +585,17 @@ void Streaming::StreamingResourceBase::QueuePendingTileEvictions(Streaming::Upda
         auto residency = m_tileMappingState.GetResidency(coord);
         if (TileMappingState::Residency::Resident == residency)
         {
-            m_tileMappingState.SetResidency(coord, TileMappingState::Residency::Evicting);
+            // NOTE: effectively removed "Evicting." Now remove tiles from data structure, not from memory mapping.
+            // result is improved perf from fewer UpdateTileMappings() calls.
+            // existing artifacts (cracks when sampler crosses tile boundaries) are "no worse"
+            // to put it back: set residency to evicting and add tiles to updatelist for eviction
+
+            m_tileMappingState.SetResidency(coord, TileMappingState::Residency::NotResident);
             UINT& heapIndex = m_tileMappingState.GetHeapIndex(coord);
             m_pHeap->GetAllocator().Free(heapIndex);
             heapIndex = TileMappingState::InvalidIndex;
-            out_pUpdateList->m_evictCoords.push_back(coord);
+
+            numEvictions++;
         }
         // valid index but not resident means there is a pending load, do not evict
         // try again later
@@ -615,8 +609,14 @@ void Streaming::StreamingResourceBase::QueuePendingTileEvictions(Streaming::Upda
         // else: refcount positive or eviction already in progress? rescue this eviction (by not adding to pending evictions)
     }
 
+    if (numEvictions)
+    {
+        SetResidencyChanged();
+    }
+
     // replace the ready evictions with just the delayed evictions.
     pendingEvictions.resize(numDelayed);
+    return numEvictions;
 }
 
 //-----------------------------------------------------------------------------
@@ -640,7 +640,6 @@ void Streaming::StreamingResourceBase::QueuePendingTileLoads(Streaming::UpdateLi
 
         // if the heap index is not valid, but the tile is resident, there's a /pending eviction/
         // a pending eviction might be streaming
-        // it will not be in the updatelist, because eviction happens before load, and we would have seen refcount == 0
 
         // NOTE! assumes refcount is non-zero
         // ProcessFeedback() clears all pending loads with refcount == 0

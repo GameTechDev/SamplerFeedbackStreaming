@@ -101,14 +101,7 @@ namespace Streaming
         //--------------------------------------------
         void Finish();
 
-        TileUpdateManagerBase(
-            // query resource for tiling properties. use its device to create internal resources
-            ID3D12Device8* in_pDevice,
-
-            // the Direct command queue the application is using to render, which TUM monitors to know when new feedback is ready
-            ID3D12CommandQueue* in_pDirectCommandQueue,
-
-            const struct TileUpdateManagerDesc& in_desc);
+        TileUpdateManagerBase(const struct TileUpdateManagerDesc& in_desc, ID3D12Device8* in_pDevice); // required for constructor
 
         virtual ~TileUpdateManagerBase();
 

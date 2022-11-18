@@ -107,7 +107,7 @@ namespace Streaming
 
     inline void SetThreadPriority(std::thread& in_thread, int in_priority)
     {
-        if (in_priority)
+        if (in_priority) // 0 = default (do nothing). -1 = efficiency. otherwise, performance.
         {
             THREAD_POWER_THROTTLING_STATE throttlingState{ THREAD_POWER_THROTTLING_CURRENT_VERSION, THREAD_POWER_THROTTLING_EXECUTION_SPEED, 0 };
             if (-1 == in_priority) { throttlingState.StateMask = THREAD_POWER_THROTTLING_EXECUTION_SPEED; } // speed, speed = prefer e cores

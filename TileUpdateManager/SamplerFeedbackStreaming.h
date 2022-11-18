@@ -109,6 +109,9 @@ struct StreamingResource
 //=============================================================================
 struct TileUpdateManagerDesc
 {
+    // the Direct command queue the application is using to render, which TUM monitors to know when new feedback is ready
+    ID3D12CommandQueue* m_pDirectCommandQueue{ nullptr };
+
     // maximum number of in-flight batches
     UINT m_maxNumCopyBatches{ 128 };
 
@@ -130,11 +133,11 @@ struct TileUpdateManagerDesc
 
     // applied to all internal threads: submit, fenceMonitor, processFeedback, updateResidency
     // on hybrid systems: performance prefers P cores, efficiency prefers E cores, normal is OS default
-    enum class ThreadPriority
+    enum class ThreadPriority : int
     {
-        Prefer_Normal,
-        Prefer_Performance,
-        Prefer_Efficiency
+        Prefer_Normal = 0,
+        Prefer_Performance = 1,
+        Prefer_Efficiency = -1
     };
     ThreadPriority m_threadPriority{ ThreadPriority::Prefer_Normal };
 
@@ -147,14 +150,7 @@ struct TileUpdateManagerDesc
 //=============================================================================
 struct TileUpdateManager
 {
-    static TileUpdateManager* Create(
-        // query resource for tiling properties. use its device to create internal resources
-        ID3D12Device8* in_pDevice,
-
-        // the Direct command queue the application is using to render, which TUM monitors to know when new feedback is ready
-        ID3D12CommandQueue* in_pDirectCommandQueue,
-
-        const TileUpdateManagerDesc& in_desc);
+    static TileUpdateManager* Create(const TileUpdateManagerDesc& in_desc);
 
     virtual void Destroy() = 0;
 
