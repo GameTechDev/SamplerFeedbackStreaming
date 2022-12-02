@@ -239,12 +239,15 @@ void Streaming::DataUploader::StopThreads()
 //-----------------------------------------------------------------------------
 void Streaming::DataUploader::FlushCommands()
 {
-    DebugPrint("DataUploader waiting on ", m_updateListAllocator.GetAllocated(), " tasks to complete\n");
-    while (m_updateListAllocator.GetAllocated()) // wait so long as there is outstanding work
+    if (m_updateListAllocator.GetAllocated())
     {
-        m_submitFlag.Set(); // (paranoia)
-        m_fenceMonitorFlag.Set(); // (paranoia)
-        _mm_pause();
+        DebugPrint("DataUploader waiting on ", m_updateListAllocator.GetAllocated(), " tasks to complete\n");
+        while (m_updateListAllocator.GetAllocated()) // wait so long as there is outstanding work
+        {
+            m_submitFlag.Set(); // (paranoia)
+            m_fenceMonitorFlag.Set(); // (paranoia)
+            _mm_pause();
+        }
     }
     // if this loop doesn't exit, then a race condition occurred while allocating/freeing updatelists
 
@@ -276,7 +279,7 @@ Streaming::UpdateList* Streaming::DataUploader::AllocateUpdateList(Streaming::St
 
         // start fence polling thread now
         {
-            m_monitorTasks[m_monitorTaskAlloc.GetWriteIndex()] = index;
+            m_monitorTasks[m_monitorTaskAlloc.GetWriteIndex()] = pUpdateList;
             m_monitorTaskAlloc.Allocate();
             m_fenceMonitorFlag.Set();
         }
@@ -316,7 +319,7 @@ void Streaming::DataUploader::SubmitUpdateList(Streaming::UpdateList& in_updateL
 
     // add to submit task queue
     {
-        m_submitTasks[m_submitTaskAlloc.GetWriteIndex()] = UINT(&in_updateList - m_updateLists.data());
+        m_submitTasks[m_submitTaskAlloc.GetWriteIndex()] = &in_updateList;
         m_submitTaskAlloc.Allocate();
         m_submitFlag.Set();
     }
@@ -345,7 +348,7 @@ void Streaming::DataUploader::FenceMonitorThread()
     for (UINT i = startIndex; i < (startIndex + numTasks); i++)
     {
         ASSERT(numTasks != 0);
-        auto& updateList = m_updateLists[m_monitorTasks[i % m_monitorTasks.size()]];
+        auto& updateList = *m_monitorTasks[i % m_monitorTasks.size()];
 
         bool freeUpdateList = false;
 
@@ -461,10 +464,8 @@ void Streaming::DataUploader::SubmitThread()
     {
         signalMap = true;
 
-        UINT index = m_submitTasks[m_submitTaskAlloc.GetReadIndex()]; // get the next task
+        auto& updateList = *m_submitTasks[m_submitTaskAlloc.GetReadIndex()]; // get the next task
         m_submitTaskAlloc.Free(); // consume this task
-
-        auto& updateList = m_updateLists[index];
 
         ASSERT(UpdateList::State::STATE_SUBMITTED == updateList.m_executionState);
 

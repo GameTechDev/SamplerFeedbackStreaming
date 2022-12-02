@@ -27,7 +27,6 @@
 #include "pch.h"
 
 #include "TileUpdateManagerBase.h"
-#include "DataUploader.h"
 #include "StreamingResourceBase.h"
 #include "XeTexture.h"
 #include "StreamingHeap.h"
@@ -47,18 +46,12 @@ m_numSwapBuffers(in_desc.m_swapChainBufferCount)
 , m_addAliasingBarriers(in_desc.m_addAliasingBarriers)  
 , m_minNumUploadRequests(in_desc.m_minNumUploadRequests)
 , m_threadPriority((int)in_desc.m_threadPriority)
+, m_dataUploader(in_pDevice, in_desc.m_maxNumCopyBatches, in_desc.m_stagingBufferSizeMB, in_desc.m_maxTileMappingUpdatesPerApiCall, m_threadPriority)
 {
     ASSERT(D3D12_COMMAND_LIST_TYPE_DIRECT == m_directCommandQueue->GetDesc().Type);
 
     ThrowIfFailed(in_pDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_frameFence)));
     m_frameFence->SetName(L"Streaming::TileUpdateManagerBase::m_frameFence");
-
-    m_pDataUploader = std::make_unique<Streaming::DataUploader>(
-        in_pDevice,
-        in_desc.m_maxNumCopyBatches,
-        in_desc.m_stagingBufferSizeMB,
-        in_desc.m_maxTileMappingUpdatesPerApiCall,
-        m_threadPriority);
 
     const UINT numAllocators = m_numSwapBuffers;
     for (UINT c = 0; c < (UINT)CommandListName::Num; c++)
@@ -137,7 +130,7 @@ void Streaming::TileUpdateManagerBase::StartThreads()
 //-----------------------------------------------------------------------------
 void Streaming::TileUpdateManagerBase::SignalFileStreamer()
 {
-    m_pDataUploader->SignalFileStreamer();
+    m_dataUploader.SignalFileStreamer();
     m_numTotalSubmits.fetch_add(1, std::memory_order_relaxed);
 }
 void Streaming::TileUpdateManagerBase::ProcessFeedbackThread()
@@ -206,7 +199,14 @@ void Streaming::TileUpdateManagerBase::ProcessFeedbackThread()
             UINT newStaleSize = 0; // track number of stale resources, then resize the array to the updated number
             for (auto resourceIndex : staleResources)
             {
-                if (m_pDataUploader->GetNumUpdateListsAvailable() && m_threadsRunning)
+                if (m_dataUploader.GetNumUpdateListsAvailable()
+                    // with DirectStorage Queue::EnqueueRequest() can block.
+                    // when there are many pending uploads, there can be multiple frames of waiting.
+                    // if we wait too long in this loop, we miss calling ProcessFeedback() above which adds pending uploads & evictions
+                    // this is a vicious feedback cycle that leads to even more pending requests, and even longer delays.
+                    // the following check avoids enqueueing more uploads if the frame has changed:
+                    && (m_frameFence->GetCompletedValue() == previousFrameFenceValue)
+                    && m_threadsRunning) // don't add work while exiting
                 {
                     uploadsRequested += m_streamingResources[resourceIndex]->QueueTiles();
                 }
@@ -227,7 +227,7 @@ void Streaming::TileUpdateManagerBase::ProcessFeedbackThread()
                 }
             }
             staleResources.resize(newStaleSize); // compact array
-            if (numEvictions) { m_pDataUploader->AddEvictions(numEvictions); }
+            if (numEvictions) { m_dataUploader.AddEvictions(numEvictions); }
         }
 
         // if there are uploads, maybe signal depending on heuristic to minimize # signals
@@ -238,7 +238,7 @@ void Streaming::TileUpdateManagerBase::ProcessFeedbackThread()
                 (0 == staleResources.size()) || // flush because there's no more work to be done (no stale resources, all feedback has been processed)
                 // if we need updatelists and there is a minimum amount of pending work, go ahead and submit
                 // this minimum heuristic prevents "storms" of submits with too few tiles to sustain good throughput
-                ((0 == m_pDataUploader->GetNumUpdateListsAvailable()) && (uploadsRequested > m_minNumUploadRequests)))
+                ((0 == m_dataUploader.GetNumUpdateListsAvailable()) && (uploadsRequested > m_minNumUploadRequests)))
             {
                 SignalFileStreamer();
                 uploadsRequested = 0;
@@ -286,10 +286,9 @@ void Streaming::TileUpdateManagerBase::Finish()
         {
             m_updateResidencyThread.join();
         }
-
-        // now we are no longer producing work for the DataUploader, so its commands can be drained
-        m_pDataUploader->FlushCommands();
     }
+    // now we are no longer producing work for the DataUploader, so its commands can be drained
+    m_dataUploader.FlushCommands();
 }
 
 //-----------------------------------------------------------------------------

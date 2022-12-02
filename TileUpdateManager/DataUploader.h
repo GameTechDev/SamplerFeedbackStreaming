@@ -109,7 +109,6 @@ namespace Streaming
         ComPtr<ID3D12CommandQueue> m_mappingCommandQueue;
 
         // pool of all updatelists
-        // copy thread loops over these
         std::vector<UpdateList> m_updateLists;
         Streaming::AllocatorMT m_updateListAllocator;
 
@@ -125,8 +124,8 @@ namespace Streaming
         // thread to handle UpdateList submissions
         void SubmitThread();
         std::thread m_submitThread;
-        Streaming::SynchronizationFlag m_submitFlag;
-        std::vector<UINT> m_submitTasks;
+        Streaming::SynchronizationFlag m_submitFlag; // sleeps until flag set
+        std::vector<UpdateList*> m_submitTasks;
         RingBuffer m_submitTaskAlloc;
 
         // thread to poll copy and mapping fences
@@ -134,9 +133,9 @@ namespace Streaming
         // compromise solution is to keep this thread awake so long as there are live UpdateLists.
         void FenceMonitorThread();
         std::thread m_fenceMonitorThread;
-        Streaming::SynchronizationFlag m_fenceMonitorFlag;
+        Streaming::SynchronizationFlag m_fenceMonitorFlag; // sleeps until flag set
         RawCpuTimer* m_pFenceThreadTimer{ nullptr }; // init timer on the thread that uses it. can't really worry about thread migration.
-        std::vector<UINT> m_monitorTasks;
+        std::vector<UpdateList*> m_monitorTasks;
         RingBuffer m_monitorTaskAlloc;
 
         void StartThreads();

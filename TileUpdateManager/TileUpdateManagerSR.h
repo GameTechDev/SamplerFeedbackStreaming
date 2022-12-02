@@ -78,12 +78,12 @@ namespace Streaming
 
         Streaming::UpdateList* AllocateUpdateList(StreamingResourceBase* in_pStreamingResource)
         {
-            return m_pDataUploader->AllocateUpdateList((Streaming::StreamingResourceDU*)in_pStreamingResource);
+            return m_dataUploader.AllocateUpdateList((Streaming::StreamingResourceDU*)in_pStreamingResource);
         }
 
         void SubmitUpdateList(Streaming::UpdateList& in_updateList)
         {
-            m_pDataUploader->SubmitUpdateList(in_updateList);
+            m_dataUploader.SubmitUpdateList(in_updateList);
         }
 
         // a fence on the render (direct) queue used to determine when feedback has been written & resolved
@@ -93,7 +93,7 @@ namespace Streaming
 
         ID3D12CommandQueue* GetMappingQueue() const
         {
-            return m_pDataUploader->GetMappingQueue();
+            return m_dataUploader.GetMappingQueue();
         }
 
         void SetResidencyChanged() { m_residencyChangedFlag.Set(); }

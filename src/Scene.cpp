@@ -780,15 +780,11 @@ XMMATRIX Scene::SetSphereMatrix()
 //-----------------------------------------------------------------------------
 void Scene::LoadSpheres()
 {
-    if (m_numSpheresLoaded < (UINT)m_args.m_numSpheres)
+    if (m_objects.size() < (UINT)m_args.m_numSpheres)
     {
-        // sphere descriptors start after the terrain descriptor
-        CD3DX12_CPU_DESCRIPTOR_HANDLE descCPU = CD3DX12_CPU_DESCRIPTOR_HANDLE(m_srvHeap->GetCPUDescriptorHandleForHeapStart(), (UINT)DescriptorHeapOffsets::NumEntries, m_srvUavCbvDescriptorSize);
-
-        // offset by all the spheres that have been loaded so far
-        descCPU.Offset(m_numSpheresLoaded * (UINT)SceneObjects::Descriptors::NumEntries, m_srvUavCbvDescriptorSize);
-
-        const UINT numSpheresToLoad = m_args.m_numSpheres - m_numSpheresLoaded;
+        // offset by all the objects that have been loaded so far
+        UINT descriptorOffset = (UINT)DescriptorHeapOffsets::NumEntries + UINT(m_objects.size()) * (UINT)SceneObjects::Descriptors::NumEntries;
+        CD3DX12_CPU_DESCRIPTOR_HANDLE descCPU = CD3DX12_CPU_DESCRIPTOR_HANDLE(m_srvHeap->GetCPUDescriptorHandleForHeapStart(), descriptorOffset, m_srvUavCbvDescriptorSize);
 
         // is there a sky?
         std::wstring skyTexture;
@@ -805,7 +801,7 @@ void Scene::LoadSpheres()
         }
 
         UINT textureIndex = 0;
-        for (UINT i = 0; i < numSpheresToLoad; i++)
+        while (m_objects.size() < (UINT)m_args.m_numSpheres)
         {
             // this object's index-to-be
             UINT objectIndex = (UINT)m_objects.size();
@@ -866,7 +862,6 @@ void Scene::LoadSpheres()
             // if there are textures other than the terrain texture, skip this one
             else if ((std::wstring::npos != textureFilename.find(m_args.m_terrainTexture)) && (m_args.m_textures.size() > 1))
             {
-                i--;
                 continue;
             }
 
@@ -886,25 +881,18 @@ void Scene::LoadSpheres()
                 o->GetModelMatrix() = SetSphereMatrix();
             }
             m_objects.push_back(o);
-            m_numSpheresLoaded++;
 
             // offset to the next sphere
             descCPU.Offset((UINT)SceneObjects::Descriptors::NumEntries, m_srvUavCbvDescriptorSize);
         }
     }
     // evict spheres?
-    else if (m_numSpheresLoaded > (UINT)m_args.m_numSpheres)
+    else if (m_objects.size() > (UINT)m_args.m_numSpheres)
     {
         WaitForGpu();
-        while (m_numSpheresLoaded > (UINT)m_args.m_numSpheres)
+        while (m_objects.size() > (UINT)m_args.m_numSpheres)
         {
-            auto i = m_objects.end();
-            i--;
-
-            SceneObjects::BaseObject* pObject = *i;
-
-            delete pObject;
-            m_objects.erase(i);
+            SceneObjects::BaseObject* pObject = m_objects.back();
 
             if (m_pTerrainSceneObject == pObject)
             {
@@ -927,7 +915,8 @@ void Scene::LoadSpheres()
                 m_pSky = nullptr;
             }
 
-            m_numSpheresLoaded--;
+            delete pObject;
+            m_objects.resize(m_objects.size() - 1);
         }
     }
 }

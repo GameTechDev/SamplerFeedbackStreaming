@@ -28,7 +28,6 @@
 
 #include "StreamingResourceBase.h"
 #include "TileUpdateManagerSR.h"
-#include "XeTexture.h"
 
 #include "UpdateList.h"
 
@@ -61,9 +60,9 @@ Streaming::StreamingResourceBase::StreamingResourceBase(
     , m_pHeap(in_pHeap)
     , m_pFileHandle(in_pFileHandle)
     , m_filename(in_filename)
+    , m_textureFileInfo(in_filename)
 {
-    m_pTextureFileInfo = std::make_unique<Streaming::XeTexture>(in_filename);
-    m_resources = std::make_unique<Streaming::InternalResources>(in_pTileUpdateManager->GetDevice(), m_pTextureFileInfo.get(), (UINT)m_queuedFeedback.size());
+    m_resources = std::make_unique<Streaming::InternalResources>(in_pTileUpdateManager->GetDevice(), m_textureFileInfo, (UINT)m_queuedFeedback.size());
     m_tileMappingState.Init(m_resources->GetPackedMipInfo().NumStandardMips, m_resources->GetTiling());
 
     // no packed mips. odd, but possible. no need to check/update this variable again.
@@ -85,7 +84,7 @@ Streaming::StreamingResourceBase::StreamingResourceBase(
     m_minMipMap.resize(m_tileReferences.size(), m_maxMip);
 
     // make sure my heap has an atlas corresponding to my format
-    m_pHeap->AllocateAtlas(in_pTileUpdateManager->GetMappingQueue(), m_pTextureFileInfo->GetFormat());
+    m_pHeap->AllocateAtlas(in_pTileUpdateManager->GetMappingQueue(), m_textureFileInfo.GetFormat());
 
     // Load packed mips. packed mips are not streamed or evicted.
     LoadPackedMips();
@@ -837,7 +836,7 @@ void Streaming::StreamingResourceBase::EvictionDelay::Rescue(const Streaming::St
 void Streaming::StreamingResourceBase::LoadPackedMips()
 {
     UINT numBytes = 0;
-    UINT offset = m_pTextureFileInfo->GetPackedMipFileOffset(&numBytes, &m_packedMipsUncompressedSize);
+    UINT offset = m_textureFileInfo.GetPackedMipFileOffset(&numBytes, &m_packedMipsUncompressedSize);
     m_packedMips.resize(numBytes);
     std::ifstream inFile(m_filename.c_str(), std::ios::binary);
     inFile.seekg(offset);

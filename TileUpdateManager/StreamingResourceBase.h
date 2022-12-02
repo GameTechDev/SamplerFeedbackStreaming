@@ -37,12 +37,12 @@ Base class for StreamingResource
 
 #include "SamplerFeedbackStreaming.h"
 #include "InternalResources.h"
+#include "XeTexture.h"
 
 namespace Streaming
 {
     class TileUpdateManagerSR;
     struct UpdateList;
-    class XeTexture;
     class Heap;
     class FileHandle;
 
@@ -161,7 +161,7 @@ namespace Streaming
         const std::wstring m_filename;
 
         // object that streams data from a file
-        std::unique_ptr<Streaming::XeTexture> m_pTextureFileInfo;
+        const Streaming::XeTexture m_textureFileInfo;
         std::unique_ptr<Streaming::InternalResources> m_resources;
         std::unique_ptr<Streaming::FileHandle> m_pFileHandle;
         Streaming::Heap* m_pHeap{ nullptr };

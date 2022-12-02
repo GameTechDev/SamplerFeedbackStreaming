@@ -52,6 +52,7 @@ Draw loop:
 #include "D3D12GpuTimer.h"
 #include "Timer.h"
 #include "Streaming.h" // for ComPtr
+#include "DataUploader.h"
 
 #define COPY_RESIDENCY_MAPS 0
 
@@ -115,7 +116,7 @@ namespace Streaming
         std::vector<StreamingResourceBase*> m_streamingResources;
         UINT64 m_frameFenceValue{ 0 };
 
-        std::unique_ptr<Streaming::DataUploader> m_pDataUploader;
+        Streaming::DataUploader m_dataUploader;
 
         // each StreamingResource writes current uploaded tile state to min mip map, separate data for each frame
         // internally, use a single buffer containing all the residency maps
@@ -211,7 +212,7 @@ namespace Streaming
         // the min mip map is shared. it must be created (at least) every time a StreamingResource is created/destroyed
         void CreateMinMipMapView(D3D12_CPU_DESCRIPTOR_HANDLE in_descriptor);
 
-        std::vector<UINT> m_residencyMapOffsets; // one for each StreamingResource sized for numswapbuffers min mip maps each
+        std::vector<UINT> m_residencyMapOffsets; // one min mip map for each StreamingResource
 
         //-------------------------------------------
         // statistics

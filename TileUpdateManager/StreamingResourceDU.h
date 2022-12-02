@@ -37,7 +37,7 @@ namespace Streaming
     class StreamingResourceDU : private StreamingResourceBase
     {
     public:
-        XeTexture* GetTextureFileInfo() const { return m_pTextureFileInfo.get(); }
+        const XeTexture* GetTextureFileInfo() const { return &m_textureFileInfo; }
         Streaming::Heap* GetHeap() const { return m_pHeap; }
 
         // just for packed mips

@@ -33,7 +33,7 @@
 //-----------------------------------------------------------------------------
 Streaming::InternalResources::InternalResources(
     ID3D12Device8* in_pDevice,
-    XeTexture* m_pTextureFileInfo,
+    const XeTexture& m_textureFileInfo,
     // need the swap chain count so we can create per-frame upload buffers
     UINT in_swapChainBufferCount) :
     m_packedMipInfo{}, m_tileShape{}, m_numTilesTotal(0)
@@ -41,10 +41,10 @@ Streaming::InternalResources::InternalResources(
     // create reserved resource
     {
         D3D12_RESOURCE_DESC rd = CD3DX12_RESOURCE_DESC::Tex2D(
-            m_pTextureFileInfo->GetFormat(),
-            m_pTextureFileInfo->GetImageWidth(),
-            m_pTextureFileInfo->GetImageHeight(), 1,
-            (UINT16)m_pTextureFileInfo->GetMipCount()
+            m_textureFileInfo.GetFormat(),
+            m_textureFileInfo.GetImageWidth(),
+            m_textureFileInfo.GetImageHeight(), 1,
+            (UINT16)m_textureFileInfo.GetMipCount()
         );
 
         // Layout must be D3D12_TEXTURE_LAYOUT_64KB_UNDEFINED_SWIZZLE when creating reserved resources

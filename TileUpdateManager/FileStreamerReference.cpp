@@ -189,8 +189,7 @@ void Streaming::FileStreamerReference::LoadTexture(Streaming::FileStreamerRefere
         for (UINT i = startIndex; i < endIndex; i++)
         {
             // get file offset to tile
-            UINT32 numBytes = 0;
-            UINT fileOffset = pTextureFileInfo->GetFileOffset(pUpdateList->m_coords[i], numBytes);
+            auto fileOffset = pTextureFileInfo->GetFileOffset(pUpdateList->m_coords[i]);
 
             // convert tile index into byte offset
             UINT byteOffset = D3D12_TILED_RESOURCE_TILE_SIZE_IN_BYTES * in_copyBatch.m_uploadIndices[i];
@@ -204,11 +203,11 @@ void Streaming::FileStreamerReference::LoadTexture(Streaming::FileStreamerRefere
             o.Internal = 0;
             o.InternalHigh = 0;
             o.OffsetHigh = 0;
-            o.Offset = fileOffset;
+            o.Offset = fileOffset.offset;
 
             // align # bytes read
             UINT alignment = FileStreamerReference::MEDIA_SECTOR_SIZE - 1;
-            numBytes = (numBytes + alignment) & ~(alignment);
+            UINT numBytes = (fileOffset.numBytes + alignment) & ~(alignment);
             o.Offset &= ~alignment; // rewind the offset to alignment
 
             ::ReadFile(pFileHandle, pDst, numBytes, nullptr, &o);

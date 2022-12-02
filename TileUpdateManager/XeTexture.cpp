@@ -64,7 +64,7 @@ Streaming::XeTexture::XeTexture(const std::wstring& in_fileName)
 
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
-UINT Streaming::XeTexture::GetPackedMipFileOffset(UINT* out_pNumBytesTotal, UINT* out_pNumBytesUncompressed)
+UINT Streaming::XeTexture::GetPackedMipFileOffset(UINT* out_pNumBytesTotal, UINT* out_pNumBytesUncompressed) const
 {
     UINT packedOffset = m_tileOffsets[m_fileHeader.m_mipInfo.m_numTilesForStandardMips].m_offset;
     *out_pNumBytesTotal = m_tileOffsets[m_fileHeader.m_mipInfo.m_numTilesForStandardMips].m_numBytes;
@@ -84,11 +84,12 @@ UINT Streaming::XeTexture::GetLinearIndex(const D3D12_TILED_RESOURCE_COORDINATE&
 //-----------------------------------------------------------------------------
 // return value is byte offset into file
 //-----------------------------------------------------------------------------
-UINT Streaming::XeTexture::GetFileOffset(const D3D12_TILED_RESOURCE_COORDINATE& in_coord, UINT32& out_numBytes) const
+Streaming::XeTexture::FileOffset Streaming::XeTexture::GetFileOffset(const D3D12_TILED_RESOURCE_COORDINATE& in_coord) const
 {
-    UINT index = GetLinearIndex(in_coord);
-
     // use index to look up file offset and number of bytes
-    out_numBytes = m_tileOffsets[index].m_numBytes;
-    return m_tileOffsets[index].m_offset;
+    UINT index = GetLinearIndex(in_coord);
+    FileOffset fileOffset;
+    fileOffset.numBytes = m_tileOffsets[index].m_numBytes;
+    fileOffset.offset = m_tileOffsets[index].m_offset;
+    return fileOffset;
 }

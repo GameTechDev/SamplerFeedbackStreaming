@@ -99,7 +99,9 @@ void Streaming::FileStreamerDS::StreamTexture(Streaming::UpdateList& in_updateLi
         UINT numCoords = (UINT)in_updateList.m_coords.size();
         for (UINT i = 0; i < numCoords; i++)
         {
-            request.Source.File.Offset = pTextureFileInfo->GetFileOffset(in_updateList.m_coords[i], request.Source.File.Size);
+            auto fileOffset = pTextureFileInfo->GetFileOffset(in_updateList.m_coords[i]);
+            request.Source.File.Offset = fileOffset.offset;
+            request.Source.File.Size = fileOffset.numBytes;
 
             D3D12_TILED_RESOURCE_COORDINATE coord{};
             ID3D12Resource* pAtlas = pDstHeap->ComputeCoordFromTileIndex(coord, in_updateList.m_heapIndices[i], textureFormat);

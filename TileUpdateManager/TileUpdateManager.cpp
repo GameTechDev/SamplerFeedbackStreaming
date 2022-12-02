@@ -57,7 +57,7 @@ void Streaming::TileUpdateManagerBase::Destroy()
 //--------------------------------------------
 StreamingHeap* Streaming::TileUpdateManagerBase::CreateStreamingHeap(UINT in_maxNumTilesHeap)
 {
-    auto pStreamingHeap = new Streaming::Heap(m_pDataUploader->GetMappingQueue(), in_maxNumTilesHeap);
+    auto pStreamingHeap = new Streaming::Heap(m_dataUploader.GetMappingQueue(), in_maxNumTilesHeap);
     return (StreamingHeap*)pStreamingHeap;
 }
 
@@ -69,7 +69,7 @@ StreamingResource* Streaming::TileUpdateManagerBase::CreateStreamingResource(con
     // if threads are running, stop them. they have state that depends on knowing the # of StreamingResources
     Finish();
 
-    Streaming::FileHandle* pFileHandle = m_pDataUploader->OpenFile(in_filename);
+    Streaming::FileHandle* pFileHandle = m_dataUploader.OpenFile(in_filename);
     auto pRsrc = new Streaming::StreamingResourceBase(in_filename, pFileHandle, (Streaming::TileUpdateManagerSR*)this, (Streaming::Heap*)in_pHeap);
     m_streamingResources.push_back(pRsrc);
     m_numStreamingResourcesChanged = true;
@@ -92,11 +92,11 @@ void Streaming::TileUpdateManagerBase::UseDirectStorage(bool in_useDS)
         streamerType = Streaming::DataUploader::StreamerType::DirectStorage;
     }
 
-    auto pOldStreamer = m_pDataUploader->SetStreamer(streamerType);
+    auto pOldStreamer = m_dataUploader.SetStreamer(streamerType);
 
     for (auto& s : m_streamingResources)
     {
-        s->SetFileHandle(m_pDataUploader.get());
+        s->SetFileHandle(&m_dataUploader);
     }
 
     delete pOldStreamer;
@@ -142,13 +142,13 @@ float Streaming::TileUpdateManagerBase::GetCpuProcessFeedbackTime()
 //-----------------------------------------------------------------------------
 // performance and visualization
 //-----------------------------------------------------------------------------
-float Streaming::TileUpdateManagerBase::GetGpuStreamingTime() const { return m_pDataUploader->GetGpuStreamingTime(); }
-float Streaming::TileUpdateManagerBase::GetTotalTileCopyLatency() const { return m_pDataUploader->GetApproximateTileCopyLatency(); }
+float Streaming::TileUpdateManagerBase::GetGpuStreamingTime() const { return m_dataUploader.GetGpuStreamingTime(); }
+float Streaming::TileUpdateManagerBase::GetTotalTileCopyLatency() const { return m_dataUploader.GetApproximateTileCopyLatency(); }
 
 // the total time the GPU spent resolving feedback during the previous frame
 float Streaming::TileUpdateManagerBase::GetGpuTime() const { return m_gpuTimerResolve.GetTimes()[m_renderFrameIndex].first; }
-UINT Streaming::TileUpdateManagerBase::GetTotalNumUploads() const { return m_pDataUploader->GetTotalNumUploads(); }
-UINT Streaming::TileUpdateManagerBase::GetTotalNumEvictions() const { return m_pDataUploader->GetTotalNumEvictions(); }
+UINT Streaming::TileUpdateManagerBase::GetTotalNumUploads() const { return m_dataUploader.GetTotalNumUploads(); }
+UINT Streaming::TileUpdateManagerBase::GetTotalNumEvictions() const { return m_dataUploader.GetTotalNumEvictions(); }
 UINT Streaming::TileUpdateManagerBase::GetTotalNumSubmits() const { return m_numTotalSubmits; }
 
 void Streaming::TileUpdateManagerBase::SetVisualizationMode(UINT in_mode)
@@ -160,12 +160,12 @@ void Streaming::TileUpdateManagerBase::SetVisualizationMode(UINT in_mode)
         o->ClearAllocations();
     }
 
-    m_pDataUploader->SetVisualizationMode(in_mode);
+    m_dataUploader.SetVisualizationMode(in_mode);
 }
 
 void Streaming::TileUpdateManagerBase::CaptureTraceFile(bool in_captureTrace)
 {
-    m_pDataUploader->CaptureTraceFile(in_captureTrace);
+    m_dataUploader.CaptureTraceFile(in_captureTrace);
 }
 
 //-----------------------------------------------------------------------------

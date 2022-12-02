@@ -37,7 +37,7 @@ namespace Streaming
     class InternalResources
     {
     public:
-        InternalResources(ID3D12Device8* in_pDevice, class XeTexture* m_pTextureFileInfo,
+        InternalResources(ID3D12Device8* in_pDevice, const class XeTexture& m_textureFileInfo,
             // need the swap chain count so we can create per-frame upload buffers
             UINT in_swapChainBufferCount);
 

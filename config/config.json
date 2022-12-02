@@ -11,12 +11,12 @@
   "stagingSizeMB": 128, // size of the staging buffer for DirectStorage or reference streaming code
 
   // maximum number of in-flight batches of uploads
-  "numStreamingBatches": 128,
-  "minNumUploadRequests": 1999, // # tiles. heuristic to reduce frequency of Submit() calls
+  "numStreamingBatches": 1280,
+  "minNumUploadRequests": 2000, // # tiles. heuristic to reduce frequency of Submit() calls
 
   "addAliasingBarriers": false, //// adds a barrier for each streaming resource: alias(nullptr, pResource)
 
-  "adapter": "", // in a multi-adapter system, searches description for substring ignoring case e.g. "intel"
+  "adapter": "", // create device on adapter with description containig substring ignoring case e.g. "intel"
 
   "animationrate": 0, // rotation of individual objects
   "cameraRate": 0, // camera motion rate

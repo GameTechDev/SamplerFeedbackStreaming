@@ -49,9 +49,10 @@ namespace Streaming
         UINT32 GetCompressionFormat() const { return m_fileHeader.m_compressionFormat; }
 
         // return value is # bytes. out_offset is byte offset into file
-        UINT GetFileOffset(const D3D12_TILED_RESOURCE_COORDINATE& in_coord, UINT32& out_numBytes) const;
+        struct FileOffset { UINT offset{ 0 }; UINT numBytes{ 0 }; };
+        FileOffset GetFileOffset(const D3D12_TILED_RESOURCE_COORDINATE& in_coord) const;
 
-        UINT GetPackedMipFileOffset(UINT* out_pNumBytesTotal, UINT* out_pNumBytesUncompressed);
+        UINT GetPackedMipFileOffset(UINT* out_pNumBytesTotal, UINT* out_pNumBytesUncompressed) const;
 
         XeTexture(const std::wstring& in_filename);
     protected:

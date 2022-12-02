@@ -212,7 +212,6 @@ private:
     AssetUploader m_assetUploader;
 
     std::vector<class SceneObjects::BaseObject*> m_objects;
-    UINT m_numSpheresLoaded{ 0 };
 
     UINT m_terrainObjectIndex{ 0 };
     SceneObjects::BaseObject* m_pTerrainSceneObject{ nullptr }; // convenience pointer, do not delete or draw, this is also in m_objects.
