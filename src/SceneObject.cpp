@@ -289,6 +289,35 @@ void SceneObjects::BaseObject::SetGeometry(ID3D12Resource* in_pVertexBuffer, UIN
 }
 
 //-------------------------------------------------------------------------
+// state common to multiple objects
+// basic scene consists of a sky (1 or none), objects using feedback, and objects not using feedback
+//-------------------------------------------------------------------------
+void SceneObjects::BaseObject::SetCommonPipelineState(ID3D12GraphicsCommandList1* in_pCommandList, const SceneObjects::DrawParams& in_drawParams)
+{
+    // if feedback is enabled, 2 things:
+    // 1. tell the tile update manager to queue a readback of the resolved feedback
+    // 2. draw the object with a shader that calls WriteSamplerFeedback()
+    if (m_feedbackEnabled)
+    {
+        SetRootSigPsoFB(in_pCommandList);
+    }
+    else
+    {
+        SetRootSigPso(in_pCommandList);
+    }
+    in_pCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+    // shared min mip map resource
+    in_pCommandList->SetGraphicsRootDescriptorTable((UINT)SceneObjects::RootSigParams::ParamSharedTextures, in_drawParams.m_sharedMinMipMap);
+
+    // frame constant buffer
+    in_pCommandList->SetGraphicsRootDescriptorTable((UINT)SceneObjects::RootSigParams::ParamConstantBuffers, in_drawParams.m_constantBuffers);
+
+    // samplers
+    in_pCommandList->SetGraphicsRootDescriptorTable((UINT)SceneObjects::RootSigParams::ParamSamplers, in_drawParams.m_samplers);
+}
+
+//-------------------------------------------------------------------------
 //-------------------------------------------------------------------------
 void SceneObjects::BaseObject::Draw(ID3D12GraphicsCommandList1* in_pCommandList, const SceneObjects::DrawParams& in_drawParams)
 {
@@ -331,39 +360,21 @@ void SceneObjects::BaseObject::Draw(ID3D12GraphicsCommandList1* in_pCommandList,
         }
         const auto& geometry = m_lods[lod];
 
-        // if feedback is enabled, 2 things:
-        // 1. tell the tile update manager to queue a readback of the resolved feedback
-        // 2. draw the object with a shader that calls WriteSamplerFeedback()
         if (m_feedbackEnabled)
         {
             auto feedbackDescriptor = CD3DX12_GPU_DESCRIPTOR_HANDLE(in_drawParams.m_srvBaseGPU,
                 UINT(SceneObjects::Descriptors::HeapOffsetFeedback), m_srvUavCbvDescriptorSize);
             m_pTileUpdateManager->QueueFeedback(GetStreamingResource(), feedbackDescriptor);
-            SetRootSigPsoFB(in_pCommandList);
-        }
-        else
-        {
-            SetRootSigPso(in_pCommandList);
         }
 
         // uavs and srvs
         in_pCommandList->SetGraphicsRootDescriptorTable((UINT)RootSigParams::ParamObjectTextures, in_drawParams.m_srvBaseGPU);
-
-        // shared min mip map resource
-        in_pCommandList->SetGraphicsRootDescriptorTable((UINT)SceneObjects::RootSigParams::ParamSharedTextures, in_drawParams.m_sharedMinMipMap);
-
-        // constant buffers
-        in_pCommandList->SetGraphicsRootDescriptorTable((UINT)SceneObjects::RootSigParams::ParamConstantBuffers, in_drawParams.m_constantBuffers);
-
-        // samplers
-        in_pCommandList->SetGraphicsRootDescriptorTable((UINT)SceneObjects::RootSigParams::ParamSamplers, in_drawParams.m_samplers);
 
         ModelConstantData modelConstantData{};
         SetModelConstants(modelConstantData, in_drawParams.m_projection, in_drawParams.m_view);
         UINT num32BitValues = sizeof(ModelConstantData) / sizeof(UINT32);
         in_pCommandList->SetGraphicsRoot32BitConstants((UINT)RootSigParams::Param32BitConstants, num32BitValues, &modelConstantData, 0);
 
-        in_pCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         in_pCommandList->IASetIndexBuffer(&geometry.m_indexBufferView);
         in_pCommandList->IASetVertexBuffers(0, 1, &geometry.m_vertexBufferView);
         in_pCommandList->DrawIndexedInstanced(geometry.m_numIndices, 1, 0, 0, 0);

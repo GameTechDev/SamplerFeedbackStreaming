@@ -5,21 +5,21 @@
       <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
       <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
     </Filter>
-    <Filter Include="Header Files">
-      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
-      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
-    </Filter>
     <Filter Include="Shaders">
       <UniqueIdentifier>{b85f76f3-fe1c-4329-8013-cdabe12d5fd8}</UniqueIdentifier>
     </Filter>
     <Filter Include="scripts">
       <UniqueIdentifier>{23f41b89-5d6f-48b1-8016-ea5107d4976f}</UniqueIdentifier>
     </Filter>
-    <Filter Include="include">
-      <UniqueIdentifier>{aca759ef-33ea-4723-8a6f-84302ce25d77}</UniqueIdentifier>
-    </Filter>
     <Filter Include="config">
       <UniqueIdentifier>{71df60be-5005-472b-a6c3-c52100ccae2b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="lib">
+      <UniqueIdentifier>{aca759ef-33ea-4723-8a6f-84302ce25d77}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="include">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -56,73 +56,73 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="BufferViewer.h">
-      <Filter>Header Files</Filter>
+      <Filter>include</Filter>
     </ClInclude>
     <ClInclude Include="CommandLineArgs.h">
-      <Filter>Header Files</Filter>
+      <Filter>include</Filter>
     </ClInclude>
     <ClInclude Include="CreateSphere.h">
-      <Filter>Header Files</Filter>
+      <Filter>include</Filter>
     </ClInclude>
     <ClInclude Include="FrameEventTracing.h">
-      <Filter>Header Files</Filter>
+      <Filter>include</Filter>
     </ClInclude>
     <ClInclude Include="FrustumViewer.h">
-      <Filter>Header Files</Filter>
+      <Filter>include</Filter>
     </ClInclude>
     <ClInclude Include="Gui.h">
-      <Filter>Header Files</Filter>
+      <Filter>include</Filter>
     </ClInclude>
     <ClInclude Include="pch.h">
-      <Filter>Header Files</Filter>
+      <Filter>include</Filter>
     </ClInclude>
     <ClInclude Include="Scene.h">
-      <Filter>Header Files</Filter>
+      <Filter>include</Filter>
     </ClInclude>
     <ClInclude Include="SceneObject.h">
-      <Filter>Header Files</Filter>
+      <Filter>include</Filter>
     </ClInclude>
     <ClInclude Include="SharedConstants.h">
-      <Filter>Header Files</Filter>
+      <Filter>include</Filter>
     </ClInclude>
     <ClInclude Include="TerrainGenerator.h">
-      <Filter>Header Files</Filter>
+      <Filter>include</Filter>
     </ClInclude>
     <ClInclude Include="TextureViewer.h">
-      <Filter>Header Files</Filter>
+      <Filter>include</Filter>
     </ClInclude>
     <ClInclude Include="TimeTracing.h">
-      <Filter>Header Files</Filter>
+      <Filter>include</Filter>
     </ClInclude>
     <ClInclude Include="..\include\ArgParser.h">
-      <Filter>include</Filter>
+      <Filter>lib</Filter>
     </ClInclude>
     <ClInclude Include="..\include\ConfigurationParser.h">
-      <Filter>include</Filter>
+      <Filter>lib</Filter>
     </ClInclude>
     <ClInclude Include="..\include\D3D12GpuTimer.h">
-      <Filter>include</Filter>
+      <Filter>lib</Filter>
     </ClInclude>
     <ClInclude Include="..\include\DebugHelper.h">
-      <Filter>include</Filter>
+      <Filter>lib</Filter>
     </ClInclude>
     <ClInclude Include="..\include\Timer.h">
-      <Filter>include</Filter>
+      <Filter>lib</Filter>
     </ClInclude>
     <ClInclude Include="..\include\TimeTracing.h">
-      <Filter>include</Filter>
+      <Filter>lib</Filter>
     </ClInclude>
     <ClInclude Include="..\include\WindowCapture.h">
-      <Filter>include</Filter>
+      <Filter>lib</Filter>
     </ClInclude>
     <ClInclude Include="..\DirectXTK12\d3dx12.h">
-      <Filter>include</Filter>
+      <Filter>lib</Filter>
     </ClInclude>
     <ClInclude Include="..\DirectXTK12\DDS.h">
-      <Filter>include</Filter>
+      <Filter>lib</Filter>
     </ClInclude>
     <ClInclude Include="AssetUploader.h">
-      <Filter>Header Files</Filter>
+      <Filter>include</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

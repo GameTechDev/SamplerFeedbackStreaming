@@ -1107,6 +1107,31 @@ UINT Scene::DetermineMaxNumFeedbackResolves()
 }
 
 //-----------------------------------------------------------------------------
+// crude system to minimize state transitions: group objects by PSO
+//-----------------------------------------------------------------------------
+typedef std::pair<SceneObjects::BaseObject*, UINT> ObjectIndexPair;
+typedef std::vector<ObjectIndexPair> ObjectSet;
+
+void DrawObjectSets(const std::vector<ObjectSet>& in_objectSets, SceneObjects::DrawParams& in_params,
+    const D3D12_GPU_DESCRIPTOR_HANDLE in_descriptorBase, UINT in_descriptorSize,
+    ID3D12GraphicsCommandList1* out_pCommandList)
+{
+    for (auto& t : in_objectSets)
+    {
+        if (t.size())
+        {
+            t[0].first->SetCommonPipelineState(out_pCommandList, in_params); // these objects all share pipeline state
+            for (auto& o : t)
+            {
+                in_params.m_srvBaseGPU = CD3DX12_GPU_DESCRIPTOR_HANDLE(in_descriptorBase, (INT)(o.second * (INT)SceneObjects::Descriptors::NumEntries), in_descriptorSize);
+
+                o.first->Draw(out_pCommandList, in_params);
+            }
+        }
+    }
+}
+
+//-----------------------------------------------------------------------------
 // draw all objects
 // uses the min-mip-map created using Sampler Feedback on the GPU
 // to recommend updates to the internal memory map managed by the CPU
@@ -1131,6 +1156,16 @@ void Scene::DrawObjects()
 
     const D3D12_GPU_DESCRIPTOR_HANDLE srvBaseGPU = CD3DX12_GPU_DESCRIPTOR_HANDLE(m_srvHeap->GetGPUDescriptorHandleForHeapStart(), (UINT)DescriptorHeapOffsets::NumEntries, m_srvUavCbvDescriptorSize);
 
+    enum class MaterialType : UINT
+    {
+        Sky, // always draw the sky first, if there is one
+        PlanetWithFeedback,
+        Planet,
+        NumMaterials
+    };
+
+    std::vector<ObjectSet> objectSets((UINT)MaterialType::NumMaterials);
+
     //------------------------------------------------------------------------------------
     // set feedback state on each object
     // objects with feedback enabled will queue feedback resolve on the TileUpdateManager
@@ -1147,7 +1182,8 @@ void Scene::DrawObjects()
         UINT numFeedbackObjects = 0;
         for (UINT i = m_queueFeedbackIndex; i < numObjects; i++)
         {
-            auto o = m_objects[i % (UINT)m_objects.size()];
+            UINT objectIndex = i % (UINT)m_objects.size();
+            auto o = m_objects[objectIndex];
 
             // FIXME: want proper frustum culling here
             float w = XMVectorGetW(o->GetCombinedMatrix().r[3]);
@@ -1165,6 +1201,19 @@ void Scene::DrawObjects()
                     queueFeedback = true;
                     numFeedbackObjects++;
                 }
+
+                // only draw visible objects
+                // group objects by material (PSO)
+                MaterialType materialType = MaterialType::Sky;
+                if (o != m_pSky)
+                {
+                    materialType = MaterialType::Planet;
+                    if (queueFeedback)
+                    {
+                        materialType = MaterialType::PlanetWithFeedback;
+                    }
+                }
+                objectSets[(UINT)materialType].emplace_back(ObjectIndexPair(o, objectIndex));
             }
             else // evict tiles of objects that are not visible
             {
@@ -1183,15 +1232,7 @@ void Scene::DrawObjects()
         m_prevNumFeedbackObjects[m_frameIndex] = numFeedbackObjects;
     }
 
-    // draw the objects in the same order each time
-    auto descriptorBase = CD3DX12_GPU_DESCRIPTOR_HANDLE(srvBaseGPU);
-    for (auto o : m_objects)
-    {
-        drawParams.m_srvBaseGPU = descriptorBase;
-        descriptorBase.Offset((UINT)SceneObjects::Descriptors::NumEntries, m_srvUavCbvDescriptorSize);
-
-        o->Draw(m_commandList.Get(), drawParams);
-    }
+    DrawObjectSets(objectSets, drawParams, srvBaseGPU, m_srvUavCbvDescriptorSize, m_commandList.Get());
 }
 
 //-------------------------------------------------------------------------

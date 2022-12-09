@@ -73,6 +73,9 @@ namespace SceneObjects
 
         bool GetPackedMipsPresent() const { return m_pStreamingResource->GetPackedMipsResident(); }
 
+        // state re-used by a number of objects
+        void SetCommonPipelineState(ID3D12GraphicsCommandList1* in_pCommandList, const SceneObjects::DrawParams& in_drawParams);
+
         virtual void Draw(ID3D12GraphicsCommandList1* in_pCommandList, const DrawParams& in_drawParams);
 
         DirectX::XMMATRIX& GetModelMatrix() { return m_matrix; }

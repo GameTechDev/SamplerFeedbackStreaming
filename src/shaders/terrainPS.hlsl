@@ -48,7 +48,7 @@ float3 evaluateLight(in float3 normal, in float3 pos, in float3 tex)
     float specDot = saturate(dot(reflected, pointToLight));
     float specular = pow(specDot, g_specularColor.a);
 
-    float3 color = ambient + (diffuse * g_lightColor.xyz);
+    float3 color = max(ambient, diffuse) * g_lightColor.xyz;
     color *= tex;
     color = pow(color, 1.0f / 1.3f);
     color = saturate(color);
