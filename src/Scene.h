@@ -160,8 +160,8 @@ private:
         int g_visualizeFeedback;
     };
 
-    FrameConstantData* m_pFrameConstantData{ nullptr }; // left in the mapped state
-    ComPtr<ID3D12Resource> m_frameConstantBuffer;
+    std::vector<FrameConstantData*> m_pFrameConstantData{ nullptr }; // left in the mapped state
+    std::vector<ComPtr<ID3D12Resource>> m_frameConstantBuffers;
 
     Gui* m_pGui{ nullptr };
     Gui::ButtonChanges m_uiButtonChanges; // track changes in UI settings

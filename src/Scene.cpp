@@ -51,7 +51,9 @@ const FLOAT Scene::m_clearColor[4] = { 0, 0, 0.05f, 0 };
 
 enum class DescriptorHeapOffsets
 {
-    FRAME_CBV,         // b0
+    FRAME_CBV0,         // b0, one for each swap chain buffer
+    FRAME_CBV1,
+    FRAME_CBV2,
     GUI,
     SHARED_MIN_MIP_MAP,
 
@@ -234,7 +236,10 @@ Scene::~Scene()
     }
 
     ::CloseHandle(m_renderFenceEvent);
-    m_frameConstantBuffer->Unmap(0, nullptr);
+    for (auto& b : m_frameConstantBuffers)
+    {
+        b->Unmap(0, nullptr);
+    }
 
     delete m_pGpuTimer;
     delete m_pGui;
@@ -1005,27 +1010,34 @@ void Scene::CreateConstantBuffers()
 
         const auto heapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
         const auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(bufferSize);
-        ThrowIfFailed(m_device->CreateCommittedResource(
-            &heapProperties,
-            D3D12_HEAP_FLAG_NONE,
-            &resourceDesc,
-            D3D12_RESOURCE_STATE_GENERIC_READ,
-            nullptr,
-            IID_PPV_ARGS(&m_frameConstantBuffer)));
 
-        CD3DX12_RANGE readRange(0, bufferSize);
-        ThrowIfFailed(m_frameConstantBuffer->Map(0, &readRange, reinterpret_cast<void**>(&m_pFrameConstantData)));
+        m_frameConstantBuffers.resize(m_swapBufferCount);
+        m_pFrameConstantData.resize(m_swapBufferCount);
 
-        m_pFrameConstantData->g_lightDir = XMFLOAT4(-0.538732767f, 0.787301660f, 0.299871892f, 0);
-        XMStoreFloat4(&m_pFrameConstantData->g_lightDir, XMVector4Normalize(XMLoadFloat4(&m_pFrameConstantData->g_lightDir)));
-        m_pFrameConstantData->g_lightColor = XMFLOAT4(1, 1, 1, 1);
-        m_pFrameConstantData->g_specularColor = XMFLOAT4(1, 1, 1, 50.f);
+        for (UINT i = 0; i < m_swapBufferCount; i++)
+        {
+            ThrowIfFailed(m_device->CreateCommittedResource(
+                &heapProperties,
+                D3D12_HEAP_FLAG_NONE,
+                &resourceDesc,
+                D3D12_RESOURCE_STATE_GENERIC_READ,
+                nullptr,
+                IID_PPV_ARGS(&m_frameConstantBuffers[i])));
 
-        D3D12_CONSTANT_BUFFER_VIEW_DESC constantBufferView = {};
-        constantBufferView.SizeInBytes = bufferSize;
-        constantBufferView.BufferLocation = m_frameConstantBuffer->GetGPUVirtualAddress();
-        m_device->CreateConstantBufferView(&constantBufferView, CD3DX12_CPU_DESCRIPTOR_HANDLE(
-            m_srvHeap->GetCPUDescriptorHandleForHeapStart(), (UINT)DescriptorHeapOffsets::FRAME_CBV, m_srvUavCbvDescriptorSize));
+            CD3DX12_RANGE readRange(0, bufferSize);
+            ThrowIfFailed(m_frameConstantBuffers[i]->Map(0, &readRange, reinterpret_cast<void**>(&m_pFrameConstantData[i])));
+
+            m_pFrameConstantData[i]->g_lightDir = XMFLOAT4(-0.538732767f, 0.787301660f, 0.299871892f, 0);
+            XMStoreFloat4(&m_pFrameConstantData[i]->g_lightDir, XMVector4Normalize(XMLoadFloat4(&m_pFrameConstantData[i]->g_lightDir)));
+            m_pFrameConstantData[i]->g_lightColor = XMFLOAT4(1, 1, 1, 1);
+            m_pFrameConstantData[i]->g_specularColor = XMFLOAT4(1, 1, 1, 50.f);
+
+            D3D12_CONSTANT_BUFFER_VIEW_DESC constantBufferView = {};
+            constantBufferView.SizeInBytes = bufferSize;
+            constantBufferView.BufferLocation = m_frameConstantBuffers[i]->GetGPUVirtualAddress();
+            m_device->CreateConstantBufferView(&constantBufferView, CD3DX12_CPU_DESCRIPTOR_HANDLE(
+                m_srvHeap->GetCPUDescriptorHandleForHeapStart(), i + (UINT)DescriptorHeapOffsets::FRAME_CBV0, m_srvUavCbvDescriptorSize));
+        }
     }
 }
 
@@ -1148,7 +1160,7 @@ void Scene::DrawObjects()
 
     SceneObjects::DrawParams drawParams;
     drawParams.m_sharedMinMipMap = CD3DX12_GPU_DESCRIPTOR_HANDLE(m_srvHeap->GetGPUDescriptorHandleForHeapStart(), (UINT)DescriptorHeapOffsets::SHARED_MIN_MIP_MAP, m_srvUavCbvDescriptorSize);
-    drawParams.m_constantBuffers = CD3DX12_GPU_DESCRIPTOR_HANDLE(m_srvHeap->GetGPUDescriptorHandleForHeapStart(), (UINT)DescriptorHeapOffsets::FRAME_CBV, m_srvUavCbvDescriptorSize);
+    drawParams.m_constantBuffers = CD3DX12_GPU_DESCRIPTOR_HANDLE(m_srvHeap->GetGPUDescriptorHandleForHeapStart(), m_frameIndex + (UINT)DescriptorHeapOffsets::FRAME_CBV0, m_srvUavCbvDescriptorSize);
     drawParams.m_samplers = m_samplerHeap->GetGPUDescriptorHandleForHeapStart();
     drawParams.m_projection = m_projection;
     drawParams.m_view = m_viewMatrix;
@@ -1510,17 +1522,17 @@ void Scene::StartScene()
     m_commandList->RSSetScissorRects(1, &m_scissorRect);
 
     SetSampler();
-    DirectX::XMStoreFloat4(&m_pFrameConstantData->g_eyePos, m_viewMatrixInverse.r[3]);
-    m_pFrameConstantData->g_visualizeFeedback = m_args.m_visualizeMinMip;
+    DirectX::XMStoreFloat4(&m_pFrameConstantData[m_frameIndex]->g_eyePos, m_viewMatrixInverse.r[3]);
+    m_pFrameConstantData[m_frameIndex]->g_visualizeFeedback = m_args.m_visualizeMinMip;
 
     if (m_args.m_lightFromView)
     {
-        XMStoreFloat4(&m_pFrameConstantData->g_lightDir, m_viewMatrixInverse.r[2]);
+        XMStoreFloat4(&m_pFrameConstantData[m_frameIndex]->g_lightDir, m_viewMatrixInverse.r[2]);
     }
     else
     {
-        m_pFrameConstantData->g_lightDir = XMFLOAT4(-0.538732767f, -0.787301660f, -0.299871892f, 0);
-        XMStoreFloat4(&m_pFrameConstantData->g_lightDir, XMVector4Normalize(XMLoadFloat4(&m_pFrameConstantData->g_lightDir)));
+        m_pFrameConstantData[m_frameIndex]->g_lightDir = XMFLOAT4(-0.538732767f, -0.787301660f, -0.299871892f, 0);
+        XMStoreFloat4(&m_pFrameConstantData[m_frameIndex]->g_lightDir, XMVector4Normalize(XMLoadFloat4(&m_pFrameConstantData[m_frameIndex]->g_lightDir)));
     }
 }
 
